@@ -94,8 +94,123 @@
   notice and copy it over by hand. Standing note, not a bug: there's no
   mechanism in TypeScript's `extends` model that would keep it in sync.
 
+## Headless suite port — `core/` executed under Node
+
+- **AF9** 🧪 — **The port needed zero path edits.** The premise going in was
+  that the suites bundle source by path and those paths would have to be
+  repointed at `src/core/`; they did not. Every entry point is
+  `path.join(__dirname, <relative>)` — `'tokenize.ts'`, `'../pacer/orp.ts'`,
+  `'../model/delimiterSpans.ts'`, `'../model/tokenize.ts'` — so once a suite
+  sits beside its subject under `src/core/`, AD1's preserved directory shape
+  makes those relative paths resolve unchanged. Verified two ways this session:
+  `diff` reported all eight copies identical to their web-repo originals, and a
+  SHA-256 comparison of all eight matched (e.g. `model/headless-test.mjs`
+  `f62741ffd0fa60a3…` on both sides). Zero lines differ — assertions, fixtures,
+  expected values, and formatting included.
+
+- **AF10** 🧪 — **All eight suites pass here.** Run individually and via
+  `npm run test:core`, each exited 0: tokenize 17/17, delimiterSpans 18/18,
+  orp 14/14, dwell 9/9, markdown 15/15, pdfText 14/14, epubStructure 12/12,
+  spine-integrity 26/26 — **125 checks, 0 failures**. Toolchain: Node v26.7.0,
+  esbuild 0.28.2, macOS arm64 (Darwin 25.6.0). Not claimed: that these produce
+  identical output to the web repo's own runs. The suites are byte-identical
+  and the sources are byte-identical, but the web-repo runs were **not**
+  executed for comparison, because running a suite writes a temporary
+  `.headless-*.mjs` beside its subject and the web repo was read-only for this
+  task.
+
+- **AF11** 🧪❓ — **AF6 is now partially closed, and precisely which part
+  matters.** Seven of the twelve seeded modules have had their real runtime
+  logic executed here: `model/tokenize.ts`, `model/delimiterSpans.ts`,
+  `pacer/orp.ts`, `pacer/dwell.ts`, `parsers/markdown.ts`,
+  `parsers/pdfText.ts`, `parsers/epubStructure.ts` (enumerated from the
+  suites' own entry points, not assumed). `model/types.ts` has nothing to
+  execute — it is four type declarations, erased by esbuild. Four remain
+  **unexecuted in this repo**: `model/blocks.ts`, `reader/bionic.ts`,
+  `ui/sample.ts`, `ui/theme.ts`; no ported suite bundles any of them.
+  The Hermes half of AF6 is **untouched and stays ❓**. These runs are Node
+  v26.7.0, not Hermes; no Hermes binary has been run in this repo yet. A green
+  Node run is evidence about the *logic*, not about the *engine*, and must not
+  be read as Hermes coverage.
+
+- **AF12** 🧪❓ — **Node is not Hermes, and here is the concrete gap this run
+  does not cover.** (Mixed tag on purpose: the feature inventory below was
+  grepped out of the source and is measured; every claim about what Hermes
+  does or does not support is inherited belief, unverified here.) Grepping the
+  seven now-executed modules for engine-sensitive features turns up four
+  classes, each satisfied by Node v26 and each unverified on Hermes here:
+  1. **Regex lookbehind** — `parsers/markdown.ts:62–71` uses `(?<!\w)` and
+     `(?<!\s)` in all four emphasis regexes. Structurally the sharpest risk of
+     the four regardless of what Hermes turns out to support: a regex *literal*
+     that the engine cannot parse fails at **module load**, not at call time —
+     it would take out the whole markdown parser rather than one edge case.
+     Whether this specific Hermes build accepts lookbehind was not tested.
+  2. **Unicode property escapes** — `\p{L}`/`\p{N}` in `model/tokenize.ts:26,30`
+     and `\p{M}` in `pacer/orp.ts:36`. `orp.ts`'s own comment asserts `\p{M}`
+     is available on Hermes (citing the web repo's F41 — back-reference, not a
+     live pointer); `\p{L}` and `\p{N}` carry no such note and are unverified.
+  3. **`String.prototype.normalize('NFC')`** — `pacer/orp.ts:137`, on the hot
+     path of every ORP split. Unicode normalization tables are a common
+     omission in embedded engines.
+  4. **`String.prototype.matchAll`** — `parsers/epubStructure.ts:90,99,160,183`.
+  Notably *not* a risk: `Intl.Segmenter`. `orp.ts` hand-rolls grapheme
+  clustering specifically because Hermes has it on a permanent test262 skip
+  list — the avoidance is deliberate and documented in the source.
+
+- **AF13** 🧪 — **esbuild works here despite its `postinstall` never running.**
+  `npx expo install --dev esbuild` emitted
+  `npm warn install-scripts esbuild@0.28.2 (postinstall: node install.js)` —
+  npm's `allowScripts` gate left it unapproved. `require('esbuild').version`
+  nonetheless returns `0.28.2` and all eight suites bundle successfully. The
+  reason was checked rather than assumed: `node_modules/@esbuild/darwin-arm64/`
+  is installed and `node_modules/esbuild/bin/esbuild` is a hardlink to its
+  10,590,882-byte binary — the platform binary arrives via the optional
+  platform dependency, and the `postinstall` script is not load-bearing here.
+  Standing caveat, not a fix: on a fresh clone in a different environment this
+  is the most likely reason `npm run test:core` would fail for reasons
+  unrelated to the code — which is part of AD10's argument against putting it
+  inside `npm run build`.
+
+- **AF14** 🧪 — **The `.mjs` suites are invisible to both `tsc` programs, and
+  `npm run build` is still clean.** The main `tsconfig.json` `include` lists
+  only `**/*.ts` / `**/*.tsx`, and `tsconfig.core.json` sets no `allowJs`, so
+  adding eight `.mjs` files under `src/core/` changes neither program. `npm run
+  build` (`tsc --noEmit && tsc -p tsconfig.core.json`) exits 0 with no output
+  after the port. Consequence worth naming: the suites themselves are **not**
+  typechecked or DOM-guarded by anything — they are plain `.mjs` with no
+  coverage from either config.
+
+- **AF15** 🧪 — **esbuild version drift between the two repos is real and
+  currently unmeasured.** This repo resolved `0.28.2`; the web repo's
+  transitive copy (via Vite) is `0.25.12`. Both bundle the same byte-identical
+  sources, but no run under `0.25.12` was performed *here* and no run at all
+  was performed *there* (AF10), so "the same tests give the same results under
+  both bundlers" is asserted by construction, not measured. If a suite ever
+  disagrees between the repos, this is the first variable to eliminate.
+
+- **AF16** 📐 — **The suites write into `src/core/` while running.** Each one
+  writes a temporary `.headless-<name>-<pid>.mjs` beside its subject and
+  `unlink`s it in a `finally`. Verified after every run this session:
+  `find src/core -name ".headless-*"` returned nothing, and `git status
+  --porcelain` showed only the eight intended new files. But the pattern is
+  **not** in `.gitignore` (nor is it in the web repo's), so a suite killed
+  mid-run leaves an untracked file inside `src/core/` — the one directory this
+  repo treats as byte-pinned. Flagged, not fixed: adding the ignore rule is a
+  separate change from this port.
+
+- **AF17** 🧪 — **The `test:core` runner is non-fail-fast and still propagates
+  failure.** `fail=0; … node "$f" || fail=1; …; exit $fail` was proven on three
+  scratch scripts where the middle one exited 1: the third still ran and the
+  aggregate exited 1. This matters for CLAUDE.md §3 — a `&&` chain would have
+  hidden suites 2–8 behind the first failure, which is the opposite of an
+  honest verification report.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
   was learned during the `core/` seed (commit `1cd60e2`) and the tsconfig
   guard fix (commit `ce3d2ed`/PR #1) that had gone unrecorded until now.
+- 2026-08-31 — appended AF9–AF17 for the headless-suite port on
+  `test/port-headless-suites`. AF11 partially closes AF6 (7 of 12 modules now
+  executed under Node) and explicitly leaves its Hermes half ❓; AF12 records
+  the specific engine features that gap now hangs on.
