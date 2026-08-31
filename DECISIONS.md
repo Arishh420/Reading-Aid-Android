@@ -170,6 +170,62 @@
   binary — which matters, because the portability guard's credibility rests on
   `build` being cheap and unconditional.
 
+## Milestone: `check` script + gitignore hardening (resolving deferred items)
+
+- **AD11 · AD10's deferred fork is resolved by adding a `check` script
+  exactly as AD10 recommended, without touching `build` or `test:core`.**
+  `package.json` now has `"check": "npm run build && npm run test:core"`,
+  added as a new line; `build` and `test:core` are byte-for-byte unchanged.
+  Confirmed the `&&` actually propagates failure rather than assuming it:
+  `test:core` was temporarily repointed at a scratch script
+  (`node <scratchpad>/scratch-fail.mjs`, outside the repo) that unconditionally
+  exits 1; `npm run check` ran `build` (clean) then `test:core` (the scratch
+  script) and exited 1 itself. `package.json` was then restored and `git diff
+  package.json` showed only the intended one-line `check` addition, `test:core`
+  back to its original string. Before that, `npm run check` was run once
+  against the real eight suites and exited 0 (see FINDINGS AF18 for the
+  count). *CLAUDE.md §3's "must stay clean" target was deliberately left
+  pointing at `build`, not moved to `check`* — see AD12.
+
+- **AD12 · The CLAUDE.md §3 "must stay clean" target is NOT being moved from
+  `build` to `check` in this repo, despite AD10 recommending exactly that
+  move.** CLAUDE.md states at its own top that it "carries verbatim between
+  repos" (its §4 preamble, and the web repo's PORT-PLAN.md §4, cited there as
+  the source of that constraint) — editing §3 here would either desync this
+  repo's copy from the web repo's, or require a matching edit in a repo this
+  task has no mandate to touch. This is a cross-repo decision, not a
+  single-repo one, so it is out of scope for a change confined to
+  `package.json` / `.gitignore` / these two logs. Flagged for a human
+  (Delta) to carry into the web repo rather than made unilaterally here. What
+  the edit would say, if made: replace "`npm run build` must stay clean"
+  with "`npm run check` must stay clean" in §3 — i.e. redefine "clean" as
+  build **plus** the eight headless suites passing, matching AD11's `check`
+  script. Alternative rejected (implicitly, by not acting): editing §3 now and
+  accepting the desync. Rejected because CLAUDE.md is explicit that
+  desyncing the two copies is the failure mode the verbatim-carry rule exists
+  to prevent.
+
+- **AD13 · The headless-suite temp-file `.gitignore` rule is `.headless-*.mjs`,
+  a single line with no directory scoping.** The pattern was read out of the
+  suite source rather than assumed from FINDINGS AF16's prose gloss: every
+  suite's `tmpPath` is built as `` `.headless-<name-or-tmpName>-${process.pid}` ``
+  (some suites add a trailing `-${Math.random()...}` segment too), always
+  prefixed with the literal string `.headless-` and suffixed `.mjs`. All eight
+  committed suites are named `*-headless-test.mjs` — the fixed word order and
+  lack of a leading dot means `.headless-*.mjs` cannot match any of them; the
+  two name families are disjoint by construction (leading-dot prefix vs. no
+  leading dot), not by coincidence that happens to hold today. Verified
+  directly rather than trusted: created a scratch file matching the real
+  pattern inside `src/core/model/`, confirmed `git check-ignore -v` reported it
+  ignored by the new rule, confirmed `git ls-files src/core | grep mjs` still
+  listed all eight suites, then deleted the scratch file (see FINDINGS AF19).
+  Alternative rejected: scoping the rule to `src/core/.headless-*.mjs`.
+  Rejected as unnecessary — the dot-prefix already makes the pattern specific
+  enough that a repo-wide rule carries no realistic collision risk, and every
+  suite that writes one of these files already writes it beside its own
+  subject under `src/core/` (AF16), so a global rule and a scoped one cover
+  the same files in practice; the unscoped form is simpler.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -181,3 +237,8 @@
   `test/port-headless-suites`: the `esbuild` devDependency, the 8-of-12
   selection, the zero-edit byte-identical copy, and the deferred
   `build`-chaining fork.
+- 2026-08-31 — appended AD11–AD13 on `chore/check-script-and-gitignore`:
+  the `check` script resolving AD10's deferred fork, the explicit choice to
+  leave CLAUDE.md §3 pointed at `build` and flag the move as a cross-repo
+  decision instead of making it here, and the `.headless-*.mjs` `.gitignore`
+  rule resolving AF16.
