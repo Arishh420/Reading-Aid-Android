@@ -238,6 +238,186 @@
   with a leading dot); the scratch file was then deleted and `git status
   --porcelain` showed only the intended `.gitignore` edit.
 
+## Hermes CLI feature probe — AF12's four questions answered
+
+> Scope warning that governs this whole section: everything below is
+> **CLI-level** evidence. No emulator, device, or `expo run:android` build was
+> involved, and **no claim here is a claim about device behaviour.**
+
+- **AF20** 🧪 — **Two Hermes binaries were needed, because the one that matches
+  what this app would ship cannot execute.** RN 0.86.3 pins its own compiler:
+  `node_modules/react-native/package.json` line 179 reads
+  `"hermes-compiler": "250829098.0.17"`, and that version is corroborated by
+  `sdks/.hermesv1version` (`hermes-v250829098.0.17`) and
+  `sdks/hermes-engine/version.properties`
+  (`HERMES_V1_VERSION_NAME=250829098.0.17`). Hermes V1 is the default, not an
+  opt-in: `hermes-utils.rb`'s `hermes_v1_enabled()` is
+  `ENV['RCT_HERMES_V1_ENABLED'] != "0"`. The binary is at
+  `node_modules/hermes-compiler/hermesc/osx-bin/hermesc`; `--version` reports
+  `Hermes release version: 250829098.0.17`, `HBC bytecode version: 98`, and a
+  `Features:` list whose first entry is `Unicode RegExp Property Escapes`.
+  It is **compile-only**: `-exec` appears in its shared LLVM driver options but
+  the binary refuses it — `Please choose output, e.g. -emit-binary. hermesc
+  does not support -exec.` So it answers parse/compile-time questions at the
+  exact shipping version and *nothing else*.
+  For a runtime VM there was no matching option. No Hermes VM exists anywhere
+  in `node_modules` or on this machine (checked `node_modules`, `~/.gradle`,
+  `~/Library/Caches/CocoaPods`, Homebrew, `PATH`); RN's prebuilt artifacts come
+  from Maven as `hermes-ios` tarballs and Android `.so`/AAR, neither runnable as
+  a macOS CLI. The newest standalone `facebook/hermes` release carrying a VM is
+  **v0.13.0** (2024-08-16), asset `hermes-cli-darwin.tar.gz`, sha256
+  `f16b0214f7b96eccbd47766f5a3914e847a4387649b2f6b60820d309879200bd`. It is a
+  universal binary (x86_64 + arm64), so it ran natively without Rosetta.
+  Quirk recorded rather than smoothed over: that **v0.13.0** asset's
+  `hermes --version` self-reports `Hermes release version: 0.12.0`, HBC 96.
+  **The version gap is real and was measured, not estimated:** the v0.13.0 VM
+  refuses bytecode emitted by RN's own hermesc —
+  `Error deserializing bytecode: Wrong bytecode version. Expected 96 but got 98`,
+  exit 5. So the compiler evidence is at the shipping version and the runtime
+  evidence is roughly a year behind it; the two cannot be bridged by running
+  the shipping compiler's output on the available VM.
+  Neither binary was installed via npm, added to `package.json`, or placed
+  inside the repo (see AD15, AD16).
+
+- **AF21** 🧪 — **The probe harness was validated against four negative controls
+  before any green result was trusted, and the masking hazard was demonstrated
+  rather than assumed.** AF12 #1 warns that an unparseable regex *literal* fails
+  at module load, not at call time. That makes a single combined probe file
+  actively misleading, so **each feature got its own file**; a compile failure
+  can then only destroy its own probe. NC4 proves this is not a theoretical
+  concern: a file containing two genuinely-passing checks (`normalize`,
+  `matchAll`) **followed** by an unparseable `/(?<!/` produced **zero output**
+  on all three engines — compilation precedes execution, so one bad literal
+  erases every sibling's evidence in the same file.
+  The controls, all behaving as required:
+  `NC1` (malformed `/[a-/`) → exit 2 on both hermesc and the VM, exit 1 on Node.
+  `NC2` (**the load-bearing control**: the ES2024 `v` flag,
+  `/[\p{L}--[aeiou]]/v` — *valid modern JavaScript*, not garbage) → rejected by
+  both Hermes builds with `Invalid regular expression: Invalid flags`, exit 2;
+  accepted by Node, exit 0. This is what proves the harness detects a genuine
+  "engine too old for this regex feature" condition — precisely AF12 #1's
+  failure class — instead of only catching syntax errors, and it proves Hermes
+  and Node genuinely diverge here so the comparison is not vacuous.
+  `NC3` (ES2024 `String.prototype.toWellFormed`) → absent on the VM (exit 1),
+  present on Node: runtime-gap detection is live. Note `NC3` compiled at exit 0
+  under hermesc, confirming from the other direction that the compiler cannot
+  see runtime gaps at all.
+
+- **AF22** 🧪 — **All four of AF12's questions answer WORKS. None partially
+  works. But the four are not equally well covered, and the difference matters.**
+  1. **Regex lookbehind — WORKS.** *Compile:* all four `markdown.ts` emphasis
+     literals compile under RN's own hermesc at exit 0. *Execute:* 8/8
+     behavioural checks on the VM, output byte-identical to Node
+     (`snake_case_name` and `a__b__c` untouched, `3 * 4 * 5` untouched,
+     `**hi**`→`hi`). **This is the best-covered of the four, and it is the one
+     AF12 called the sharpest risk:** the parse-time half is settled at the
+     exact version the app would ship, so the "markdown parser entirely absent"
+     scenario is ruled out at the compiler that would actually build it.
+  2. **Unicode property escapes `\p{L}`/`\p{N}`/`\p{M}` — WORKS.** All compile
+     under RN's hermesc at exit 0; 11/11 behavioural checks on the VM identical
+     to Node (Latin, accented, Devanagari, CJK, Arabic-Indic digits, combining
+     acute, Devanagari matra, and correct negatives). Independently corroborated
+     at the shipping version by hermesc's own `Features:` line listing
+     `Unicode RegExp Property Escapes`. `orp.ts`'s in-source claim that `\p{M}`
+     is available on Hermes (citing web F41) is now confirmed *here*; `\p{L}`
+     and `\p{N}`, which AF12 noted carried no such assurance, are confirmed too.
+  3. **`String.prototype.normalize('NFC')` — WORKS, but with the weakest
+     coverage of the four.** 9/9 on the VM, identical to Node: composition
+     (`e`+U+0301 → 1 code point), decomposition (NFD → 2), default-argument NFC,
+     Hangul algorithmic composition, ASCII pass-through, Devanagari. An explicit
+     anti-stub assertion is included — a no-op pass-through implementation would
+     satisfy the "unchanged" cases, so the probe fails if NFC leaves `e`+U+0301
+     decomposed; it reported `stub? false`. **Caveat that cannot be removed with
+     the binaries available:** `normalize` is a pure runtime builtin, so hermesc
+     cannot test it. This is evidence at VM 0.12/0.13 **only**, *not* at the
+     shipping 250829098.0.17.
+  4. **`String.prototype.matchAll` — WORKS.** 10/10 on the VM, identical to
+     Node, covering both call shapes `epubStructure.ts` actually uses (`for..of`
+     at lines 90/99/183 and spread at 160), plus capture groups, `.index`,
+     re-iteration of a `/g` regex, and the required `TypeError` on a non-global
+     regex. Same caveat as #3: runtime-only, older VM.
+  Both regex features were additionally confirmed on a second, independent code
+  path — runtime construction via `new RegExp(<string>)`, 11/11 on both engines.
+  That path is *corroboration only, not a substitute*: the shipped code uses
+  literals, and literal vs. runtime regex compilation are different code paths
+  an engine could in principle treat differently.
+
+- **AF23** 🧪 — **All 11 executable seeded modules LOAD and RUN under Hermes,
+  and every one produced output byte-identical to Node.** Each was
+  esbuild-bundled from the **real, unmodified** `src/core/*.ts` into a single
+  IIFE at `--target=esnext` (deliberately no downlevelling, so the engine is
+  tested rather than handed Babel-rescued output), then (a) compiled by RN's own
+  hermesc, (b) executed on the VM, (c) executed on Node, and (b) `diff`ed
+  against (c). The oracle is Node's output, not a hand-predicted expectation.
+  Per module — `hermesc` exit / VM exit / Node exit / diff:
+  `model/tokenize` 0/0/0/identical · `model/delimiterSpans` 0/0/0/identical ·
+  `model/blocks` 0/0/0/identical · `pacer/orp` 0/0/0/identical ·
+  `pacer/dwell` 0/0/0/identical · `parsers/markdown` 0/0/0/identical ·
+  `parsers/pdfText` 0/0/0/identical · `parsers/epubStructure` 0/0/0/identical ·
+  `reader/bionic` 0/0/0/identical · `ui/sample` 0/0/0/identical ·
+  `ui/theme` 0/0/0/identical. **11 modules, 0 failures, 0 diffs.**
+  `model/types.ts` is excluded as having nothing to execute (AF11).
+  Substantive behaviour exercised, not just loading: `markdown` parsed an
+  11-block document with 69 words, ids contiguous from 0; `orp` split ZWJ emoji,
+  regional-indicator flags and Devanagari clusters, and gave *identical* splits
+  for decomposed vs. precomposed `éclair` — which is `normalize('NFC')` doing
+  its job inside the real module; `blocks` produced `blockStarts [0,3,3,5,5]`
+  from a document with two mid-document empty blocks — non-decreasing, no
+  `MAX_SAFE_INTEGER` sentinel, i.e. CLAUDE.md invariant 1's in-range encoding
+  holding under Hermes.
+  **Not claimed:** that the eight ported headless suites were run under Hermes.
+  They cannot be — they `import` `node:assert/strict`, `node:path`, `node:url`
+  and `esbuild`, none of which the Hermes CLI provides. The module probes are
+  separate harness code written for this task, so they are *new* evidence, not
+  the suites re-run on a second engine.
+
+- **AF24** 🧪 — **The green results in AF22/AF23 are not an artefact of the
+  bundler erasing the very features under test.** This was checked, because a
+  bundler that downlevelled the regexes or tree-shook an unused module away
+  would produce a confident, meaningless pass. Two guards: every entry prints
+  `Object.keys(M)` first, which forces esbuild to retain all exports; and the
+  emitted bundles were grepped. `m06_markdown.js` lines 86–89 contain all four
+  emphasis regexes character-for-character as in source, `(?<!` appearing 4
+  times; `\p{L}`/`\p{N}` survive in `m01_tokenize.js`, `\p{M}` in `m04_orp.js`,
+  `\p{L}` in `m09_bionic.js`; `normalize("NFC")` in `m04_orp.js`; 4 `matchAll`
+  occurrences in `m08_epubStructure.js`. esbuild does not rewrite regex literals
+  at any target, and this confirms it empirically rather than on that assumption.
+
+- **AF25** 🧪 — **AF11's Node-side gap is now fully closed, as a side effect.**
+  AF11 recorded 7 of 12 modules executed and named four never executed in this
+  repo on any engine: `model/blocks.ts`, `reader/bionic.ts`, `ui/sample.ts`,
+  `ui/theme.ts`. All four were executed here under **both** Node and Hermes
+  (AF23). So all 11 executable seeded modules have now run under Node, and all
+  11 under the Hermes CLI. `npm run check` still exits 0 — 125/125 across the
+  eight suites, unchanged (17+18+14+9+15+14+12+26), confirming nothing in this
+  task disturbed the existing gate.
+
+- **AF26** ❓ — **AF11's Hermes half is NARROWED, NOT CLOSED. The precise
+  residue, stated so it cannot be misread as device coverage:**
+  1. **The desktop Hermes CLI is not the Hermes that ships in an Android app.**
+     The web repo's F41 (back-reference, not a live pointer) recorded that the
+     CLI has **no platform `Intl` backend**, whereas Android's `Intl` is
+     ICU-backed via JNI. Nothing here touched `Intl` — deliberately, since
+     `orp.ts` hand-rolls grapheme clustering precisely to avoid
+     `Intl.Segmenter` — but it means a green CLI run is evidence about the
+     **engine's language features**, not proof the app works on a device.
+  2. **The runtime evidence is a year behind the shipping engine.** Features 3
+     and 4 (`normalize`, `matchAll`) were verified only on VM 0.12/0.13, never
+     at 250829098.0.17, because RN's hermesc cannot execute and the VM cannot
+     load HBC 98 (AF20). That these builtins survive into 0.17 is an
+     **assumption** (engines rarely remove builtins), not a measurement.
+  3. **No Android build, emulator, device, or `expo prebuild` was run**, so
+     nothing here speaks to JSI/bridge behaviour, release-mode bytecode
+     precompilation, Metro+Babel's actual transform output (this probe used
+     esbuild at `--target=esnext`, which is *not* what Metro emits), Proguard/R8
+     interaction, or ABI-specific `libhermes.so` behaviour.
+  4. **`console` under Hermes (AF5) is still unverified** — the probes route
+     output through the CLI's `print`, falling back to `console.log` only on
+     Node, so no `core/` module's `console` call was exercised on Hermes.
+  What would close the remainder: an `expo run:android` build exercising these
+  modules on-device or on an emulator, which is exactly the commitment this
+  task existed to de-risk first.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -251,3 +431,10 @@
   `npm run check`'s pass/fail propagation verified with a real scratch
   failure, and the `.headless-*.mjs` `.gitignore` rule verified against the
   real temp-file pattern and all eight committed suites.
+- 2026-08-31 — appended AF20–AF26 on `test/hermes-feature-probe`. All four of
+  AF12's engine-feature questions answer WORKS (AF22), and all 11 executable
+  seeded modules load and run under the Hermes CLI with output identical to
+  Node (AF23). AF25 fully closes AF11's Node half (the last four modules were
+  executed). AF26 **narrows but does not close** AF11's Hermes half: the
+  desktop CLI is not the Android engine, and the runtime half of the evidence
+  sits on a VM about a year older than the version RN 0.86.3 ships.

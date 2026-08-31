@@ -240,6 +240,66 @@
   here. Alternative rejected: a repo-local edit that would have left the two
   copies diverged.
 
+## Milestone: Hermes CLI feature probe
+
+- **AD15 · Two Hermes binaries were used rather than one, splitting the
+  evidence deliberately: RN 0.86.3's own compiler for everything
+  compile-time, and an older standalone VM for everything runtime.** The
+  fork was forced, not chosen: `node_modules/hermes-compiler`'s `hermesc` is
+  the exact version RN 0.86.3 pins (`250829098.0.17`) but is **compile-only**
+  — it refuses `-exec` — while the newest standalone `facebook/hermes`
+  release that ships an executable VM is v0.13.0, whose binary self-reports
+  0.12.0 (see FINDINGS AF20 for the measured details, including the
+  `Expected 96 but got 98` bytecode refusal that proves the two are not
+  interchangeable). Using both means AF12's parse-time question — the one
+  AF12 itself called the sharpest risk, because an unparseable regex literal
+  takes out a whole module at load — is answered at the **exact version the
+  app would ship**, while the two pure-runtime builtins (`normalize`,
+  `matchAll`) are answered on an engine roughly a year older.
+  Alternatives rejected:
+  (a) *The old CLI alone.* Rejected because it would have thrown away the one
+  piece of exact-version evidence available, on the question that matters most.
+  (b) *Building Hermes 250829098.0.17 from source* to get a matching VM.
+  Rejected as disproportionate for a task whose stated purpose is to answer
+  four questions **cheaply, before** committing to a heavier build; it is the
+  right move only if a probe had actually failed.
+  (c) *An emulator or device build.* Explicitly out of scope — that is the
+  commitment this probe exists to de-risk, and it is what AF26 names as the
+  only thing that would close the remaining gap.
+  The residual weakness is disclosed rather than papered over: "these
+  builtins still exist at 0.17" is an assumption, and FINDINGS AF26 records it
+  as one.
+
+- **AD16 · The probe scripts and both Hermes binaries were kept entirely
+  OUTSIDE the repo, in the session scratchpad — nothing was added to the repo
+  and no `.gitignore` rule was needed.** The task permitted probe scripts
+  outside `src/core/`; keeping them out of the working tree altogether is
+  strictly safer and was chosen for three reasons. First, `src/core/` is
+  byte-pinned (AD9, AF7) and this repo has already been bitten once by a
+  suite writing temp files into it (AF16/AD13) — the surest way not to repeat
+  that is to have nothing to clean up. Second, the ~10.7 MB Hermes tarball
+  and its extracted binaries must never be committed, and a file that is
+  never inside the repo cannot be committed by accident, whereas a
+  `.gitignore` rule is a promise that only holds if it is correct. Third, it
+  keeps this change to exactly two files — `FINDINGS.md` and `DECISIONS.md` —
+  so `git status --porcelain` stays a meaningful check (verified: it reported
+  only these two docs; a search for `*.hbc`, `hermes-cli*` and `.headless-*`
+  inside the repo returned nothing).
+  Cost accepted knowingly, and the reason it is acceptable: the probes are
+  **not reproducible from the repo** — a future session must re-download the
+  VM and rewrite the entries to re-run any of this. That is the right trade
+  only because these probes are one-shot evidence for a question, not a
+  regression gate; `npm run check` remains the repo's standing gate and was
+  deliberately left untouched. Alternative rejected: committing the probe
+  entries under a new top-level directory. Rejected as scope creep — it would
+  add an untested, un-typechecked, un-gated code path (exactly the gap AF14
+  already flags for the `.mjs` suites) to answer a question that is now
+  answered, and it would invite the assumption that something re-runs them.
+  If these probes are ever wanted as a standing check, that is its own
+  change, with its own decision about where the binary comes from on a fresh
+  clone — the same fresh-clone concern AD10/AF13 raised about esbuild, but
+  worse, since no package manager would supply the VM.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -259,3 +319,8 @@
 - 2026-08-31 — appended AD14 on `docs/claude-md-verification-target`:
   CLAUDE.md §3 was generalized in the web repo (PR #107) and copied here to
   maintain byte-identity, resolving AD12's deferred cross-repo decision.
+- 2026-08-31 — appended AD15–AD16 on `test/hermes-feature-probe`: the
+  two-binary split (RN 0.86.3's own compile-only `hermesc` for parse-time
+  evidence at the shipping version, an older standalone VM for runtime), and
+  the choice to keep every probe script and binary outside the repo so this
+  change touches only these two docs.
