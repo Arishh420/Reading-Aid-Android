@@ -226,6 +226,20 @@
   subject under `src/core/` (AF16), so a global rule and a scoped one cover
   the same files in practice; the unscoped form is simpler.
 
+- **AD14 · AD12's deferred cross-repo decision is RESOLVED — CLAUDE.md §3
+  was generalized in the web repo (PR #107, merged) and copied here to
+  maintain byte-identity.** The change rewrites §3's verification target from
+  the static "`npm run build` must stay clean" to the platform-neutral "The
+  repo's full verification command must stay clean — `check` where a repo
+  defines one, otherwise `build`." This repo's `check` script (from AD11) now
+  fits this wording precisely; the gate is operative and byte-identity verified
+  by hash: `407d965a93d176bc5da85922c7aef0965fd53749e5f2e63cd753490b7f30e8a6`
+  (confirmed `shasum -a 256` on both repo files and `diff` silent). The
+  verbatim-carry rule that drove AD12 — CLAUDE.md §4's preamble — remains in
+  force and was the reason this copy was made rather than an independent edit
+  here. Alternative rejected: a repo-local edit that would have left the two
+  copies diverged.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -242,3 +256,6 @@
   leave CLAUDE.md §3 pointed at `build` and flag the move as a cross-repo
   decision instead of making it here, and the `.headless-*.mjs` `.gitignore`
   rule resolving AF16.
+- 2026-08-31 — appended AD14 on `docs/claude-md-verification-target`:
+  CLAUDE.md §3 was generalized in the web repo (PR #107) and copied here to
+  maintain byte-identity, resolving AD12's deferred cross-repo decision.
