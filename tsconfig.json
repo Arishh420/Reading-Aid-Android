@@ -18,6 +18,13 @@
     "expo-env.d.ts"
   ],
   "exclude": [
-    "example"
+    "${configDir}/node_modules",
+    "${configDir}/babel.config.js",
+    "${configDir}/metro.config.js",
+    "${configDir}/jest.config.js",
+    "${configDir}/android",
+    "${configDir}/ios",
+    "${configDir}/example",
+    "${configDir}/types/hermes-globals.d.ts"
   ]
 }
