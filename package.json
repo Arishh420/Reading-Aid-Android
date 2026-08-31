@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "esbuild": "^0.28.2",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -40,6 +41,7 @@
     "web": "expo start --web",
     "build": "tsc --noEmit && npm run build:core",
     "build:core": "tsc -p tsconfig.core.json",
+    "test:core": "fail=0; for f in src/core/model/headless-test.mjs src/core/model/delimiterSpans-headless-test.mjs src/core/pacer/orp-headless-test.mjs src/core/pacer/dwell-headless-test.mjs src/core/parsers/headless-test.mjs src/core/parsers/pdfText-headless-test.mjs src/core/parsers/epubStructure-headless-test.mjs src/core/parsers/spine-integrity-headless-test.mjs; do echo; echo \"==== $f\"; node \"$f\" || fail=1; done; exit $fail",
     "lint": "expo lint"
   },
   "private": true
