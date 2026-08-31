@@ -42,6 +42,7 @@
     "build": "tsc --noEmit && npm run build:core",
     "build:core": "tsc -p tsconfig.core.json",
     "test:core": "fail=0; for f in src/core/model/headless-test.mjs src/core/model/delimiterSpans-headless-test.mjs src/core/pacer/orp-headless-test.mjs src/core/pacer/dwell-headless-test.mjs src/core/parsers/headless-test.mjs src/core/parsers/pdfText-headless-test.mjs src/core/parsers/epubStructure-headless-test.mjs src/core/parsers/spine-integrity-headless-test.mjs; do echo; echo \"==== $f\"; node \"$f\" || fail=1; done; exit $fail",
+    "check": "npm run build && npm run test:core",
     "lint": "expo lint"
   },
   "private": true

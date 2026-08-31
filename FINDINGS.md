@@ -205,6 +205,39 @@
   hidden suites 2–8 behind the first failure, which is the opposite of an
   honest verification report.
 
+## `check` script + gitignore hardening
+
+- **AF18** 🧪 — **`npm run check` passes on the real suites and fails when
+  `test:core` fails, propagating through the `&&`.** Run against the actual
+  eight suites (`build` then `test:core`), `check` exited 0 with the same
+  125/125-pass tally as AF10 (tokenize 17/17, delimiterSpans 18/18, orp 14/14,
+  dwell 9/9, markdown 15/15, pdfText 14/14, epubStructure 12/12,
+  spine-integrity 26/26). `test:core` was then temporarily repointed at a
+  scratch script (outside the repo, in the session scratchpad) that runs
+  `console.log(...); process.exit(1)`; re-running `npm run check` printed the
+  `build` output (clean), then the scratch script's line, then exited 1 —
+  confirming `&&` does not swallow a `test:core` failure. `package.json` was
+  restored immediately after and `git diff package.json` was inspected to
+  confirm `test:core` matched its pre-change text exactly and the only
+  remaining diff was the new `check` line.
+
+- **AF19** 🧪 — **The `.gitignore` rule added for AF16 (`.headless-*.mjs`)
+  ignores the real temp-file pattern without touching the committed suites.**
+  The pattern was re-derived from source, not from AF16's prose: grepping
+  `tmpPath = path.join` across all eight suites shows every one builds a name
+  of the form `` `.headless-<literal-or-var>-${process.pid}[[-${random}]].mjs` ``
+  — e.g. `src/core/model/headless-test.mjs:35` is literally
+  `` `.headless-tokenize-${process.pid}.mjs` ``, and
+  `src/core/model/delimiterSpans-headless-test.mjs:38-40` additionally appends
+  a `Math.random().toString(36).slice(2)` segment — but all eight share the
+  same `.headless-` prefix and `.mjs` suffix. Verified with real commands, not
+  assumed: `touch src/core/model/.headless-tokenize-99999.mjs` then
+  `git check-ignore -v` on that path reported it matched by
+  `.gitignore:40:.headless-*.mjs`; `git ls-files src/core | grep mjs` still
+  listed all eight `*-headless-test.mjs` suites (unaffected, since none starts
+  with a leading dot); the scratch file was then deleted and `git status
+  --porcelain` showed only the intended `.gitignore` edit.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -214,3 +247,7 @@
   `test/port-headless-suites`. AF11 partially closes AF6 (7 of 12 modules now
   executed under Node) and explicitly leaves its Hermes half ❓; AF12 records
   the specific engine features that gap now hangs on.
+- 2026-08-31 — appended AF18–AF19 on `chore/check-script-and-gitignore`:
+  `npm run check`'s pass/fail propagation verified with a real scratch
+  failure, and the `.headless-*.mjs` `.gitignore` rule verified against the
+  real temp-file pattern and all eight committed suites.

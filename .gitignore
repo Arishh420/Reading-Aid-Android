@@ -36,6 +36,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# headless suite temp bundles (written beside their subject in src/core/ while a suite runs)
+.headless-*.mjs
+
 example
 
 # generated native folders
