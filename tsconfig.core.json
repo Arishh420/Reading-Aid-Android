@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "core/ portability guard",
+
+  // Standalone on purpose: it does NOT extend expo/tsconfig.base, because that
+  // base sets `lib: ["DOM", "ESNext"]` and this config exists precisely to
+  // typecheck src/core/ WITHOUT DOM. Inheriting and then overriding `lib` would
+  // work, but it would also silently inherit any future DOM-ward change to the
+  // base. Everything relevant is restated explicitly below.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    // No ambient @types packages. @types/node is present in this tree
+    // (transitively) and would supply Buffer/process/setImmediate — Node
+    // globals that Hermes does not provide. Empty means core/ gets nothing it
+    // has not earned.
+    "types": []
+  },
+
+  "include": [
+    "src/core",
+    "types/hermes-globals.d.ts"
+  ]
+}
