@@ -389,6 +389,106 @@
   learning nothing about the sync mechanism `D-D` is supposed to choose.
   Sequenced after `D-D`, it becomes that mechanism's first real exercise.
 
+- **AD19 · `D-A` (feature scope) is settled: Flowing Highlight is the MVP's
+  only pacer mode; RSVP, Chunk, bionic rendering and presets are all cut;
+  one theme (`light`), one setting (WPM).** Whether that WPM value persists
+  is `D-I`'s call, not this one. `light` is the seeded `DEFAULT_THEME`
+  (`src/core/ui/theme.ts:16` 📐 — one of the four seeded themes). The MVP is
+  therefore: plain text in a scroll view, one highlight moving through it at
+  an adjustable speed, resuming where it stopped.
+
+  **This entry settles `D-K` as well as `D-A`.** `D-K` asked whether to cut
+  presets and settings entirely or ship a single fixed WPM control; cutting
+  presets and keeping one WPM setting answers exactly that, and what is left
+  over has homes elsewhere — persistence is `D-I`'s, the control's shape and
+  placement are `D-J`'s — which is why two board rows in `MVP-PLAN.md` point
+  at this one entry. The web repo's open issue #105 on preset
+  value-duplication is moot for the MVP, since no preset ships.
+
+  **Why this mode, and not the smaller-looking one.** The choice was made to
+  **force `D-E`** — the per-tick highlight mechanism CLAUDE.md §4 marks
+  "UNDECIDED" — rather than defer it. RSVP *looks* smaller: one `Text` node
+  whose content is swapped per tick, no scroll, no virtualization ❓. But it
+  hard-depends on `src/core/pacer/orp.ts`, which owns **two of AF31's three
+  residue items**: `\p{M}` at `orp.ts:36` (residue item 1) and
+  `normalize('NFC')` at `orp.ts:137` (residue item 2), neither exercised
+  on-device. That dependency was verified rather than assumed: in the web
+  repo `src/pacer/modes/Rsvp.tsx:4` is `import { splitOrp } from '../orp';`
+  and it is the **only** one of the three mode components that imports `orp`
+  📐 (read-only). So smallest surface and smallest risk point in opposite
+  directions, and the surface argument loses.
+
+  Flowing Highlight also **collapses `D-G`**: for a short document the right
+  MVP answer is no virtualization at all — a `ScrollView` with N `Text`
+  nodes ❓ — which in turn **defers `D-Q` entirely**, since that spike exists
+  only because virtualization and imperative highlight interact. `D-E` does
+  not go away under any mode; deferring it would ship an APK that proves
+  nothing about the port's hardest unknown.
+
+  **Why bionic is cut**, stated because the first recommendation in
+  discussion was to keep it. `src/core/reader/bionic.ts` is seeded, pure,
+  and applies at render rather than per tick, which makes it look free. It
+  is not: bionic turns every word into a **composite** node. Its
+  `BionicSplit` is three slots and its own docblock specifies the render as
+  `{lead}<b>{head}</b>{tail}` (`bionic.ts:10, 22–29` 📐) — an outer text node
+  wrapping a bold span and a normal span ❓. That doubles the node count and
+  changes the **shape** of the thing `D-E` must manipulate. Bionic sits
+  *underneath* `D-E`, not on top of it. Adding it after `D-E` is settled is a
+  render-layer change; adding it before means solving `D-E` against a harder
+  node shape without knowing the simple one works.
+
+  **Alternatives rejected.** (a) *RSVP first.* It defers both `D-E` and
+  `D-G`, but routes the MVP's core rendering through the least-verified
+  seeded module, and satisfies `MVP-PLAN.md` §1's definition of done only in
+  letter — the document is never visible and "where you left off" degrades
+  to a word counter. (b) *Bionic on.* Rejected for the node-shape reason
+  above.
+
+  **What returns first, and in what order, once `D-E` is proven.** Bionic
+  first: it is a render-layer change with no new dependencies. Then RSVP,
+  after the queued on-device `orp` probe (`MVP-PLAN.md` §8) closes AF31
+  residue items 1 and 2 — that suite covers both, since it is the
+  NFD/combining-mark suite.
+
+  **The cost, recorded honestly.** With no bionic, one theme and one mode,
+  the MVP will not resemble the web app. If a client demo lands near this
+  milestone, there is a real gap between "working" and "showable."
+
+- **AD20 · `D-B` (document formats) is settled: Markdown only. PDF and EPUB
+  are both cut from the MVP.** Markdown is seeded and proven on-device —
+  AF28 records `parseMarkdown` producing 12 blocks and 176 words on an
+  Android emulator, byte-identical to Node — so it costs nothing new.
+
+  **PDF** is cut on two independent grounds. The web repo's
+  `src/parsers/pdf.ts` imports `pdfjs-dist` (line 1) and, on line 2,
+  `pdfjs-dist/build/pdf.worker.min.mjs?url` — both lines read directly from
+  the web repo for this entry, read-only, so the import itself is 📐, not an
+  inherited claim. `?url` is a bundler primitive with no Metro equivalent ❓,
+  and it feeds a Web Worker whose URL semantics React Native does not have
+  ❓; those two consequences are the unverified half. Separately, AD8 already
+  records that even the web repo's *headless* PDF suite needed a `DOMMatrix`
+  stub through an esbuild resolve plugin merely to run.
+
+  **EPUB** is cut despite being the more tractable of the two, and the
+  reason is not the library. `src/parsers/epub.ts:1` is
+  `import JSZip from 'jszip';` 📐 — pure JS, and it probably ports ❓. The
+  blocker is upstream of it: EPUB needs a **file** to unzip, which needs
+  `D-H`, and neither `expo-document-picker` nor `expo-file-system` is
+  installed 📐. Markdown can reach the app as a string; EPUB cannot.
+
+  **What is not cut.** The pure halves stay seeded and untouched —
+  `src/core/parsers/pdfText.ts` and `src/core/parsers/epubStructure.ts` keep
+  their provenance (AF7) and their headless suites (AF9/AF10, still inside
+  `npm run check`). Only the container and decode layers are absent. `D-O`
+  and `D-P` therefore become post-MVP spikes that **block nothing**.
+
+  **One consequence recorded so it is not rediscovered later.**
+  `String.prototype.matchAll` is **AF31 residue item 3** and lives in
+  `src/core/parsers/epubStructure.ts:90, 99, 160, 183`. Cutting EPUB parks
+  that item for the duration of the MVP — and the queued on-device `orp`
+  probe will **not** close it either, because that suite never bundles the
+  module.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -426,3 +526,11 @@
   rationale in the AD entry only) stated inside `MVP-PLAN.md` itself. Records
   the `D-D` carve-out: it is a web-repo decision and earns a single-PR freeze
   exception when it settles.
+- 2026-09-01 — appended AD19–AD20 on `docs/ad19-ad20-mvp-scope`, settling the
+  two Tier 0 items in `MVP-PLAN.md`: AD19 fixes feature scope (Flowing
+  Highlight only; RSVP, Chunk, bionic and presets cut; one theme, one WPM
+  setting), chosen so `D-E` is forced rather than deferred, and it settles
+  `D-K` along with `D-A`; AD20 fixes formats (Markdown only; PDF and EPUB
+  cut, their pure halves left seeded). Three register sections in
+  `MVP-PLAN.md` (§3.1, §3.2, §5.4) were **deleted** and their board rows now
+  point here — the first exercise of the anti-duplication rule AD18 records.
