@@ -489,6 +489,103 @@
   probe will **not** close it either, because that suite never bundles the
   module.
 
+- **AD21 · `D-E` (the per-tick highlight mechanism) is settled: each block
+  renders as a `View` with `flexWrap` containing one text element per word;
+  a single Reanimated shared value holds the current word index, and each
+  word derives its highlight style from that value on the UI thread. React
+  does not re-render on a pacer tick.** This is the mechanism CLAUDE.md §4
+  marks "UNDECIDED — do not treat this as settled." The invariant it serves
+  and its three guards are unchanged and are not restated here.
+
+  **Why the option set collapsed to one.** The register named three
+  candidates: Reanimated shared values, `setNativeProps`, or something else.
+  Two are gone before the argument starts.
+  - **`setNativeProps` is unavailable.** React Native 0.82 shipped without
+    the ability to disable the New Architecture, and Expo SDK 55 removed the
+    opt-out flag from app config entirely ❓. This repo is RN `0.86.3` on SDK
+    57 — `package.json` pins `"react-native": "0.86.3"` and `"expo":
+    "~57.0.18"` 📐 — which is why `app.json` carries no `newArchEnabled` key:
+    **there is no flag to set** 📐 (the key appears nowhere in the repo
+    outside `node_modules/` and the generated `android/`). Under that
+    architecture `setNativeProps` no longer works, and the React Native
+    working group's stated reason is that it breaks the New Architecture's
+    model fundamentally with no supportable path forward ❓ — vendor
+    documentation, not measured here. Reanimated corroborates independently:
+    4.x supports only the New Architecture ❓, and `4.5.1` is what
+    `package.json` pins 📐.
+  - **React state on the tick path** is what CLAUDE.md §4's invariant exists
+    to forbid; its guard 2 names that exact temptation as "precisely the
+    cliff."
+
+  **Why word boxes rather than nested text.** The direct translation of the
+  web implementation — one `Text` per block with a nested `Text` per word,
+  animating the current one — does not work. React Native converts nested
+  `Text` into a flat `NSAttributedString` / `SpannableString`, so a nested
+  child is a **styled range inside the parent's attributed string, not a
+  native view**; and inside a `Text`, layout stops being Flexbox and becomes
+  text layout ❓. The supporting evidence is external and consistent:
+  Reanimated has an open request from 2020 for animating a nested `Text`'s
+  `backgroundColor` and `color`, still unimplemented; React Native issue
+  #41527 records nested `Text` ignoring `transform` entirely; and
+  `react-native-animateable-text`'s README gives the root cause directly —
+  `createAnimatedComponent` cannot animate text because `Text`'s children are
+  separate nodes rather than props ❓. **All of this is external
+  documentation and issue trackers. None of it was measured on this build**,
+  and none of it is upgraded past ❓ here — reading a package version is 📐,
+  reading someone else's bug report is not.
+
+  Only a top-level view can be independently repainted, so the highlighted
+  unit must be one.
+
+  **Why per-word style rather than a moving overlay.** Two mechanisms are
+  available once words are boxes. *Per-word:* each word carries a derived
+  style comparing its own index against the shared value, so a tick is N
+  integer comparisons on the UI thread — trivial at the sample's 176 words, a
+  problem at book length ❓. *Overlay:* one absolutely-positioned animated
+  view slides to the current word's rect, giving one animated node regardless
+  of document length, but requiring every word measured via `onLayout` and
+  re-measured on rotation and font change. **Per-word is chosen for the MVP**
+  because it needs no measurement and no positioning math. The overlay is the
+  scalable answer and belongs with `D-G` and `D-Q`; nothing here forecloses
+  it.
+
+  **What is given up — recorded because it is a permanent property of the
+  reading surface, not a temporary MVP cut.**
+  - **Text selection and copy across words.** The phone no longer sees a
+    continuous run of text. Accepted deliberately: the user still has the
+    source document, and this is a reading aid rather than a text editor.
+  - **Screen readers announce N separate elements rather than one
+    paragraph.** Fixable later with explicit accessibility grouping — not
+    free.
+  - **Justified text and hyphenation become impossible.** Text is permanently
+    ragged-right.
+
+  Left-aligned prose wrapping is materially unchanged, since both models
+  break at word boundaries.
+
+  **One consequence for AD19, recorded here because AD19 is append-only and
+  is not edited.** AD19 deferred bionic partly on the grounds that it changes
+  the **shape** of the node `D-E` must manipulate. Under word boxes it does
+  not: the animated node is the box, and **static** nested `Text` inside a
+  box works fine — only **animated** nested `Text` is the problem. AD19's
+  return order (bionic first, then RSVP) still holds, and this makes the
+  first step cheaper than AD19 assumed.
+
+  One uncertainty carried forward from the register section this entry
+  replaces. React Compiler is enabled in this repo (`app.json` →
+  `experiments.reactCompiler: true` 📐). It cannot affect the per-tick path,
+  because that path does not go through React at all — which is the point of
+  this decision. Where it can matter is mount cost across N word components
+  and whether a parent re-render cascades through them. Neither has been
+  measured anywhere ❓, and the acceptance probe is where the second one
+  would surface.
+
+  **This entry is not device evidence.** The mechanism is chosen, not proven.
+  The acceptance test is recorded instead of a claim: render roughly twenty
+  word boxes, drive a shared index, and confirm the highlight moves with
+  **zero React renders**. That probe belongs to implementing `D-E` and will
+  produce its own `AF` entry when it runs. Nothing in AD21 was executed.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -534,3 +631,13 @@
   cut, their pure halves left seeded). Three register sections in
   `MVP-PLAN.md` (§3.1, §3.2, §5.4) were **deleted** and their board rows now
   point here — the first exercise of the anti-duplication rule AD18 records.
+- 2026-09-01 — appended AD21 on `docs/ad21-highlight-mechanism`, settling
+  `D-E` (the per-tick highlight mechanism CLAUDE.md §4 marks UNDECIDED): word
+  boxes in a `flexWrap` `View` per block, driven by one Reanimated shared
+  value on the UI thread, with `setNativeProps` unavailable under the New
+  Architecture and nested-`Text` animation unsupported. Records what the
+  choice permanently gives up (cross-word selection, single-element
+  screen-reader output, justification), notes that it makes AD19's
+  bionic-first return cheaper than AD19 assumed, and states the acceptance
+  probe rather than claiming the mechanism is proven. `MVP-PLAN.md` §4.3 was
+  **deleted** and its board row now points here.
