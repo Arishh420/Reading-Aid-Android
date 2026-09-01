@@ -20,8 +20,11 @@
   whether re-run this session or inherited.
 - 📐 **Structural** — follows directly from reading the repo's own files
   (config content, directory contents), without running anything beyond that.
-- 👁 **Observed** — seen working end-to-end in the running app. None of the
-  entries below currently carry this tag — the app barely runs yet.
+- 👁 **Observed** — seen working end-to-end in the running app; for a
+  device/emulator run, this means observed on a running device by the
+  project owner and reported to Claude — not reproducible from a Claude
+  Code session, which cannot run an emulator itself. First used by
+  AF27/AF29 below.
 - ❓ **Unverified** — believed true (often inherited from the web repo) but
   not exercised in this repo at all.
 
@@ -418,6 +421,90 @@
   modules on-device or on an emulator, which is exactly the commitment this
   task existed to de-risk first.
 
+## On-device Hermes probe (Android emulator) — first real device evidence
+
+> Scope warning that governs this whole section: everything below was
+> directly witnessed by the project owner on a running Android emulator and
+> reported to me. I did not run an emulator myself and could not reproduce
+> any of it in this session — recorded the same way AF1/AF2/AF4/AF7 record
+> PR-record evidence not re-run by the recording session.
+
+- **AF27** 👁 — **AF5 is RESOLVED: `console` exists and functions as a
+  global under device Hermes on Android, in a debug development build.**
+  On an Android emulator (AVD `Pixel_9_API36`, API 36, arm64-v8a, Google
+  APIs image; Expo SDK 57 / React Native 0.86.3; debug development build),
+  running the probe screen added to `src/app/index.tsx` on this branch, the
+  Metro terminal showed exactly one line —
+  `LOG  [hermes-probe] blocks: 12 words: 176` — appearing once, matching the
+  single `console.log` call in that screen's source.
+  Concrete consequence: `src/core/parsers/epubStructure.ts` has two
+  `console.warn` calls — line 104 (`manifest item not found for idref…` —
+  chapter skipped) and line 193 (`chapter "…" used unclosed-tag fallback…`),
+  confirmed by reading the file this session; these are the chapter-skip
+  warnings referenced elsewhere as web-repo decisions D63/D93
+  (back-reference, not a live pointer — the labels themselves were not
+  independently verified in this repo, consistent with how AF12 treats F41).
+  Those two calls will now reach the Metro terminal in development, per this
+  evidence.
+  Not claimed: anything about release builds. This was exclusively a debug
+  development build; Hermes' release-mode console strategy (stripped,
+  redirected, or unchanged) is untested. This entry supersedes AF5; AF5's
+  text above is left unedited, per this file's append-only convention.
+
+- **AF28** 🧪👁❓ — **AF26 is PARTIALLY ADVANCED, NOT CLOSED.**
+  `parsers/markdown.ts` and its runtime dependency `model/tokenize.ts` have
+  now executed under the real Android Hermes engine — same emulator/build
+  as AF27 (AVD `Pixel_9_API36`, API 36, arm64-v8a, Google APIs image; Expo
+  SDK 57 / React Native 0.86.3; debug development build) — producing
+  `blocks: 12`, `words: 176`, and the first 12 words' ids/texts matching the
+  sample document exactly. A Node-side comparator (esbuild-bundling the same
+  two modules and running `parseMarkdown(SAMPLE_MARKDOWN)` under Node, the
+  same pattern as the existing headless suites) printed byte-identical
+  output: `blocks: 12 words: 176` and the same first-12 id:text list. The
+  comparator script was temporary and has been deleted — unlike AF9/AF10's
+  committed suites, this comparison is not independently reproducible from
+  the repo as it stands.
+  This is evidence of a different kind than AF22/AF23 (desktop Hermes CLI)
+  and AF9/AF10 (Node headless suites): it is the actual shipping engine on
+  an actual Android runtime, for the first time, for these two modules.
+  What it does NOT cover, stated plainly: **none** of AF12's four
+  engine-sensitive features (regex lookbehind, `\p{L}`/`\p{N}`/`\p{M}`
+  property escapes, `String.prototype.normalize('NFC')`, `matchAll`) — those
+  live principally in `pacer/orp.ts` (and `epubStructure.ts` for
+  `matchAll`), neither of which has run on-device. AF26 stays **open**; this
+  entry advances only its point 3 (no Android build/emulator run), and only
+  for `markdown.ts`/`tokenize.ts`. AF26's point 4 (console) is now
+  separately closed by AF27; points 1 (CLI has no `Intl` backend) and 2 (VM
+  version gap) are untouched by this entry.
+
+- **AF29** 👁📐 — **CLAUDE.md invariant 1 (`Word.id === flat word index`)
+  observed holding on a real device**, for the first 12 words of the sample
+  document produced by the AF28 run: ids read `"0"`..`"11"`, contiguous, no
+  gaps. `Word.id` is a **string** (`src/core/model/types.ts:16`,
+  `id: string;` — confirmed by reading the file this session), the decimal
+  form of the flat index, not a number — so this is a string-sequence match
+  (`"0"`, `"1"`, … `"11"`), not a numeric-equality check. This extends
+  AF23's Hermes-CLI `blockStarts`-non-decreasing finding (itself a check of
+  the same invariant, on desktop Hermes, for a different document) to a real
+  Android device, for this one document's first 12 words.
+
+- **AF30** 🧪📐 — **Negative result: the `android`/`ios` tsconfig excludes
+  were NOT exercised by the first real `expo prebuild`, and must not be
+  read as newly confirmed.** When `npx expo prebuild --platform android`
+  was run on this repo, `find android -name '*.ts' -o -name '*.tsx'`
+  returned **nothing** — a real generated `android/` directory contains no
+  TypeScript files at all. So there was nothing under `android/` for
+  `tsconfig.json`'s `${configDir}/android` exclude (AF3, AF4) to actually
+  have to exclude; the subsequent clean typecheck after prebuild proves only
+  that prebuild did not break the build pipeline, not that the exclude glob
+  does anything on real generated content. (This run was Android-only — no
+  `ios/` directory was generated, so the `${configDir}/ios` exclude is
+  addressed even less by this evidence than `android` is.) **AF4's
+  synthetic-probe-file evidence — deliberately broken `.ts` files created
+  inside `android/`/`ios/`, confirmed excluded, with a negative control —
+  remains the ONLY evidence that these excludes function**; AF4's status is
+  not upgraded, restated, or otherwise touched by this entry.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -438,3 +525,13 @@
   executed). AF26 **narrows but does not close** AF11's Hermes half: the
   desktop CLI is not the Android engine, and the runtime half of the evidence
   sits on a VM about a year older than the version RN 0.86.3 ships.
+- 2026-09-01 — appended AF27–AF30 on `feature/core-hermes-probe`: the first
+  real on-device Hermes evidence, from an Android emulator run of the probe
+  screen added earlier on this branch. AF5 is resolved (AF27, `console`
+  works under device Hermes in a debug build). AF26 is advanced but stays
+  open (AF28 — `markdown.ts`/`tokenize.ts` now run on-device identically to
+  Node, but none of AF12's four engine-sensitive features have been
+  exercised on-device). The `Word.id` invariant is confirmed holding
+  on-device for the first 12 words (AF29). AF30 records a negative result:
+  the `android`/`ios` tsconfig excludes were not exercised by the first real
+  prebuild, and AF4 remains the only evidence for them.
