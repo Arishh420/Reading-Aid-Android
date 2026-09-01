@@ -87,7 +87,7 @@ Pointer and one-line status only. Rationale lives in the `AD` entry, never here.
 | **D-D** | Core drift across the repo boundary | **OPEN** — options in web PORT-PLAN.md §5.2, none chosen | §4.1 |
 | **D-R** | Web issue #108 (`**hi **`) — fix sequence across repos | **OPEN — blocked on D-D** — agreed in principle | §4.2 |
 | **D-E** | Per-tick highlight mechanism (CLAUDE.md §4 invariant) | **DECIDED** | [AD21](DECISIONS.md) |
-| **D-F** | The pacer clock — `usePacer.ts` is not seeded | **OPEN** — unblocked by AD21 | §4.4 |
+| **D-F** | The pacer clock | **DECIDED** | [AD22](DECISIONS.md) |
 | **D-G** | Reading surface and virtualization | **OPEN** — AD19 selects no virtualization; open only whether that holds on a device | §4.5 |
 | **D-H** | Getting a file in | **OPEN** | §5.1 |
 | **D-I** | Storage scope — what actually persists | **OPEN** — MMKV itself settled (AD6) | §5.2 |
@@ -138,7 +138,9 @@ options with trade-offs are laid out in the web repo's **PORT-PLAN.md §5.2**,
 where none was selected. *Those options are not restated here — read the
 section named.* What this register adds is that the question is no longer
 hypothetical: D-R is a real, filed, agreed-to-be-fixed bug in one of the twelve
-files, waiting on this answer.
+files, waiting on this answer. **AD22 expands this item's scope:** the decision
+is now over the twelve seeded files **plus** a known-unsynced
+`src/pacer/usePacer.ts` outside `src/core/`.
 
 ### 4.2 · D-R — Web issue #108: the fix sequence across two repos
 
@@ -165,15 +167,10 @@ Rationale is not restated here.
 
 ### 4.4 · D-F — The pacer clock
 
-`usePacer.ts` is **not** among the twelve seeded files — it does not exist in
-this repo 📐 (the web repo has it at `src/pacer/usePacer.ts`). So the clock has
-to be ported, rewritten, or reimplemented from its behaviour spec, and the
-question is which. The seeded `core/pacer/dwell.ts` already documents the seam
-it plugs into — its own comment describes the gating helper as "shared by
-usePacer's clock" 📐 — so the interface is partly pinned even though the
-implementation is absent. **Unblocked by AD21:** the clock's tick handler is the
-thing that must not re-render the tree, and AD21 settles what it is allowed to
-touch — a shared value, not React state.
+**DECIDED.** The web repo's `src/pacer/usePacer.ts` is ported — not rewritten
+and not reimplemented — to Android `src/pacer/usePacer.ts`, outside `src/core/`,
+differing from the web original by exactly two added `export` keywords. See
+**AD22** in [DECISIONS.md](DECISIONS.md). Rationale is not restated here.
 
 ### 4.5 · D-G — Reading surface and virtualization
 
@@ -331,6 +328,13 @@ the register; it goes into GitHub issues in this repo.
   NFD/combining-mark suite and exercises both directly — and does **not** cover
   `matchAll`, which lives in a module it never bundles. AF31, not AF28, is the
   current statement of what on-device coverage exists.
+- **Port `usePacer.ts` and add its headless suite (AD22).** The web original is
+  copied to Android `src/pacer/usePacer.ts` — outside `src/core/` — with the two
+  added `export` keywords AD22 specifies and no other change. A new
+  Android-local suite bundles the copy and covers the three pure helpers, in
+  particular `nearestWordlike`'s backward fallback when no word-like token
+  exists at or after the target; it becomes the **ninth** suite in `npm run
+  check`. Rationale is in AD22, not here.
 - **The web repo's open issues.** **17** open as of 2026-09-01 (`gh issue list
   --state open`, count only — deliberately not enumerated here; the web repo is
   untouched and its backlog is its own). Some are Android-tagged and will be
