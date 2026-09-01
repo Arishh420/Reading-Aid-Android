@@ -586,6 +586,104 @@
   **zero React renders**. That probe belongs to implementing `D-E` and will
   produce its own `AF` entry when it runs. Nothing in AD21 was executed.
 
+- **AD22 · `D-F` (the pacer clock) is settled: the web repo's
+  `src/pacer/usePacer.ts` is PORTED — not rewritten, and not reimplemented
+  from its behaviour spec.** It lands at Android `src/pacer/usePacer.ts`,
+  **outside** `src/core/`, with exactly one difference from the web original,
+  stated below. A future Reanimated `useFrameCallback` rewrite is not
+  foreclosed.
+
+  **Why porting wins, and why the register's framing was wrong.**
+  `MVP-PLAN.md` and the web repo's port audit both list `usePacer.ts` among
+  the unported *web-layer* files. That framing is misleading: it is not a
+  web-layer file. It has three import statements and **not one of them is a
+  web dependency** — `react` (line 1), `import type { Word } from
+  '../model/types'` (line 2), and `dwellMultiplier` from `./dwell` (line 3),
+  all read from the web file for this entry 📐 (read-only). The middle import
+  is **type-only**, erased before runtime, and the type it names lives in
+  `model/types.ts`, already one of the twelve seeded files here and recorded
+  by AF11 as having nothing to execute. The file touches no DOM API —
+  grepping it for `document.`/`window.`/`navigator.` returns a single hit
+  which is prose inside a comment 📐. Its only platform dependencies are
+  `requestAnimationFrame` (lines 164, 177), `cancelAnimationFrame` (122) and
+  `performance.now()` (175), all of which exist in React Native ❓ — asserted
+  from vendor documentation, not measured on this build; see the acceptance
+  probe below. Its one runtime import is already here: `dwell.ts` is seeded
+  at `src/core/pacer/dwell.ts` and covered 9/9 by
+  `src/core/pacer/dwell-headless-test.mjs` inside `npm run check` 🧪.
+
+  It also already satisfies CLAUDE.md §4's first two guards **by
+  construction**, rather than by porting effort. Its own docblock states that
+  the current word index is held in a ref and broadcast through a pub/sub
+  rather than React state, so the document tree never re-renders on a tick
+  (lines 8–12) 📐. `commit()` notifies subscribers with a plain integer —
+  `IndexListener` is `(index: number) => void` at line 45 and line 118 is
+  `listenersRef.current.forEach((cb) => cb(next))` 📐 — which is guard 1's
+  integer-only callback seam, exactly as CLAUDE.md words it. The index lives
+  in `indexRef` (line 87) 📐, which is guard 2. The only React state touched
+  on the hot path is `atEnd`, and only when it flips (lines 109–117) 📐; the
+  one adjacent exception is the `setPlaying(false)` at line 151, which fires
+  once at end-of-document alongside that same flip, not per tick. Under AD21
+  the subscriber becomes a function writing to a Reanimated shared value
+  instead of one touching the DOM — that is a change to the **consumer**, not
+  to this file.
+
+  **Alternatives rejected.** (a) *Rewrite the loop as a UI-thread worklet via
+  Reanimated's frame callback.* Architecturally purer, since JS-thread jank
+  then cannot stall the pacer at all, and it would require flattening
+  `Word[]` into plain number arrays to cross the worklet boundary. Rejected
+  for the MVP on risk: it means reimplementing the at-most-one-word-per-frame
+  backlog cap (lines 159–161), the chunk-size threshold scaling (lines
+  133–145), and `startedRef`'s deliberate interaction with F23/D89 (lines
+  94–99, whose comment reads "Deliberately NOT cleared in seek()") 📐 —
+  logic whose own comments record it as the product of prior debugging, and
+  which has no test coverage to catch a regression. The JS-thread concern is
+  also largely self-cancelling: under AD21 the JS thread is idle during
+  playback precisely because nothing re-renders ❓. (b) *Reimplement from the
+  behaviour spec.* Discards working code and gains nothing the rewrite does
+  not.
+
+  **The single divergence from web, recorded so it stays auditable.** Three
+  helpers in the file are pure and React-free: `firstWordlikeFrom` (line 21,
+  already exported), `lastWordlikeUpTo` (line 29) and `nearestWordlike`
+  (line 37) — the latter two **not** exported, confirmed by reading the web
+  file 📐. The Android copy adds the `export` keyword to those two so a
+  headless suite can reach them. That is additive and cannot change
+  behaviour. The Android copy therefore differs from the web original by
+  exactly two added `export` keywords and nothing else.
+
+  **Test coverage, recorded because the register assumed coverage that does
+  not exist.** `usePacer.ts` has **no** test coverage in the web repo —
+  verified rather than inherited: `src/pacer/headless-test.mjs` there bundles
+  `keyboard.ts` (its `entryPoints` at line 50) and covers the Space-key
+  routing predicate, not the clock, and a sweep of every `entryPoints` across
+  all twelve web suites finds none that bundles `usePacer.ts` 📐. A new
+  Android-local headless suite will bundle the ported file and test the three
+  helpers — in particular `nearestWordlike`'s backward fallback when no
+  word-like token exists at or after the target (line 42, the
+  `lastWordlikeUpTo` branch). That becomes the ninth suite in `npm run
+  check`. This is queued work, not part of this change.
+
+  **What this does NOT settle.** Where the copy lives relative to the shared
+  surface is `D-D`'s question, not this one. `usePacer.ts` imports `react`,
+  and `src/core/` is React-free by construction — `tsconfig.core.json`
+  typechecks it in isolation with `"types": []`, and no file under
+  `src/core/` imports `react` 📐 — so this cannot be a thirteenth seed file.
+  (The file also names the `React` type namespace directly, at line 49's
+  `React.MutableRefObject<number>` 📐, so even its types would not survive
+  that isolation.) It is a **known unsynced copy** outside `src/core/`, and
+  it will diverge: F23/D89 is explicitly unresolved and lives in this file's
+  `startedRef` logic. `D-D` must therefore decide over the twelve seeded
+  files **plus** this one.
+
+  **Acceptance probe, recorded rather than claimed. Nothing here was
+  executed.** `requestAnimationFrame` and `performance.now()` are asserted
+  from vendor documentation, not measured on this build ❓ — if React
+  Native's timing source or backgrounding behaviour differs materially from
+  the browser's, or its resolution makes the one-word-per-frame cap
+  misbehave, the port becomes a rewrite. That check belongs with AD21's
+  acceptance probe, in the same session, and will produce its own `AF` entry.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -641,3 +739,16 @@
   bionic-first return cheaper than AD19 assumed, and states the acceptance
   probe rather than claiming the mechanism is proven. `MVP-PLAN.md` §4.3 was
   **deleted** and its board row now points here.
+- 2026-09-01 — appended AD22 on `docs/ad22-pacer-clock`, settling `D-F` (the
+  pacer clock): the web repo's `src/pacer/usePacer.ts` is **ported**, not
+  rewritten and not reimplemented, landing at Android `src/pacer/usePacer.ts`
+  **outside** `src/core/` and differing from the web original by exactly two
+  added `export` keywords. Records that the register's "unported web-layer
+  file" framing was wrong — three import statements, none of them a web
+  dependency — that the file already satisfies CLAUDE.md §4's guards 1 and 2
+  by construction, and that it has **no** test coverage in the web repo, so a
+  ninth headless suite is queued. Expands `D-D`'s scope to the twelve seeded
+  files **plus** this known-unsynced copy, and states the acceptance probe
+  rather than claiming the port is proven. `MVP-PLAN.md` §4.4 was **deleted**
+  and its board row now points here; one authorized sentence was added to the
+  still-open §4.1, and the ninth suite was added to §8 as queued work.
