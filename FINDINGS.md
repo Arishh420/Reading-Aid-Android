@@ -505,6 +505,131 @@
   remains the ONLY evidence that these excludes function**; AF4's status is
   not upgraded, restated, or otherwise touched by this entry.
 
+## MVP planning — scope correction to the on-device evidence
+
+- **AF31** 📐👁 — **Scope correction to AF28: two of AF12's four
+  engine-sensitive feature classes WERE partly exercised on-device, by the very
+  run AF28 itself records.** AF28 states that "**none** of AF12's four
+  engine-sensitive features (regex lookbehind, `\p{L}`/`\p{N}`/`\p{M}`
+  property escapes, `String.prototype.normalize('NFC')`, `matchAll`)" was
+  covered. That is too strong for the first two. **Nothing new was executed for
+  this entry** — it is a re-reading of `src/core/` source against AF28's
+  already-recorded output. The device run is AF28's, on the same emulator and
+  build (AVD `Pixel_9_API36`, API 36, arm64-v8a, Google APIs image; Expo SDK 57
+  / RN 0.86.3; debug development build), witnessed by the project owner and
+  **not by me**. The 👁 half of this tag is inherited from AF28; the 📐 half —
+  the line numbers, the sample's contents, the call paths — is this session's,
+  from reading the files. AF28's text is left unedited, per this file's
+  append-only convention.
+
+  **Three levels of evidence, kept apart on purpose.** They are not equally
+  strong, and collapsing them is how this correction would become an overclaim:
+  **(A) parse/compile on-device** — proven; **(B) invocation on-device** —
+  proven from the code path; **(C) a correct match isolated in AF28's recorded
+  output** — *not* witnessed, for either feature, for the reason given under
+  each below.
+
+  **(1) Regex lookbehind (AF12 #1) — level A proven for all four literals,
+  level B proven for the two asterisk literals.**
+  *Level A.* `markdown.ts`'s four emphasis regexes are module-level `const`s —
+  `BOLD_UNDERSCORE`/`ITALIC_UNDERSCORE` at lines **62–63** (`(?<!\w)`) and
+  `BOLD_ASTERISK`/`ITALIC_ASTERISK` at lines **70–71** (`(?<!\s)`), read from
+  the file this session. AF12 #1 is what makes this load-bearing: a regex
+  literal the engine cannot parse fails at **module load**, not at call time.
+  AF28 records `parseMarkdown` returning a 12-block, 176-word document, and the
+  probe screen wraps that call in a `try`/`catch` that renders "parseMarkdown
+  threw" on failure (`src/app/index.tsx`) — the success branch is what was
+  observed. So `markdown.ts` loaded, so device Hermes **parsed all four
+  lookbehind literals**, the two `(?<!\w)` forms included. This retires exactly
+  the hazard AF12 #1 named as the sharpest of the four — "it would take out the
+  whole markdown parser rather than one edge case."
+  *Level B.* `src/core/ui/sample.ts` was checked directly rather than assumed:
+  its template literal contains five asterisk emphasis spans — `**Reader**`,
+  `*plain Markdown*`, `**Bionic rendering**`, `**A WPM pacer**`, `**Presets**`
+  — and `stripInline` is called on every block's text (`markdown.ts:121` for
+  body text, `:158` for headings), running the four `.replace()` calls at
+  **98–101**. So `BOLD_ASTERISK` and `ITALIC_ASTERISK` were **invoked on-device
+  against input containing valid spans**, and their `(?<!\s)` assertion was
+  evaluated there.
+  *Level C — what was NOT witnessed.* AF28's recorded observables are block
+  count (12), word count (176), and the first twelve words' ids and texts.
+  **None of them can distinguish a correct emphasis match from a failed one**:
+  stripping changes a word's *text*, never the token count (`**Reader**` is one
+  whitespace-delimited token either way), and the first twelve words —
+  `The Reading Aid Tool A short sample so you can see the` — contain no
+  emphasis. What Node-identity does show is weaker but real: `markdown.ts`
+  pushes a block only `if (text)` (lines 122, 145, 160), so `stripInline` ran to
+  completion twelve times without throwing and without emptying a block. "The
+  asterisk lookbehinds matched correctly on-device" is therefore an
+  **inference**, not an observation.
+  *The underscore variants reached level A only.* The sample's template literal
+  contains **no underscore at all** — the single `_` in `sample.ts` is in the
+  identifier `SAMPLE_MARKDOWN` on line 2, to the left of the opening backtick,
+  outside the string. `BOLD_UNDERSCORE` and `ITALIC_UNDERSCORE` were invoked
+  (lines 98 and 100 run unconditionally per block) but had nothing to match, so
+  their `(?<!\w)` assertion is confirmed **parsed**, not confirmed **satisfied**.
+
+  **(2) Unicode property escapes (AF12 #2) — PARTIALLY exercised, and the three
+  escapes did not fare alike.** AF12 #2 is a single bullet covering three
+  distinct escapes; treating it as one unit is what makes a flat "two of four"
+  misleading.
+  - **`\p{L}` — levels A and B.** `model/tokenize.ts:26` is
+    `const WORDLIKE = /[\p{L}\p{N}]/u;` and `tokenize.ts:80` evaluates
+    `WORDLIKE.test(piece)` for **every** piece of every token — the every-word
+    path, confirmed by reading `tokenize()`, not assumed from AF28's prose. AF28
+    records 176 words, so that test ran at least 176 times on device Hermes.
+    Level C is again absent: `isWordlike` is consumed only by `pacer/dwell.ts`
+    (lines 69, 72, 81), which did not run on-device, and the probe screen prints
+    only `{id, text}` — so the boolean `WORDLIKE` produced was never observed,
+    and it does not affect the word count either (every piece is pushed
+    regardless).
+  - **`\p{N}` — level A only, and the miss is total.** The sample's template
+    literal contains **zero digit characters** (checked this session), so the
+    `\p{N}` half of `WORDLIKE`'s character class never classified anything.
+    `DIGIT` (`tokenize.ts:30`, `/\p{N}/u`) fared worse still: it is reached only
+    at `tokenize.ts:53`, inside `splitDashRuns`, and only once a dash run is
+    found with non-empty text on **both** sides. All five em-dashes in the
+    sample are standalone whitespace-delimited tokens, so `runStart === 0`,
+    `hasBefore` is false, and the loop `continue`s before line 53 — **`DIGIT`
+    was almost certainly never invoked at all** on the AF28 run. `\p{N}` is
+    confirmed parseable by device Hermes and nothing more.
+  - **`\p{M}` — not exercised at any level.** `pacer/orp.ts:36`
+    (`const COMBINING_MARK = /\p{M}/u;`); `orp.ts` has never run on-device.
+
+  **(3) `normalize('NFC')` and (4) `matchAll` — untouched by AF28, exactly as
+  AF28 says.** `pacer/orp.ts:137` (`text.normalize('NFC')`) and
+  `parsers/epubStructure.ts:90, 99, 160, 183` (`matchAll`); neither module has
+  run on-device. Line numbers confirmed from the files this session.
+
+  **Residue after this correction — three of AF12's four still unexercised
+  on-device, plus two adjacent gaps named so they are not lost:**
+  1. `\p{M}` — `src/core/pacer/orp.ts:36`.
+  2. `String.prototype.normalize('NFC')` — `src/core/pacer/orp.ts:137`.
+  3. `String.prototype.matchAll` — `src/core/parsers/epubStructure.ts:90, 99,
+     160, 183`.
+  4. *(adjacent — not one of AF12's four)* `\p{L}` in
+     `src/core/reader/bionic.ts:31` (`const LETTER = /\p{L}/u;`) is likewise
+     unexercised on-device. It is the same feature class as item 1 above and
+     sits in a seeded module, so a device probe covering `orp.ts` should not
+     stop short of it. That `\p{L}` works in `tokenize.ts` on-device is strong
+     evidence it works in `bionic.ts` too — but that is inference, not a run.
+  5. *(adjacent)* `\p{N}`'s **matching** behaviour, per (2) above: compiled
+     on-device, never handed a digit. Any device probe fed a document
+     containing digits closes this incidentally.
+
+  **Grapheme clustering is NOT one of AF12's four and must not be counted as
+  residue.** AF12 names `Intl.Segmenter` as explicitly *not* a risk: `orp.ts`
+  hand-rolls its own grapheme clustering precisely because Hermes keeps
+  `Intl.Segmenter` on a permanent test262 skip list, and the avoidance is
+  deliberate and documented in that source file. There is no `Intl` dependency
+  to verify on-device because there is no `Intl` call to make.
+
+  **What this entry does not do.** It adds no device coverage, upgrades no
+  earlier entry's status, and leaves AF28 as written. AF26 stays open on its
+  points 1 and 2 (the desktop CLI has no platform `Intl` backend; the runtime
+  evidence sits on a VM about a year behind the shipping engine) — neither is
+  touched here.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -535,3 +660,13 @@
   on-device for the first 12 words (AF29). AF30 records a negative result:
   the `android`/`ios` tsconfig excludes were not exercised by the first real
   prebuild, and AF4 remains the only evidence for them.
+- 2026-09-01 — appended AF31 on `docs/mvp-plan-register`, a scope correction
+  to AF28: two of AF12's four engine-sensitive feature classes (regex
+  lookbehind, and `\p{L}` among the property escapes) were partly exercised
+  on-device by AF28's own run, so AF28's "none of the four" is too strong.
+  Nothing new was executed — this is a re-reading of source against AF28's
+  recorded output, and it separates three levels of evidence (parsed, invoked,
+  correct-match-observed) because only the first two are proven. Residue is
+  three of the four — `\p{M}` and `normalize('NFC')` in `orp.ts`, `matchAll`
+  in `epubStructure.ts` — plus `\p{L}` in `bionic.ts` and `\p{N}`'s matching
+  behaviour. AF28 is left unedited.

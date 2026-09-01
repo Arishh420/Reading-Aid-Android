@@ -327,6 +327,68 @@
   device later — and nothing about deferring the rename would have made the
   eventual value any more settled.
 
+## Milestone: MVP planning
+
+- **AD18 · The ~18 open MVP questions are routed three ways: a new mutable
+  `MVP-PLAN.md` holds the live register, `DECISIONS.md` gets an AD entry as
+  each item settles, and GitHub issues in this repo carry the spikes and the
+  queued work. The web repo is untouched.** The questions were living in chat,
+  which means they were not durable, not diffable, and not answerable by a
+  fresh session — but they are also not yet *decisions*, so appending them to
+  this file would have been a category error. The split follows the shape of
+  the thing being tracked. `MVP-PLAN.md` is **mutable and deliberately
+  disposable**: it holds a status board, the open questions, and the arguments
+  *while they are open*, and it is deleted when the MVP ships. It is modelled
+  directly on the web repo's `PORT-PLAN.md` — the same kind of document
+  (purpose-built, milestone-scoped, sitting alongside the canonical docs rather
+  than replacing them), cited as a back-reference and not a live pointer, since
+  that file is not in this repo. This file — `DECISIONS.md` — remains the
+  durable record and outlives `MVP-PLAN.md`: an item's rationale is written
+  here, once, at the moment it settles.
+
+  **The anti-duplication rule is the load-bearing half of this decision, and it
+  is stated inside `MVP-PLAN.md` itself so it cannot be lost when this entry is
+  out of view:** the status board carries a **pointer and a one-line status,
+  never restated rationale**. When an item settles, the argument moves into its
+  AD entry and lives there and nowhere else; the board row shrinks to a pointer
+  at that AD number and the register section is deleted. The web repo's
+  `PORT-PLAN.md` §6 already runs this discipline verbatim — "The analysis is
+  not restated — read the section named" — and it is adopted here for the same
+  reason it exists there. The local reason is sharper: this repo has documented
+  value-duplication drift twice already (AD2's `settings-defaults.ts` false
+  positive, and AF8's manual `exclude`-list copy that no mechanism keeps in
+  sync), so a second copy of a rationale is understood here as a second copy
+  that will eventually disagree with the first.
+
+  Alternatives rejected. **(a) Log everything as AD entries only, with no
+  register.** Rejected because an append-only file cannot answer "what is still
+  open" — the question the MVP most needs answered — without reading the whole
+  file and mentally diffing later entries against earlier ones. That is exactly
+  the work a status board does in one screen, and it is why the web repo's
+  `PORT-PLAN.md` has a §1 status board despite that repo already having a
+  `DECISIONS.md`. **(b) Use GitHub issues as the register.** Rejected because
+  it puts the reasoning outside the repo, which cuts against this project's
+  standing practice that ground truth is repo-resident — CLAUDE.md §2 makes
+  docs part of "done" and names the in-repo documents as the source of truth
+  alongside the issues, and every prior AD entry has been readable from a clone
+  with no network. Issues are kept for the two things they are better at than a
+  document: a spike that someone picks up and closes, and queued work with a
+  discrete finish line.
+
+  **One carve-out, recorded now so it is not re-litigated later: `D-D` (core
+  drift across the repo boundary) is genuinely a web-repo decision, not an
+  Android one.** Its four options are laid out in the web repo's
+  `PORT-PLAN.md` §5.2 and are deliberately not restated here or in
+  `MVP-PLAN.md`; whichever is chosen changes files on the web side. So when
+  `D-D` settles it earns a **single-PR web freeze exception** — the same shape
+  of cross-repo move AD14 recorded for CLAUDE.md §3, and the precedent for
+  handling one deliberately rather than by drift. `D-R` (web issue #108, the
+  `**hi **` emphasis bug) is explicitly sequenced *after* `D-D` for this
+  reason: it is a real bug and it will be fixed, but fixing it first means
+  performing the re-copy into `src/core/parsers/markdown.ts` by hand and
+  learning nothing about the sync mechanism `D-D` is supposed to choose.
+  Sequenced after `D-D`, it becomes that mechanism's first real exercise.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -356,3 +418,11 @@
   `com.arishh.readingaid` in `app.json`'s `expo.android.package`, before any
   device or Play Store install, since the package name is immutable in
   practice once distributed.
+- 2026-09-01 — appended AD18 on `docs/mvp-plan-register`, opening a new
+  MVP-planning milestone: the ~18 open MVP questions are routed to a new
+  mutable, disposable `MVP-PLAN.md` (the live register), to AD entries here as
+  each settles, and to GitHub issues in this repo for spikes and queued work,
+  with the anti-duplication rule (pointer + one-line status on the board;
+  rationale in the AD entry only) stated inside `MVP-PLAN.md` itself. Records
+  the `D-D` carve-out: it is a web-repo decision and earns a single-PR freeze
+  exception when it settles.
