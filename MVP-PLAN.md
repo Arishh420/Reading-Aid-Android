@@ -86,8 +86,8 @@ Pointer and one-line status only. Rationale lives in the `AD` entry, never here.
 | **D-C** | Where decisions get logged | **DECIDED** | [AD18](DECISIONS.md) |
 | **D-D** | Core drift across the repo boundary | **OPEN** — options in web PORT-PLAN.md §5.2, none chosen | §4.1 |
 | **D-R** | Web issue #108 (`**hi **`) — fix sequence across repos | **OPEN — blocked on D-D** — agreed in principle | §4.2 |
-| **D-E** | Per-tick highlight mechanism (CLAUDE.md §4 invariant) | **OPEN** | §4.3 |
-| **D-F** | The pacer clock — `usePacer.ts` is not seeded | **OPEN** — depends on D-E | §4.4 |
+| **D-E** | Per-tick highlight mechanism (CLAUDE.md §4 invariant) | **DECIDED** | [AD21](DECISIONS.md) |
+| **D-F** | The pacer clock — `usePacer.ts` is not seeded | **OPEN** — unblocked by AD21 | §4.4 |
 | **D-G** | Reading surface and virtualization | **OPEN** — AD19 selects no virtualization; open only whether that holds on a device | §4.5 |
 | **D-H** | Getting a file in | **OPEN** | §5.1 |
 | **D-I** | Storage scope — what actually persists | **OPEN** — MMKV itself settled (AD6) | §5.2 |
@@ -158,17 +158,10 @@ too.
 
 ### 4.3 · D-E — The per-tick highlight mechanism
 
-CLAUDE.md §4 states the invariant — the document tree must not re-render on the
-per-pacer-tick path — and explicitly marks the React Native *mechanism* as
-"UNDECIDED — do not treat this as settled," along with the three guards any
-answer must satisfy (integer-only callback seam; index in a `ref`, never state;
-viewability callback never triggers a scroll). That analysis is not restated
-here. The open question is which mechanism: Reanimated shared values
-(`react-native-reanimated@4.5.1` is a direct dependency 📐), `setNativeProps`,
-or something else ❓. One local fact changes the picture relative to the web
-repo's framing: **React Compiler is enabled** in this repo (`app.json` →
-`experiments.reactCompiler: true` 📐), and its effect on this specific hot path
-has not been measured anywhere ❓.
+**DECIDED.** Word boxes — one `flexWrap` `View` per block, one text element per
+word — driven by a single Reanimated shared value on the UI thread, with no
+React re-render on a pacer tick. See **AD21** in [DECISIONS.md](DECISIONS.md).
+Rationale is not restated here.
 
 ### 4.4 · D-F — The pacer clock
 
@@ -178,9 +171,9 @@ to be ported, rewritten, or reimplemented from its behaviour spec, and the
 question is which. The seeded `core/pacer/dwell.ts` already documents the seam
 it plugs into — its own comment describes the gating helper as "shared by
 usePacer's clock" 📐 — so the interface is partly pinned even though the
-implementation is absent. **Depends on D-E:** the clock's tick handler is the
-thing that must not re-render the tree, so the mechanism chosen there
-determines what the clock is allowed to touch.
+implementation is absent. **Unblocked by AD21:** the clock's tick handler is the
+thing that must not re-render the tree, and AD21 settles what it is allowed to
+touch — a shared value, not React state.
 
 ### 4.5 · D-G — Reading surface and virtualization
 
@@ -193,8 +186,10 @@ Any answer must not break D-E's invariant, and in particular must respect the
 guard that `onViewableItemsChanged` may never trigger a scroll. **No
 virtualization at all may be the right MVP answer** — the §1 definition of done
 does not name a document size — and that possibility is part of the question,
-not a fallback. **AD19 selects it for the MVP** — a `ScrollView` with N `Text`
-nodes ❓ — leaving open here only whether that holds on a real device.
+not a fallback. **AD19 selects it for the MVP** — a `ScrollView` rather than a
+list ❓ — and **AD21** fixes what sits inside it: one `flexWrap` `View` per
+block, one text element per word. Open here only whether that holds on a real
+device.
 
 ---
 
@@ -313,10 +308,12 @@ Can a virtualized list and an imperatively-moved highlight coexist without
 re-rendering the tree on the tick path, and without a viewability callback
 fighting the user's own scroll? CLAUDE.md §4 names the second hazard as "the
 constraint most likely to be violated silently during a port." This is a spike
-rather than an argument because neither D-E nor D-G can be decided by reasoning
+rather than an argument because neither D-E nor D-G could be decided by reasoning
 about the other. **AD19 defers it out of the MVP**: with no virtualization
 shipping, the two never meet — the dependency returns whenever virtualization
-does.
+does. **AD21 adds a second reason to defer**: its per-word style is N
+comparisons per tick, fine at MVP length and a problem at book length ❓, so the
+overlay — the scalable answer — returns with virtualization too.
 
 ---
 
