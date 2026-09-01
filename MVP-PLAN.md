@@ -81,24 +81,24 @@ Pointer and one-line status only. Rationale lives in the `AD` entry, never here.
 
 | # | Item | Status | Where |
 |---|---|---|---|
-| **D-A** | Feature scope: modes, bionic, themes, presets, settings | **OPEN** | §3.1 |
-| **D-B** | Which document formats ship in v1 | **OPEN** | §3.2 |
+| **D-A** | Feature scope: modes, bionic, themes, presets, settings | **DECIDED** | [AD19](DECISIONS.md) |
+| **D-B** | Which document formats ship in v1 | **DECIDED** | [AD20](DECISIONS.md) |
 | **D-C** | Where decisions get logged | **DECIDED** | [AD18](DECISIONS.md) |
 | **D-D** | Core drift across the repo boundary | **OPEN** — options in web PORT-PLAN.md §5.2, none chosen | §4.1 |
 | **D-R** | Web issue #108 (`**hi **`) — fix sequence across repos | **OPEN — blocked on D-D** — agreed in principle | §4.2 |
 | **D-E** | Per-tick highlight mechanism (CLAUDE.md §4 invariant) | **OPEN** | §4.3 |
 | **D-F** | The pacer clock — `usePacer.ts` is not seeded | **OPEN** — depends on D-E | §4.4 |
-| **D-G** | Reading surface and virtualization | **OPEN** — must not break D-E's invariant | §4.5 |
+| **D-G** | Reading surface and virtualization | **OPEN** — AD19 selects no virtualization; open only whether that holds on a device | §4.5 |
 | **D-H** | Getting a file in | **OPEN** | §5.1 |
 | **D-I** | Storage scope — what actually persists | **OPEN** — MMKV itself settled (AD6) | §5.2 |
 | **D-J** | Screens and navigation | **OPEN** | §5.3 |
-| **D-K** | Settings and presets | **OPEN** | §5.4 |
+| **D-K** | Settings and presets | **DECIDED** | [AD19](DECISIONS.md) |
 | **D-L** | How the APK reaches a physical phone | **OPEN** | §6.1 |
 | **D-M** | App identity — icon, splash, display name | **OPEN** — package name settled (AD17) | §6.2 |
 | **D-N** | Headless suites on Android | **OPEN** — interacts with D-D | §6.3 |
-| **D-O** | pdf.js on React Native | **SPIKE** — not started | §7.1 |
-| **D-P** | JSZip on React Native | **SPIKE** — not started | §7.2 |
-| **D-Q** | Virtualization + imperative highlight together | **SPIKE** — not started; D-E and D-G both wait on it | §7.3 |
+| **D-O** | pdf.js on React Native | **SPIKE** — not started; post-MVP per AD20, blocks nothing | §7.1 |
+| **D-P** | JSZip on React Native | **SPIKE** — not started; post-MVP per AD20, blocks nothing | §7.2 |
+| **D-Q** | Virtualization + imperative highlight together | **SPIKE** — not started; deferred out of the MVP by AD19, returns whenever virtualization does | §7.3 |
 
 When a row reaches **DECIDED**, its `Where` becomes an `AD` number and its
 register section below is deleted from this file.
@@ -109,30 +109,14 @@ register section below is deleted from this file.
 
 ### 3.1 · D-A — Feature scope: modes, bionic, themes, presets, settings
 
-Which of the web app's reading features are in the MVP at all? The facts that
-make this live rather than obvious: `core/ui/theme.ts` seeds four themes
-(`light`, `sepia`, `dark`, `dim`, default `light`) 📐 and `core/reader/bionic.ts`
-is seeded and runs under the Hermes **CLI** with output identical to Node
-(AF23) — but neither has run on a device ❓, and `bionic.ts` specifically is
-named in AF31 as still unexercised on-device. The web app's three pacer modes
-(`Rsvp`, `ChunkHighlight`, `FlowingHighlight`) are `.tsx` components in the web
-repo's UI layer; none is seeded here, so every one of them is a build, not a
-port. The question is what the definition of done in §1 actually requires — it
-says "read it with the pacer running" and names no mode, no theme, and no
-bionic — and what each additional feature costs given D-E and D-F are unsettled.
+**DECIDED.** Flowing Highlight is the only pacer mode; RSVP, Chunk, bionic
+rendering and presets are cut; one theme (`light`) and one setting (WPM). See
+**AD19** in [DECISIONS.md](DECISIONS.md). Rationale is not restated here.
 
 ### 3.2 · D-B — Which document formats ship in v1
 
-Markdown, PDF, EPUB, or a subset? Markdown is the only format proven end to end
-on a device: AF28 records `parseMarkdown` producing 12 blocks and 176 words on
-an Android emulator, byte-identical to Node 👁. PDF and EPUB are split in this
-repo — their **pure** halves are seeded and Hermes-CLI-clean (`pdfText.ts`,
-`epubStructure.ts`; AF23) — but their container/decode halves are not: in the
-web repo `pdf.ts` imports `pdfjs-dist` plus a `?url` worker module, and
-`epub.ts` imports `jszip` 📐. Neither dependency has been tried under React
-Native ❓; that is what D-O and D-P exist to find out. So the real question is
-whether v1 is Markdown-only, and if not, which of the two heavier formats earns
-its spike.
+**DECIDED.** Markdown only — PDF and EPUB are both cut. See **AD20** in
+[DECISIONS.md](DECISIONS.md). Rationale is not restated here.
 
 ### 3.3 · D-C — Where decisions get logged
 
@@ -209,7 +193,8 @@ Any answer must not break D-E's invariant, and in particular must respect the
 guard that `onViewableItemsChanged` may never trigger a scroll. **No
 virtualization at all may be the right MVP answer** — the §1 definition of done
 does not name a document size — and that possibility is part of the question,
-not a fallback.
+not a fallback. **AD19 selects it for the MVP** — a `ScrollView` with N `Text`
+nodes ❓ — leaving open here only whether that holds on a real device.
 
 ---
 
@@ -232,8 +217,9 @@ The storage *engine* is settled — MMKV, synchronous (AD6) — but
 `react-native-mmkv@^4.3.2` is still a declared dependency with **zero**
 references anywhere under `src/` 🧪, so nothing is implemented. Open: what the
 MVP persists. Reading position only is the minimum the §1 definition of done
-requires ("reopen it, and be where you left off"); settings and presets are
-additional and depend on D-A and D-K. Position persistence is keyed by a
+requires ("reopen it, and be where you left off"). **AD19** cuts presets
+entirely, so the only additional candidate is the WPM value, whose persistence
+AD19 explicitly leaves to this item. Position persistence is keyed by a
 content fingerprint, and web issue #102 (OPEN, `documentation` + `android`)
 sharpens the obligation beyond "make it byte-identical": it asks for a
 **fixed-hash conformance test built before any RN implementation**, because the
@@ -252,12 +238,10 @@ screen to do.
 
 ### 5.4 · D-K — Settings and presets
 
-The web app ships nine built-in presets 📐, each bundling a mode and its
-settings. Options span from cutting presets and settings entirely to shipping a
-single fixed WPM control. The question is which, and it is downstream of D-A —
-a preset that bundles a mode is meaningless if the MVP ships one mode. Note the
-web repo has an open issue (#105) on preset value-duplication, which is
-relevant only if presets ship at all.
+**DECIDED.** Presets are cut entirely; the MVP has one setting, WPM. See
+**AD19** in [DECISIONS.md](DECISIONS.md), which settles this item alongside
+D-A. Rationale is not restated here. The residue is not open, it is elsewhere:
+persistence is D-I's, the control's shape and placement are D-J's.
 
 ---
 
@@ -311,13 +295,15 @@ Known-hard. The web repo's `pdf.ts` imports `pdfjs-dist@^6.0.227` and a worker
 via a Vite-specific `?url` import 📐, and AD8 already records that even the web
 repo's *headless* PDF suite needed an esbuild resolve-plugin stub because the
 non-legacy build wants `DOMMatrix`. Whether any of that survives Metro and
-Hermes is unknown ❓. Feeds D-B.
+Hermes is unknown ❓. **AD20 cuts PDF from the MVP**, so this is post-MVP and
+blocks nothing.
 
 ### 7.2 · D-P — JSZip on React Native
 
 The web repo's `epub.ts` imports `jszip@^3.10.1` 📐. Whether it works under
 Hermes with Metro's resolver, and what it needs for binary data handling, is
-unknown ❓. Feeds D-B. Note the seeded `epubStructure.ts` is the pure half and
+unknown ❓. **AD20 cuts EPUB from the MVP**, so this is post-MVP and blocks
+nothing. Note the seeded `epubStructure.ts` is the pure half and
 already runs clean under the Hermes CLI (AF23) — the spike is only about the
 container layer.
 
@@ -326,9 +312,11 @@ container layer.
 Can a virtualized list and an imperatively-moved highlight coexist without
 re-rendering the tree on the tick path, and without a viewability callback
 fighting the user's own scroll? CLAUDE.md §4 names the second hazard as "the
-constraint most likely to be violated silently during a port." **D-E and D-G
-both depend on the answer**, which is why this is a spike rather than an
-argument: neither can be decided by reasoning about the other.
+constraint most likely to be violated silently during a port." This is a spike
+rather than an argument because neither D-E nor D-G can be decided by reasoning
+about the other. **AD19 defers it out of the MVP**: with no virtualization
+shipping, the two never meet — the dependency returns whenever virtualization
+does.
 
 ---
 
