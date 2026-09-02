@@ -10,6 +10,22 @@
  *
  * Nothing in here runs React on a pacer tick. The only per-tick work is the
  * worklet below: one integer comparison against a captured primitive.
+ *
+ * ─── Click-to-jump (AD28) ───────────────────────────────────────────────────
+ *
+ * `onPress` is a PROP of `Text`, so tapping costs no extra node: the animated
+ * box that already exists is the touch target. That is why mechanism (a) is
+ * affordable here despite web deliberately avoiding a handler per word — web's
+ * one delegated handler on the pane, keyed by `data-word-id` and resolved with
+ * `closest()` (Reader.tsx:27, :149), has no React Native equivalent, since RN
+ * has neither event delegation nor `closest()`.
+ *
+ * A drag that starts on a word must scroll, not seek. It does: `Text` forwards
+ * `onResponderTerminationRequest` to Pressability, which returns
+ * `cancelable ?? true` (Pressability.js:526-529), so the enclosing ScrollView
+ * can take the responder mid-touch and the press is cancelled. That is a
+ * STRUCTURAL read of react-native's own source, not a device observation — the
+ * on-device drag test is AD28's pending acceptance check.
  */
 
 import { StyleSheet, Text, type LayoutChangeEvent } from 'react-native';
@@ -31,6 +47,16 @@ export interface WordBoxProps {
    * Omitted when auto-scroll is off, so no layout work is done at all.
    */
   onMeasureY?: (index: number, y: number) => void;
+  /**
+   * Tap this word to seek the pacer to it (AD28). Omitted when the surface is
+   * not seekable, exactly as `onMeasureY` is omitted when auto-scroll is off,
+   * so no press handler is mounted at all in that case — the same shape web
+   * gets from `clickable={!!onSeekWord}` (Reader.tsx:191).
+   *
+   * It writes through the pacer's integer seam and nothing else, so a tap
+   * re-renders the document tree no more than a tick does.
+   */
+  onSeekWord?: (index: number) => void;
 }
 
 export function WordBox({
@@ -39,6 +65,7 @@ export function WordBox({
   lineHeight,
   currentIndex,
   onMeasureY,
+  onSeekWord,
 }: WordBoxProps) {
   // Lift the index to a primitive BEFORE the worklet closes over it, so the
   // UI thread compares two numbers and never touches `word`.
@@ -52,9 +79,15 @@ export function WordBox({
     ? (e: LayoutChangeEvent) => onMeasureY(index, e.nativeEvent.layout.y)
     : undefined;
 
+  // `index` again, not `word`: the handler passes the flat index the pacer's
+  // `seek` already snaps with `nearestWordlike`, so a punctuation-only token
+  // needs no special case here.
+  const handlePress = onSeekWord ? () => onSeekWord(index) : undefined;
+
   return (
     <Animated.Text
       onLayout={handleLayout}
+      onPress={handlePress}
       style={[
         styles.word,
         { fontSize, lineHeight },

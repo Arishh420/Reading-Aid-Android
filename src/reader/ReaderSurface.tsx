@@ -47,6 +47,34 @@
  * Block-level scrolling was rejected as a substitute: one long paragraph is a
  * single block spanning many lines, so the highlight would still run off the
  * bottom of the screen.
+ *
+ * ─── Click-to-jump, and how it lands on this same machinery (AD28) ──────────
+ *
+ * `onSeekWord` is threaded to every word box, which taps it through `onPress`
+ * (see WordBox). It needs nothing new here: a seek writes `currentIndex` through
+ * the pacer's integer seam, so the reaction below fires for a tap exactly as it
+ * fires for a tick.
+ *
+ * That is also why `lastScrolledY` is compared against, rather than the
+ * PREVIOUS index's Y. A seek is not a sequential advance — after a tap the
+ * previous index can be anywhere, possibly off-screen — so "did the line change
+ * relative to the previous word" is the wrong question. `lastScrolledY` asks the
+ * right one: is the viewport already anchored on this line? Tap an off-screen
+ * word and it scrolls; tap a word on the line already anchored and it does not,
+ * which is correct, because yanking a line the reader is looking at is worse
+ * than leaving it.
+ *
+ * One residual, recorded in AF38 rather than fixed: manually scroll the anchored
+ * line off-screen, then tap a word ON THAT SAME LINE, and no scroll fires — the
+ * highlight stays off-screen until the next line change. The alternative is a
+ * mechanism that fights manual scrolling, which CLAUDE.md guard 3 exists to
+ * prevent.
+ *
+ * Mechanism (b) — ONE responder on this container, hit-testing a per-word rect
+ * map — was rejected for the MVP and belongs with `D-G`/`D-Q` alongside the
+ * measured-rect highlight overlay. It is the same per-word-cost-versus-
+ * measurement trade, in a second place: it would need x and width, and the
+ * auto-scroll map deliberately collects Y only.
  */
 
 import { useCallback, useMemo, useRef } from 'react';
@@ -81,6 +109,11 @@ export interface ReaderSurfaceProps {
    * the highlight from the scroll.
    */
   autoScroll?: boolean;
+  /**
+   * Tap a word to seek to it (AD28). Optional so this component stays
+   * independently composable: with it absent no word mounts a press handler.
+   */
+  onSeekWord?: (index: number) => void;
 }
 
 /** One block: a flexWrap row of word boxes, sized by its type and level. */
@@ -89,11 +122,13 @@ function BlockView({
   currentIndex,
   onMeasureBlockY,
   onMeasureWordY,
+  onSeekWord,
 }: {
   block: PreparedBlock;
   currentIndex: SharedValue<number>;
   onMeasureBlockY?: (blockId: string, y: number) => void;
   onMeasureWordY?: (index: number, y: number) => void;
+  onSeekWord?: (index: number) => void;
 }) {
   const isHeading = block.type === 'heading';
   const fontSize = isHeading
@@ -123,6 +158,7 @@ function BlockView({
           lineHeight={lineHeight}
           currentIndex={currentIndex}
           onMeasureY={onMeasureWordY}
+          onSeekWord={onSeekWord}
         />
       ))}
     </View>
@@ -134,6 +170,7 @@ export function ReaderSurface({
   currentIndex,
   bionicRatio = BIONIC_RATIO.medium,
   autoScroll = true,
+  onSeekWord,
 }: ReaderSurfaceProps) {
   // The ONLY per-document computation: splitBionic once per word, plus the
   // Word.id -> number conversion. One memo for the whole document.
@@ -233,6 +270,7 @@ export function ReaderSurface({
           currentIndex={currentIndex}
           onMeasureBlockY={autoScroll ? onMeasureBlockY : undefined}
           onMeasureWordY={autoScroll ? onMeasureWordY : undefined}
+          onSeekWord={onSeekWord}
         />
       ))}
     </Animated.ScrollView>

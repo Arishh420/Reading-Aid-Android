@@ -844,6 +844,245 @@
   be reverted with `git checkout --` rather than needing an append-only
   correction entry of its own.
 
+## Auto-scroll, and the AF36 ruling
+
+> Scope warning that governs this whole section: **every device and emulator
+> observation below was witnessed by the project owner on running hardware and
+> reported to me. I ran no device and no emulator at any point**, and cannot
+> reproduce any of it from a Claude Code session — recorded the same way
+> AF27/AF28/AF31/AF32-AF36 record owner-witnessed evidence. The 👁 half of each
+> tag is inherited; any 📐 or 🧪 half is mine, from this session.
+
+- **AF38** 👁📐 — **Auto-scroll: the mechanism, and its acceptance. Written
+  because this is the only MVP mechanism whose acceptance lived in a change-log
+  sentence rather than an entry of its own**, and it has no headless coverage at
+  all — it is pure UI-thread behaviour, so there is nothing a Node suite can
+  bundle. Absent this entry, the one mechanism with no test would also have been
+  the one with no finding.
+
+  **The mechanism, read from `src/reader/ReaderSurface.tsx` and
+  `src/reader/WordBox.tsx` this session** 📐:
+  - **Per-word Y from `onLayout`, and Y ONLY.** Each word box reports its
+    **block-relative** Y; each block reports its own Y. No x, no width, no rect
+    is ever read — deliberately, and the restraint has a consequence recorded in
+    AD28: click-to-jump's rejected mechanism (b) would need x and width, so it
+    has no existing data to reuse.
+  - **Absolute Y = block Y + word-relative Y**, resolved through
+    `buildWordBlockMap` (`prepareDocument.ts`), which is keyed by the same flat
+    `Word.id` index and introduces no second numbering scheme.
+  - **`useAnimatedReaction` on `currentIndex`** — the shared value, and nothing
+    else, is what can trigger a scroll.
+  - **`scrollTo` through `useAnimatedRef`**, so the scroll is issued on the UI
+    thread without round-tripping through React.
+
+  **The line-change test, and why `lastScrolledY` was chosen over comparing
+  against the previous index.** A line change is "the active word's absolute Y
+  differs from the Y we last scrolled for". Words on one line share a Y, so a
+  same-line advance compares equal and does not scroll. The rejected
+  alternative — remember the previous index and compare its Y — fails on a
+  **seek**, which AD28 has now made a first-class gesture: after a tap the
+  previous index can be anywhere in the document, possibly off-screen, so "did
+  the line change relative to the previous word" is not the question worth
+  asking. `lastScrolledY` asks the one that is: **is the viewport already
+  anchored on this line?** It is initialised to `-1` so the first positioned
+  word does scroll.
+
+  **The four no-op guards**, each covering a way the Y map can be unusable, and
+  each required to no-op rather than scroll somewhere wrong — layout arrives
+  asynchronously, so a partially measured document must never jump 📐:
+  1. `index < 0` — an empty document, where `nearestWordlike` yields -1.
+  2. `index >= ys.length` — the map absent or shorter than the index, the
+     mount-time race.
+  3. `y === undefined` — a hole in the array.
+  4. `y < 0` — the `-1` "measured yet?" sentinel the map is filled with.
+
+  **CLAUDE.md guard 3 holds STRUCTURALLY, not by discipline — and that is the
+  strongest thing this entry records.** Guard 3 says a mounted-range or
+  viewability callback may never trigger a scroll, and names it "the constraint
+  most likely to be violated silently during a port, because the callback has a
+  different name and an innocent-looking signature." Here there is **no such
+  callback to violate**: a grep across all of `src/` for
+  `onViewableItemsChanged`, `viewabilityConfig`, `onRangeChange`, `onScroll`,
+  `onMomentumScroll`, `onContentSizeChange` and `useScrollViewOffset` returns
+  **nothing** 📐 (run this session). The only input that can cause a scroll is
+  `currentIndex`. Web's `onRangeChange` — which carries the identical hazard and
+  is why guard 3 is worded as it is — has no counterpart in this code.
+
+  **Coalescing, and the quadratic reason for it.** Mounting a document fires one
+  layout event per word **plus** one per block, and each arrival could rebuild
+  the absolute-Y array; rebuilding per event would be **O(n) work n times, i.e.
+  quadratic** in word count. So a rebuild is coalesced behind a single
+  `setTimeout(0)` guarded by a `publishPendingRef` flag: many layout events
+  collapse into a handful of O(n) passes. The raw layout inputs are held in
+  **refs**, not state, so React does not re-render on layout either 📐.
+
+  **Acceptance.** The project owner ran the built app on a **physical device**
+  and on an **emulator** and reported **auto-scroll following the active line**,
+  alongside reading position resuming across a full app close, Restart working
+  at end of document, the paste box parsing, and the WPM control functioning.
+  **I witnessed neither run.** That report is the whole of the 👁 evidence here,
+  and it is qualitative — "it follows the active line" — not a measurement.
+
+  **What is NOT established, stated plainly:**
+  1. **No measurement of scroll behaviour at book length.** The seeded sample is
+     **176 words** (AF28, AF31); AD24 `D-G` estimates a book chapter at roughly
+     **3,000-5,000**, itself an estimate rather than a measurement. `D-G`'s
+     revisit trigger — "the first document that visibly stutters on scroll, or
+     takes more than a moment to mount" — has **never been evaluated**, and per
+     **AF35** it must be evaluated on **hardware**: the emulator produced a
+     120.82 ms frame (about seven dropped frames at 60 fps) that no device run
+     came near, so an emulator stall would trip the trigger for the wrong
+     reason.
+  2. **No rotation or font-scale re-measurement testing.** Every Y in the map
+     comes from an `onLayout` at mount. Rotation and a system font-scale change
+     both reflow the surface, and nothing here has been exercised across either.
+  3. **No evidence about whether it fights manual scrolling**, beyond the
+     structural argument above that nothing but `currentIndex` drives it. The
+     argument is strong — there is no callback that *could* fire on a user
+     scroll — but it is an argument, not an observation.
+  4. **One residual the code makes visible on inspection** 📐, recorded here
+     rather than fixed: manually scroll the anchored line off-screen, then seek
+     to a word **on that same line** (AD28's tap makes this reachable), and the
+     Y compares equal to `lastScrolledY`, so **no scroll fires** and the
+     highlight stays off-screen until the next line change. Also
+     `lastScrolledY` is not reset when the document changes, so a stale Y from
+     the outgoing document is compared against the incoming one's first word;
+     in practice the two differ and a scroll to the top does fire, but that is
+     an argument about likely values, not a guarantee. Both are fixable only by
+     letting something other than `currentIndex` influence scrolling, which is
+     what guard 3 forbids.
+
+- **AF39** 👁 — **AF36's deferred ruling is RESOLVED: the project owner judged
+  the real reader surface acceptable for the MVP on a physical device and an
+  emulator. SHIP AS IS.** AF36 recorded stage 1 probe question (d) — word-box
+  layout acceptability — as "DEFERRED — not failed, and not passed", with no
+  tuning ruling made, on the explicit grounds that "the instrument is not the
+  artifact": the probe was 22 hard-coded words at 19 px on an otherwise empty
+  screen, while the reader is a full document with heading sizes, block margins,
+  a `ScrollView` and auto-scroll. AF36 said the ruling waits for the real
+  surface. The real surface has now been on screen.
+
+  **What was judged**, as reported: **word gaps, line spacing, highlight
+  strength and body size**, all acceptable for the MVP. So `bodyFontSize` stays
+  **19** — the value AF36 flagged as knowingly divergent from web's 18 and "the
+  most likely first thing to revisit" — and `wordGapH`/`wordGapV`,
+  `wordPadH`/`wordPadV`, `bodyLineHeight`, `highlightOpacity`,
+  `highlightRadius`, the block margins and `scrollTopInset` all stay as they
+  are. **Nothing was retuned.** The only `LAYOUT` values that change in the same
+  session are the heading sizes, and those change to fix AD26's shipped defect
+  rather than as tuning; that decision is **AD29**, and the ruling recorded here
+  is what let it proceed without a translation step.
+
+  **Why this is an AF and not part of AD29.** The ruling is owner-witnessed
+  device evidence — something that *happened* on hardware — whereas the values
+  that change as a result are a choice. Keeping them apart follows this file's
+  own precedent for status changes to earlier entries: AF27 supersedes AF5's
+  belief with a device observation, and AF31 corrects AF28's scope without
+  editing it. **AF36's text is left unedited**, per this file's append-only
+  convention.
+
+  **Not claimed, and the limits are the same ones AF32-AF36 carry.** This is a
+  **qualitative aesthetic judgement**, not a measurement: no frame timings, no
+  layout metrics and no screenshots were transcribed for it, and I saw neither
+  surface. It covers the **seeded sample document only** — 176 words, one `#`
+  and one `##` and no deeper heading (`sample.ts:2`, `:8` 📐) — so it says
+  nothing about how the surface reads at book length, nor about the heading
+  levels AD29 changes, **none of which the sample renders**. And every device
+  observation this repo holds remains a **debug** build observation: AF27 and
+  AD24 `D-L` both record that nothing here speaks to release-mode behaviour.
+
+## Click-to-jump acceptance
+
+- **AF40** 👁📐 — **AD28's pending acceptance check is CLOSED: the structural
+  prediction about responder transfer was borne out on both surfaces.** AD28
+  recorded the drag-scrolls-rather-than-seeks property as "a STRUCTURAL claim,
+  not a device observation" and named the on-device drag test as its pending
+  acceptance check. That check has now been run. **AD28 is not edited** — this
+  entry closes its pending item the way AF31 corrected AF28's scope without
+  touching AF28's text, and the cross-reference runs in this direction only.
+
+  **What the structural read predicted, and exactly what kind of claim it was.**
+  Two lines of `react-native`, read out of **this repo's own `node_modules/`**
+  rather than from vendor documentation:
+  `Pressability.js:526-529`'s `onResponderTerminationRequest` returns
+  `cancelable ?? true`, and `Text.js:449-452` passes a `Text`'s own
+  `onResponderTerminationRequest` through to it, falling back to Pressability's
+  handler when none is supplied 📐. The predicted consequence: because the
+  default is to permit termination, the enclosing `ScrollView` can take the
+  responder **mid-touch**, so a drag that begins on a word becomes a scroll and
+  the press is cancelled — i.e. AD28's mechanism (a), one touch responder per
+  word box, does not break scrolling. **That was a read of source code. It was
+  never a device observation, and this entry does not retroactively make it
+  one** — what changed is that a device observation now exists alongside it.
+
+  **The prediction was borne out.** The responder transfer behaves as the source
+  implied, on **both** the physical Android device and the emulator. A drag
+  beginning on a word scrolls; it does not seek.
+
+  **Scope — the four checks, and they are not all about the same thing.** That
+  distinction matters, because only the first closes the structural prediction:
+  1. **A drag starting on a word scrolls rather than seeking.** This is the
+     responder-transfer prediction above, and the one AD28 flagged as pending.
+  2. **A tap on the last word leaves the transport reading Restart.**
+  3. **A tap backwards from the end restores Play without Restart.**
+  4. **A tap while playing changes position without stopping.**
+
+  Checks 2 and 3 exercise the end-of-document behaviour AD28 chose to let fall
+  out of `usePacer` unchanged — `startedRef` deliberately not cleared in `seek`
+  (F23/D89, `usePacer.ts:94-99`), `play()`'s guard at `:190`, and `commit`'s
+  `atEnd` recomputation at `:111-119`. AD28 predicted both from **reading** that
+  file, not from running it, so these are two more structural predictions
+  confirmed rather than a single one. Check 4 confirms the seek-only ruling
+  holds in the playing state, which is the direction of it that is easiest to
+  get wrong.
+
+  **GRANULARITY — the honest limit of this evidence, stated rather than
+  elided.** What was reported is that **testing passed on both surfaces**
+  against the four named checks. It was **not** a per-check transcript: no
+  individual observation, no timing, no frame figure, no counter reading and no
+  screenshot was reported for any of the four, and **none is invented here**.
+  Two consequences follow and are recorded rather than smoothed over. First,
+  this evidence is **materially weaker than AF32's and AF33's**, which carried
+  transcribed counter readings and an exact five-way split table respectively;
+  this is a pass/fail report, not an instrumented one. Second, because there is
+  no per-surface breakdown, this entry **cannot say which surface exhibited
+  what** — only that both were reported passing. Anyone later needing per-check
+  or per-surface detail must re-run; it does not exist.
+
+  **Attribution.** The project owner ran the built app on the physical Android
+  device and on the emulator and reported the result. **I witnessed neither run
+  and ran no device or emulator at any point.** The 👁 half of this tag is
+  therefore inherited, exactly as in AF27/AF28/AF31/AF32-AF36/AF38/AF39; the 📐
+  half is mine, from reading `Pressability.js` and `Text.js` in this tree.
+
+  **What is NOT established:**
+  1. **No measurement at book length.** The seeded sample is **176 words**
+     (AF28, AF31). Mechanism (a) mounts **one Pressability instance per word**,
+     and that per-word cost is precisely what web's single delegated handler
+     avoided and what AD28's rejected mechanism (b) would avoid — so it is the
+     one property of this choice that most needs a large document, and it has
+     never seen one. AD24 `D-G`'s revisit trigger applies here as much as to
+     scrolling, and per **AF35** it must be evaluated on **hardware**, not on
+     the emulator.
+  2. **No rotation or font-scale testing.** Same gap AF38 records for
+     auto-scroll: word boxes are measured by `onLayout` at mount, and neither
+     reflow has been exercised — nor has tapping after one.
+  3. **Nothing about tap behaviour under a document larger than the seeded
+     sample**, including whether hit accuracy or mount cost changes with word
+     count. Relatedly, AD28's recorded touch-target limitation — a body word box
+     is about **32 dp** tall against Android's 48 dp guidance, with no `hitSlop`
+     because slop would overlap adjacent words — is **not addressed by this
+     evidence**. No mis-taps were reported, but nothing was measured, and the
+     absence of a complaint is not a measurement.
+  4. **Still a debug build.** Every device observation this repo holds is a
+     debug development build (AF27), and AD24 `D-L` records that the MVP's
+     delivery artifact is a **release** APK on a configuration nothing has
+     verified. This entry does not narrow that gap.
+
+  The AF38 residuals are untouched by this run: the seek-to-a-word-on-a-
+  manually-scrolled-away-line no-op, and `lastScrolledY` not being reset on
+  document change, were neither exercised nor reported on.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -918,3 +1157,63 @@
   entry asserting on-device tuning that never happened is called out
   specifically: a decision log that records an event which did not occur is
   the one failure mode nothing in this repo can catch.
+- 2026-09-02 — appended **AF38-AF39** on `feature/click-to-jump`. **AF38** is
+  the auto-scroll entry that did not exist: auto-scroll was the only MVP
+  mechanism whose acceptance lived in a change-log sentence rather than a
+  finding, and it has no headless coverage because it is pure UI-thread
+  behaviour with nothing a Node suite can bundle. It records the mechanism
+  (per-word Y from `onLayout` and **Y only**; absolute Y as block Y plus
+  word-relative Y; `useAnimatedReaction` on `currentIndex`; `scrollTo` through
+  `useAnimatedRef`, all UI-thread), the line-change test and why `lastScrolledY`
+  beat comparing against the previous index — a reason now **strengthened** by
+  AD28's tap, since a seek is not a sequential advance — the four no-op guards,
+  the `setTimeout(0)` coalescing and its quadratic rationale, and the fact that
+  **CLAUDE.md guard 3 holds structurally**: a grep across `src/` for
+  `onViewableItemsChanged`, `viewabilityConfig`, `onRangeChange`, `onScroll`,
+  `onMomentumScroll`, `onContentSizeChange` and `useScrollViewOffset` returns
+  nothing, so there is no callback that *could* scroll on a user gesture.
+  Acceptance is attributed to the project owner's physical-device and emulator
+  runs — auto-scroll following the active line, alongside resume, Restart, paste
+  and WPM — and **I witnessed neither**. Not established: no measurement at book
+  length (so AD24 `D-G`'s revisit trigger is still unevaluated, and per AF35
+  must be evaluated on hardware), no rotation or font-scale re-measurement
+  testing, no evidence it does not fight manual scrolling beyond the structural
+  argument, plus two residuals visible on inspection (a seek to a word on the
+  anchored line that has been manually scrolled away fires no scroll, and
+  `lastScrolledY` is not reset on document change). **AF39** resolves AF36's
+  deferred question (d): the project owner judged the **real** reader surface —
+  not the 22-word probe AF36 said was "not the artifact" — acceptable on a
+  physical device and an emulator, so `bodyFontSize` stays 19 and nothing is
+  retuned. It is an `AF` rather than part of AD29 because the ruling is
+  owner-witnessed device evidence while the values that change are a choice,
+  following AF27-supersedes-AF5 and AF31-corrects-AF28. Its limits are stated:
+  a **qualitative** judgement with no metrics transcribed, covering the seeded
+  sample only — which renders one `#` and one `##` and none of the heading
+  levels AD29 changes — on a **debug** build, like every device observation this
+  repo holds. **AF36's text is left unedited.**
+- 2026-09-02 — appended **AF40** on `feature/click-to-jump`, closing AD28's
+  pending acceptance check. The structural prediction — `Pressability.js:526-529`
+  returning `cancelable ?? true` and `Text.js:449-452` passing it through, both
+  read from this repo's own `node_modules/`, so 📐 and never a device claim —
+  **was borne out**: responder transfer works as the source implied, and a drag
+  beginning on a word scrolls rather than seeking, on **both** the physical
+  Android device and the emulator. Scope is the four named checks (the drag; a
+  tap on the last word leaving the transport reading Restart; a tap backwards
+  from the end restoring Play without Restart; a tap while playing changing
+  position without stopping) — and the entry separates them, since only the
+  first closes the responder-transfer prediction while checks 2 and 3 confirm the
+  end-of-document behaviour AD28 predicted by **reading** `usePacer.ts` rather
+  than running it. **Granularity is recorded as a limitation rather than
+  elided:** the report was that testing passed on both surfaces, not a per-check
+  transcript, so no timing, counter reading, screenshot or per-surface breakdown
+  exists, and none is invented — this is materially weaker evidence than AF32's
+  transcribed counters or AF33's split table, and the entry says so. The project
+  owner ran both surfaces and reported the result; **I witnessed neither and ran
+  no device or emulator**, so 👁 is inherited and 📐 is mine from the source
+  read. Not established: no measurement at book length — which matters most here,
+  since mechanism (a) mounts one Pressability instance per word and that is
+  exactly the cost web's delegation avoided — no rotation or font-scale testing,
+  nothing about tap behaviour or hit accuracy beyond the 176-word sample, AD28's
+  32 dp touch-target limitation unaddressed, and still a debug build. **AD28 is
+  not edited**, per this file's append-only convention; AF40 cross-references it
+  and not the reverse.
