@@ -21,6 +21,23 @@
  * change on a human gesture, not on a tick. Web makes the same split
  * (PacerControls.tsx:10 — "WPM and the play state are ordinary React state
  * (user-driven, rare)").
+ *
+ * ─── Click-to-jump (AD28) ───────────────────────────────────────────────────
+ *
+ * `pacer.seek` is handed to the surface directly, so a tap goes through the very
+ * same seam a tick does. Two rulings are recorded in AD28 and both are visible
+ * here as the ABSENCE of code:
+ *
+ *   - A tap SEEKS ONLY; it never starts or stops playback. Web does the same
+ *     (App.tsx:410, :434 are both `onSeekWord={pacer.seek}`), and the rule is
+ *     uniform in both directions: while playing, `seek` zeroes the accumulator
+ *     and the rAF loop simply continues from the new word.
+ *   - At end of document nothing is special-cased. `usePacer`'s `startedRef` is
+ *     deliberately NOT cleared by `seek` (F23/D89), so tapping the last
+ *     word-like token leaves Play disabled and the transport below still reads
+ *     Restart; tapping BACKWARDS flips `atEnd` false inside `commit` and Play
+ *     becomes available again with no Restart needed. Both fall out of the
+ *     ported clock unchanged.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -249,7 +266,7 @@ export default function Index() {
         </View>
       ) : null}
 
-      <ReaderSurface doc={doc} currentIndex={currentIndex} />
+      <ReaderSurface doc={doc} currentIndex={currentIndex} onSeekWord={pacer.seek} />
     </View>
   );
 }

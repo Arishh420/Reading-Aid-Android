@@ -1,9 +1,11 @@
 /**
  * Reader visual constants: the `light` theme's colours, and every layout value
- * the reading surface uses. One module, two exports (`LIGHT`, `LAYOUT`), so any
- * visual tuning is a single-file edit — carried forward from the stage 1 probe's
- * TUNING block, whose purpose was exactly that and whose visual ruling is still
- * outstanding.
+ * the reading surface uses. One module, so any visual tuning is a single-file
+ * edit — carried forward from the stage 1 probe's TUNING block, whose purpose
+ * was exactly that. That probe's visual ruling (AF36 question (d)) is no longer
+ * outstanding: AF39 records it as SHIP AS IS, so nothing here is retuned. The
+ * one exception is the heading scale, which AD29 changes to fix the defect AD26
+ * recorded as shipping — see `HEADING_SIZE_RATIO` below.
  *
  * Colours and layout live together rather than in separate files because the
  * active-word highlight is BOTH: it is the accent colour at a given opacity.
@@ -59,6 +61,78 @@ function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/**
+ * Body type size, hoisted out of `LAYOUT` so the heading scale below can derive
+ * from it. Still declared in exactly one place — `LAYOUT.bodyFontSize` reads
+ * this constant rather than repeating the number.
+ */
+const BODY_FONT_SIZE = 19;
+
+/**
+ * Heading size ratios, applied to the LIVE body size (AD29).
+ *
+ * Two properties are load-bearing, and the thirteenth headless suite
+ * (`palette-headless-test.mjs`) asserts both against THESE values rather than
+ * against a copy of the resulting table:
+ *
+ *   1. STRICTLY DECREASING — h1 > h2 > ... > h6.
+ *   2. EVERY LEVEL STRICTLY ABOVE BODY TEXT, whatever `bodyFontSize` becomes.
+ *      That is the exact regression AD26 recorded and AD29 fixes: a size table
+ *      pinned to one base (web's 18) while the base moved underneath it (to 19).
+ *
+ * Every ratio here is > 1 (the smallest is 1.1), but the ratios ALONE do not
+ * guarantee either property once rounding is involved — `headingFontSizes`
+ * below enforces both. See its docblock for the measured collision case.
+ *
+ * 1.9 and 1.4 are chosen to REPRODUCE the two levels that were actually judged
+ * on-device — h1 36 and h2 27 against a body of 19 — rather than invented. The
+ * seeded sample uses only `#` and `##` (sample.ts:2 and :8), so h3-h6 were
+ * never on screen; h3 moving 21 -> 24 therefore retunes nothing that was ruled
+ * on, and it is required by the fix, since three levels cannot sit
+ * distinguishably between 21 and a body of 19.
+ */
+export const HEADING_SIZE_RATIO: Record<number, number> = {
+  1: 1.9,
+  2: 1.4,
+  3: 1.27,
+  4: 1.21,
+  5: 1.16,
+  6: 1.1,
+};
+
+/**
+ * The heading size table for a given body size. Pure, and exported so the suite
+ * can sweep it across bases instead of trusting one shipped table.
+ *
+ * BUILT FROM THE BOTTOM UP, and that is the whole point: h6 is floored at
+ * `bodyFontSize + 1`, and every level above it is at least one pixel larger than
+ * the level below. Both invariants then hold UNCONDITIONALLY, for any body size,
+ * rather than holding by arithmetic luck at one particular base.
+ *
+ * The alternative — round each ratio independently — was measured and rejected:
+ * adjacent ratios only 0.05 apart collide once the base is small enough that
+ * 0.05 x base rounds to zero. At a body of 16 the 1.21 and 1.16 levels BOTH
+ * round to 19, so h4 === h5 and the strictly-decreasing invariant fails. That is
+ * the same class of silent, base-dependent breakage AD26 recorded, so it is
+ * designed out here instead of being left for a future `bodyFontSize` edit to
+ * rediscover.
+ *
+ * At the shipped body of 19 the enforcement is inert: every level takes its
+ * ratio value unchanged, giving 36 / 27 / 24 / 23 / 22 / 21.
+ */
+export function headingFontSizes(bodyFontSize: number): Record<number, number> {
+  const sizes: Record<number, number> = {};
+  // The level nearest body text carries the floor; each level up clears the one
+  // below it by at least a pixel.
+  let atLeast = bodyFontSize + 1;
+  for (let level = 6; level >= 1; level--) {
+    const size = Math.max(Math.round(bodyFontSize * HEADING_SIZE_RATIO[level]), atLeast);
+    sizes[level] = size;
+    atLeast = size + 1;
+  }
+  return sizes;
+}
+
 export const LAYOUT = {
   // ── Word boxes (AD21). Carried from the probe's TUNING block. ──
   /** Space between adjacent word boxes on the same line. Applied as
@@ -71,35 +145,48 @@ export const LAYOUT = {
   wordPadH: 2,
   wordPadV: 1,
 
-  // ── Type. Body from index.css:629; heading sizes derived below. ──
+  // ── Type. Body from index.css:629; heading sizes derived from it above. ──
   /**
-   * 19, NOT web's 18. index.css:629 is `1.125rem` = 18px, but the stage 1
-   * acceptance probe measured question (d) at 19 and the project owner's
-   * visual ruling is pending against THAT value. Matching the probe means the
-   * ruling transfers to this surface with no translation step. A deliberate
-   * +1 over web, and a one-value edit to revert.
+   * 19, NOT web's 18. index.css:629 is `1.125rem` = 18px, and the stage 1
+   * acceptance probe measured question (d) at 19 so that the pending visual
+   * ruling would transfer to this surface with no translation step.
+   *
+   * THAT RULING IS NOW MADE. AF36 recorded question (d) as deferred with no
+   * ruling; AF39 records the ruling itself, made by the project owner against
+   * the real reader surface on a physical device and an emulator: SHIP AS IS.
+   * So 19 stands, and so does every other value in this export — the heading
+   * scale is the only thing AD29 changes.
    */
-  bodyFontSize: 19,
+  bodyFontSize: BODY_FONT_SIZE,
   bodyLineHeight: 30,
   /**
-   * Heading sizes. The web CSS sets NO font-size for headings — `.reader-heading`
-   * carries only margin and line-height, and web emits real `<h1>`..`<h6>`
-   * (Reader.tsx:95-97, level clamped to 1-6), so the sizes come from browser UA
-   * defaults. React Native has no such defaults, so the UA scale is applied
-   * explicitly: h1 2em, h2 1.5em, h3 1.17em, h4 1em, h5 0.83em, h6 0.67em,
-   * rounded to whole pixels.
+   * Heading sizes, DERIVED from `bodyFontSize` by `headingFontSizes` above
+   * (AD29). Web sets no heading font-size at all — `.reader-heading` carries
+   * only margin and line-height, and web emits real `<h1>`..`<h6>`
+   * (Reader.tsx:95-97, level clamped to 1-6) — so there is no web source for
+   * these values, and React Native has no UA defaults to inherit.
    *
-   * These derive from WEB'S 18px base, NOT from `bodyFontSize` above, which is
-   * 19. That mismatch is a KNOWN DEFECT recorded in DECISIONS.md AD26 and
-   * deliberately left in place for this change: h4 (18) is SMALLER than body
-   * text (19), and at `headingWeight` 400 it has no weight advantage either, so
-   * an h4 is indistinguishable from a paragraph; h5 (15) and h6 (12) are
-   * smaller still. Markdown `####` produces exactly this. The seeded sample
-   * uses only `#` and `##`, so the MVP's default document does not exhibit it.
-   * Fix deferred to a follow-up, to be settled with AF36's pending tuning
-   * ruling since both concern this same table.
+   * WHAT CHANGED, AND WHY. The MVP shipped the browser UA scale (h1 2em ... h6
+   * 0.67em) multiplied by WEB'S 18px base while `bodyFontSize` here is 19. AD26
+   * recorded the result as a KNOWN DEFECT: h4 came out at 18, SMALLER than body
+   * text, with h5 (15) and h6 (12) smaller still — and at `headingWeight` 400
+   * they had no weight advantage either, so an h4 was indistinguishable from a
+   * paragraph.
+   *
+   * The UA ratios were the defect, not merely the base they multiplied. 1em /
+   * 0.83em / 0.67em only ever work because a browser pairs them with bold 700;
+   * `headingWeight` is deliberately 400 here so the bionic head stays visible
+   * (see below), which leaves size to carry the signal alone. So the scale is
+   * FLOORED ABOVE 1.0, not merely rebased.
+   *
+   * At a body of 19 this is 36 / 27 / 24 / 23 / 22 / 21. h1 and h2 are
+   * unchanged from what shipped and was judged; h3-h6 now all sit above body
+   * text. Residual, recorded in AD29 rather than left to be discovered: h4/h5/h6
+   * are one pixel apart, so they are only NOMINALLY distinguished from each
+   * OTHER. What is fixed is "deep headings read as diminished or vanish into
+   * body text", not "all six levels are visually distinct".
    */
-  headingFontSize: { 1: 36, 2: 27, 3: 21, 4: 18, 5: 15, 6: 12 } as Record<number, number>,
+  headingFontSize: headingFontSizes(BODY_FONT_SIZE),
   /** index.css:652 — `line-height: 1.3` on `.reader-heading`. */
   headingLineHeightRatio: 1.3,
   /**

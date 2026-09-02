@@ -1151,6 +1151,259 @@
   logic exists nowhere in either codebase any more and is kept solely to
   demonstrate that it gets the #76 case wrong.
 
+- **AD28 · Click-to-jump ships: tapping a word seeks the pacer to it. A tap
+  SEEKS ONLY and never changes transport state, and end-of-document behaviour
+  is left to fall out of `usePacer` unchanged.** This is a scope ADDITION
+  beyond AD19 and AD23, requested by the project owner after testing the
+  merged MVP, so it is recorded rather than folded into either. AD19's
+  single-control scope is not disturbed: WPM remains the only *setting*, and
+  this is a gesture on the reading surface, not a control.
+
+  **Web's mechanism does not port, and the reason is structural rather than
+  stylistic.** `Reader.tsx`'s docblock at line 27 states the approach outright
+  — click-to-seek "uses one delegated handler on the pane (data-word-id), not
+  a closure per word" — and line 149 resolves the target with
+  `(e.target as HTMLElement).closest('[data-word-id]')` 📐 (read from the web
+  file for this entry, read-only). React Native has **neither event delegation
+  nor `closest()`**: a touch is delivered to the responder that claims it, and
+  there is no ancestor query to walk back up from a hit. So web's approach is
+  **unavailable**, not merely different, and the per-word cost web deliberately
+  avoided cannot be avoided the same way here.
+
+  **Mechanism chosen: (a), a per-word touch responder — specifically `onPress`
+  on the `Animated.Text` that already exists.** `onPress` is a **prop** of
+  `Text`, so this adds **zero new native nodes**: the animated box AD21 already
+  renders per word *is* the touch target. That is what makes the per-word cost
+  affordable on the unvirtualized surface AD24 `D-G` settled — the cost is one
+  Pressability instance per word, not one extra view per word.
+
+  **Mechanism (b) — ONE responder on the container, hit-testing a per-word rect
+  map — is rejected for the MVP and recorded as the scalable alternative.** It
+  gives one responder regardless of document length, which is the property web
+  was buying with delegation. It needs **x and width**, and the auto-scroll work
+  deliberately collects **Y only** (AF38) — so mechanism (b) has no existing
+  data to reuse and would have to add measurement the surface currently avoids.
+  That is the **same per-word-cost-versus-measurement trade as AD21's rejected
+  measured-rect highlight overlay, appearing in a second place**, and it belongs
+  in the same revisit: `D-G` and `D-Q`. Whichever way that trade is settled, it
+  should be settled once, for the overlay and the hit-test together, since both
+  want the same rect map.
+
+  **Two further mechanisms rejected, both for the same reason.** Wrapping each
+  word in a `Pressable`, or in a `GestureDetector` (`react-native-gesture-
+  handler` **is** installed at `~2.32.0` 📐, so this was a real option and not
+  an availability constraint), each interposes a `View` per word. That doubles
+  the node count of a surface that is deliberately unvirtualized, for a
+  capability `Text.onPress` already provides.
+
+  **Wiring: three files, entirely additive.** `WordBox` and `ReaderSurface` each
+  gain an optional `onSeekWord?: (index: number) => void`, supplied only when
+  present — exactly the shape the existing `onMeasureY` uses, and the same shape
+  web gets from `clickable={!!onSeekWord}` (`Reader.tsx:191` 📐). The reader
+  screen passes `pacer.seek` directly. **`src/pacer/` needed no change at all:**
+  `seek` already exists and already snaps through `nearestWordlike`
+  (`usePacer.ts:212-220`, `:37-43` 📐), so tapping a punctuation-only token
+  lands on the next word-like one with no special case — the same behaviour web
+  gets, since web marks every span clickable and lets `seek` snap.
+
+  **A tap does not re-render the document tree, and the one exception is
+  PRE-EXISTING rather than introduced.** A tap writes through the identical seam
+  a pacer tick uses: `seek` → `commit` → `indexRef` plus the integer listener
+  callback, and the listener in the reader screen writes a Reanimated shared
+  value. CLAUDE.md guard 1's integer-only seam is untouched, and guard 2 holds
+  because nothing is put into React state. The exception is stated rather than
+  glossed: `commit` calls `setAtEnd` when `atEnd` flips, and *only* then —
+  `usePacer.ts:114-117` guards it with `ended !== atEndRef.current` 📐 — so a
+  tap onto, or off, the last word-like token causes **one** React render. That
+  is the single state exception the tick path already carries, on a human
+  gesture, exactly like Play/Pause. **"Zero renders" would be a false claim and
+  is not made.**
+
+  **A drag that begins on a word must scroll, not seek — and it does, by
+  construction.** `Text` forwards `onResponderTerminationRequest` to
+  Pressability (`Text.js:449-452`), whose default returns `cancelable ?? true`
+  (`Pressability.js:526-529`) 📐 — both read out of this repo's own
+  `node_modules/react-native/`, not from vendor prose. So the enclosing
+  `ScrollView` can take the responder mid-touch and the press is cancelled.
+  **This is a STRUCTURAL claim, not a device observation.** The on-device drag
+  test is this entry's **pending acceptance check** and will produce its own
+  `AF` entry when the project owner runs it; nothing here was run on hardware
+  or an emulator by me.
+
+  **Auto-scroll interaction — and confirmation that AF38's `lastScrolledY`
+  design still holds.** It does, and a seek is the case that *validates* it
+  rather than merely surviving it. The reaction compares the target word's
+  absolute Y against the Y last scrolled for, so: tap an **off-screen** word and
+  the line is parked at `scrollTopInset`; tap a word on the **line already
+  anchored** and nothing scrolls, which is right, because repositioning a line
+  the reader is looking at is worse than leaving it. The rejected alternative —
+  comparing against the **previous index's** Y — breaks precisely here: after a
+  seek the previous index can be anywhere, possibly off-screen, so "did the line
+  change relative to the previous word" is the wrong question. `lastScrolledY`
+  asks the right one: *is the viewport already anchored on this line?* One
+  residual is recorded rather than fixed, in AF38: manually scroll the anchored
+  line off-screen, then tap a word on that same line, and no scroll fires until
+  the next line change. Fixing it means letting something other than
+  `currentIndex` drive scrolling, which is what CLAUDE.md guard 3 exists to
+  prevent.
+
+  **Ruling — end of document.** Nothing is special-cased, and `startedRef` is
+  **not** touched. `usePacer.ts:94-99`'s comment records that it is
+  "Deliberately NOT cleared in seek(): seeking to the document's last word must
+  keep disabling Play (F23/D89)" 📐, and that is honoured. Two consequences,
+  both falling out of the ported clock with no new code:
+  - Tapping the **last** word-like token leaves `atEnd` true and `startedRef`
+    set, so `play()`'s `atEndRef.current && startedRef.current` guard
+    (`usePacer.ts:190`) still refuses and the transport still reads **Restart**.
+    Correct: a tap means "put the highlight here", and there is nothing to
+    advance to. Restart stays the deliberate whole-document gesture.
+  - Tapping **backwards** from the end makes `commit` recompute
+    `ended === false`, flipping `atEnd` false, so the transport returns to
+    **Play** and playback is available again with no Restart needed.
+
+  **Ruling — a tap while paused SEEKS ONLY; it does not play.** Only this is
+  implemented; the alternative is not shipped behind a setting. Four reasons,
+  in order of weight. (1) It is what web does: `App.tsx:410` and `:434` are
+  both `onSeekWord={pacer.seek}` 📐 — seek with no play — so the port gains no
+  new divergence. (2) Positioning the highlight *before* starting stays
+  possible; auto-play would remove the ability to simply move it. (3) A touch
+  surface produces more accidental activations than a mouse, and a stray tap
+  that starts playback is worse than one that moves a highlight. (4) It makes
+  the rule uniform in both directions: while **playing**, `seek` zeroes the
+  accumulator (`usePacer.ts:216`) and the rAF loop continues from the new word,
+  so a tap changes position and never transport state, whatever the state was.
+
+  **Known limitation, recorded rather than fixed.** A body-text word box is
+  about 32 dp tall (`bodyLineHeight` 30 plus `wordPadV` 1 either side), below
+  Android's 48 dp touch-target guidance. `hitSlop` is not applied: adjacent word
+  boxes are separated by `wordGapH` 5, so any meaningful slop would overlap its
+  neighbours and make which word was tapped ambiguous — worse than a small
+  target. Inline text targets cannot reach 48 dp without either overlap or
+  spacing the surface would not survive, and the surface's spacing is what AF39
+  just ruled on.
+
+- **AD29 · AD26's shipped heading defect is FIXED, and AF36's pending layout
+  ruling is resolved as SHIP AS IS. The heading scale is the only layout value
+  that changes.** AD26 recorded the defect knowingly — its own text says the
+  fix is "deferred to a follow-up change and deliberately not made here, so
+  that this entry describes what actually ships rather than what was intended"
+  — and named two candidate shapes without choosing. This chooses.
+
+  **The defect, restated exactly.** Heading sizes shipped as
+  36 / 27 / 21 / 18 / 15 / 12: the browser UA scale (h1 2em … h6 0.67em)
+  multiplied by **web's 18px base**, while `bodyFontSize` here is **19**
+  (AD26's own deliberate +1). Nothing connected the table to the base, so h4
+  rendered at **18 — smaller than body text** — with h5 (15) and h6 (12)
+  smaller still; and at `headingWeight` 400 they carried no weight advantage
+  either, so an h4 was indistinguishable from a paragraph.
+
+  **AD26's candidate (ii) — give headings a weight advantage — is REJECTED, and
+  not on taste.** `headingWeight` must stay strictly below `bionicHeadWeight`
+  700 or the bionic anchor disappears inside headings, which is AD26's entire
+  reason for choosing 400 against web's inherited bold. That leaves 500 or 600.
+  Android's Roboto ships Regular 400, Medium 500 and Bold 700, so a 600 request
+  resolves to an adjacent available face and can land **on 700 itself**,
+  silently collapsing head and tail to the same weight — reproducing the exact
+  web behaviour AD26 diverged from. Weight is not a usable channel here, so
+  candidate **(i), rebase on the live `bodyFontSize`**, is taken.
+
+  **But rebasing alone is insufficient, and this is the part AD26 did not
+  see: the UA RATIOS are the defect, not merely the base they multiply.**
+  1em / 0.83em / 0.67em for h4/h5/h6 only ever work because a browser pairs
+  them with **bold 700** — size parity is fine when weight carries the signal.
+  AD26 removed the weight signal for good reason and kept sizes that depended
+  on it. So the ratio scale is replaced with one **floored above 1.0**, not
+  merely re-multiplied.
+
+  **The values.** `HEADING_SIZE_RATIO` is `1.9 / 1.4 / 1.27 / 1.21 / 1.16 /
+  1.1`, applied to the live body size, giving at 19:
+
+  | level | new | old |
+  |---|---|---|
+  | h1 | **36** | 36 (unchanged) |
+  | h2 | **27** | 27 (unchanged) |
+  | h3 | **24** | 21 |
+  | h4 | **23** | 18 — *was below body* |
+  | h5 | **22** | 15 — *was below body* |
+  | h6 | **21** | 12 — *was below body* |
+
+  1.9 and 1.4 are chosen to **reproduce** the two levels that were actually
+  judged on-device rather than being invented: the seeded sample contains
+  exactly one `#` and one `##` and no deeper heading (`sample.ts:2` and `:8`,
+  checked for this entry 📐), so **h1 36 and h2 27 are precisely the values
+  that were on screen**, and they are preserved byte-for-byte. **h3 moving
+  21 → 24 is required by the fix**, not a retune: three levels cannot sit
+  distinguishably between 21 and a body of 19, so the window has to open — and
+  h3 was never rendered on device, so nothing that was ruled on is disturbed.
+  `headingWeight` 400, `bionicHeadWeight` 700, `headingLineHeightRatio` 1.3 and
+  every other `LAYOUT` value are **untouched**. Values live in `LAYOUT` and
+  nowhere else: one `BODY_FONT_SIZE` constant feeds both `bodyFontSize` and the
+  derivation.
+
+  **The derivation ENFORCES both invariants rather than inheriting them from
+  the arithmetic, and that changed during implementation on a measurement.**
+  Rounding each ratio independently was the first design and it is wrong: two
+  ratios 0.05 apart collide once `0.05 x base` rounds below 1, so at a body of
+  **16** the 1.21 and 1.16 levels **both round to 19** and h4 === h5 🧪
+  (measured by sweeping the candidate function, not reasoned about). That is the
+  same class of silent, base-dependent breakage AD26 recorded, so it is designed
+  out: `headingFontSizes` builds **from the bottom up** — h6 is floored at
+  `bodyFontSize + 1`, and each level above clears the one below by at least a
+  pixel. Both invariants then hold **unconditionally at every body size**,
+  verified across bases 8-60 by the new suite and 1-200 during development 🧪.
+  At the shipped 19 the enforcement is inert: every level takes its ratio value
+  unchanged.
+
+  **RESIDUAL, stated plainly so this fix is not later read as claiming more
+  than it delivers.** h4/h5/h6 land at **23 / 22 / 21 — one pixel apart** — so
+  they are only **nominally** distinguished **from each other**. What is fixed
+  is *"deep headings read as diminished, or vanish into body text"*. What is
+  **not** claimed is *"all six heading levels are visually distinct."* The scale
+  is deliberately not redesigned to buy that: the window between h2 at 27 and
+  the floor at 21 does not admit four well-separated levels, and preserving the
+  judged h1/h2 values matters more than separating levels a reader will rarely
+  meet. Two channels do still separate a deep heading from a paragraph, and one
+  of them AD26 did not credit: heading blocks carry `marginTop` 28.8 with
+  `marginBottom` 9.6 against a paragraph's 17.6 bottom margin 📐, so every
+  heading is preceded by a large gap and bound tightly to the text beneath it.
+  Spacing was never the broken part; *size going the wrong way* was.
+
+  **AF36's ruling is resolved here: SHIP AS IS.** AF36 recorded probe question
+  (d) — word-box layout acceptability — as deferred with no ruling, because the
+  instrument was 22 words on an empty screen and the artifact is a full
+  document. The project owner has now tested the real reader on a physical
+  device and an emulator and judged word gaps, line spacing, highlight strength
+  and body size acceptable for the MVP. So `bodyFontSize` stays **19**, gaps,
+  padding, line height, highlight opacity and radius, block margins and
+  `scrollTopInset` all stay as they are, and **nothing is retuned** — the
+  heading scale above is the only change. The ruling itself, being
+  owner-witnessed device evidence rather than a choice, is recorded as
+  **FINDINGS AF39**; this entry records only what changes as a result. Those
+  judged values are now pinned by a check, so a future retune has to be
+  deliberate rather than accidental.
+
+  **A thirteenth headless suite ships with this change**
+  (`src/reader/palette-headless-test.mjs`, 27 checks), bundling the real
+  `palette.ts` — which imports nothing, so it needs no React Native, Reanimated
+  or DOM stub. It was added **in this change rather than deferred** at the
+  project owner's direction, on the grounds that the defect being fixed is a
+  silent regression of a recurring class. It asserts both invariants at the
+  shipped base and across 53 swept bases; that the shipped table **is** the
+  derivation of the shipped body size rather than a literal; that the
+  historical UA-on-18 table **fails** the check, so the suite demonstrably
+  catches the thing it was written for; that a **pinned** snapshot of today's
+  table fails once the body size is raised beneath it — the exact historical
+  failure, re-enacted rather than described; that independent rounding really
+  does collide at a body of 16 while the shipped derivation does not; and that
+  `headingWeight` stays below `bionicHeadWeight`, so a future "give headings a
+  weight advantage" edit cannot silently undo the bionic-anchor divergence.
+  It was validated against a negative control before being trusted, following
+  AF21's precedent: the defect table was temporarily reintroduced into
+  `palette.ts`, the suite failed **5 of 27** checks and exited **1**, and
+  `palette.ts` was then restored and confirmed byte-identical by `diff` 🧪.
+  The **core 8 suites and their 125 checks are untouched** — the new suite is
+  registered in `test:local` only.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -1262,3 +1515,46 @@
   app close, Restart works at end of document, the paste box parses, and the
   WPM control is functional. Those runs were witnessed by the project owner and
   **not** by me; I ran no device or emulator at any point.
+- 2026-09-02 — appended AD28-AD29 on `feature/click-to-jump`. **AD28** records
+  click-to-jump as a scope addition beyond AD19/AD23, requested by the project
+  owner after testing the merged MVP: tapping a word seeks the pacer to it, via
+  `onPress` on the `Animated.Text` word box AD21 already renders — mechanism
+  (a), a per-word responder, chosen because it adds **zero new native nodes**.
+  Web's approach does not port at all: `Reader.tsx:27` states it uses one
+  delegated handler keyed by `data-word-id` and `:149` resolves the target with
+  `closest()`, and React Native has **neither event delegation nor `closest()`**.
+  Mechanism (b) — one container responder hit-testing a per-word rect map — is
+  rejected and recorded as the scalable alternative, filed with `D-G`/`D-Q`
+  alongside AD21's measured-rect overlay, since it is the **same per-word-cost-
+  versus-measurement trade in a second place** and wants the same rect map the
+  overlay does. Two rulings: a tap **seeks only and never changes transport
+  state** (matching web's `onSeekWord={pacer.seek}` at `App.tsx:410`/`:434`),
+  and **end-of-document behaviour is left to fall out of `usePacer` unchanged** —
+  `startedRef` is deliberately not cleared in `seek` (F23/D89), so a tap on the
+  last word keeps Play disabled and the transport reads Restart, while a tap
+  backwards flips `atEnd` false and re-enables Play. `src/pacer/` needed no
+  change. The entry declines to claim "zero renders": `commit`'s `setAtEnd` is
+  the one pre-existing state exception, fires only when `atEnd` flips, and a tap
+  on or off the last word therefore costs one render on a human gesture. The
+  drag-scrolls-rather-than-seeks property is recorded as a **structural** read of
+  `Text.js:449-452` and `Pressability.js:526-529`, with the on-device drag test
+  named as a **pending acceptance check**. **AD29** fixes the heading defect
+  AD26 recorded as shipping and resolves AF36's pending ruling as **ship as-is**:
+  AD26's candidate (ii) (a weight advantage) is rejected because Roboto has no
+  usable face between 400 and 700 and a 600 request can land on 700, collapsing
+  the bionic anchor AD26's divergence exists to protect; candidate (i) is taken,
+  but with the finding that the **UA ratios** were the defect and not merely
+  web's 18px base, so the scale is floored above 1.0 rather than re-multiplied.
+  At a body of 19 the table becomes **36 / 27 / 24 / 23 / 22 / 21** — h1 and h2
+  preserved because they are the only levels the sample renders and therefore the
+  only ones judged, h3 moved because three levels cannot fit distinguishably
+  between 21 and 19. The derivation **enforces** both invariants from the bottom
+  up after a sweep measured independent rounding colliding at a body of 16
+  (h4 === h5). Residual recorded: h4/h5/h6 are one pixel apart and only
+  nominally distinguished **from each other** — what is fixed is "deep headings
+  read as diminished or vanish into body text", not "all six levels are visually
+  distinct". A **thirteenth headless suite** (27 checks) ships with the change at
+  the project owner's direction and was validated against a negative control
+  before being trusted; the core 8 suites and their 125 checks are untouched.
+  The auto-scroll mechanism and the AF36 ruling itself are recorded separately as
+  FINDINGS **AF38** and **AF39**, since neither decided anything.
