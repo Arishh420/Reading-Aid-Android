@@ -630,6 +630,220 @@
   evidence sits on a VM about a year behind the shipping engine) — neither is
   touched here.
 
+## Stage 1 acceptance probe — AD21, AD22 and AD23's pending device evidence
+
+> Scope warning that governs this whole section: **two distinct surfaces
+> produced these numbers and they are NOT merged into ranges.** Every figure
+> is attributed to the surface that produced it. The physical-device and
+> emulator runs are reported separately throughout, because AF35 below
+> establishes that for frame timing they are not interchangeable.
+>
+> All device and emulator observations were witnessed by the project owner on
+> running hardware and reported to me. **I did not run either surface** and
+> cannot reproduce any of it from a Claude Code session — recorded the same
+> way AF27/AF28/AF31 record owner-witnessed evidence. The 👁 half of each tag
+> below is inherited; any 🧪 half is mine, from this session.
+>
+> The instrument was a throwaway probe screen at `src/app/index.tsx`, built
+> for this purpose: no parser, no `usePacer`, no `ScrollView`, no storage, so
+> that a failure could only be attributed to the highlight mechanism itself.
+> It was replaced by the reader screen in stage 4.
+
+- **AF32** 👁 — **AD21's per-tick highlight mechanism is PROVEN ON PHYSICAL
+  HARDWARE: the highlight advances with ZERO React re-renders.** This is the
+  acceptance probe AD21 recorded as pending, and AD21 explicitly stated "The
+  mechanism is chosen, not proven. … Nothing in AD21 was executed." It is now
+  executed.
+  The probe rendered ~20 word boxes — a `flexWrap` `View` of `Animated.Text`
+  nodes, each deriving its background from one Reanimated shared value on the
+  UI thread — and advanced that value on a `requestAnimationFrame` loop. A
+  `useRef` counter incremented in the component body was displayed on screen.
+  **Physical device, two independent runs:** run A, **960 frames / 47 word
+  advances**; run B, **379 frames / 19 word advances** — **1339 frames and 66
+  advances in total**. In both runs the render counter **never moved on its
+  own**, and moved by **exactly one per tap** of the negative-control button.
+  **Emulator, second run:** 126 frames / 7 advances, one render per tap.
+  **Run B's render total was 7, and that is not a regression.** The counter is
+  a *tap* count, not a reconciliation count: the negative control was tapped
+  seven times and the counter read seven. Run A's total of 1 corresponds to one
+  tap. A future reader comparing "1" against "7" across the two runs would
+  otherwise reasonably suspect the mechanism had started re-rendering.
+  **Why the negative control matters.** A counter frozen at 1 is consistent
+  with two very different situations — the mechanism working, or the counter
+  being broken. The button forces exactly one render, so the frozen reading is
+  only trusted because the same instrument was shown to be capable of moving.
+  This follows AF21's precedent of validating a probe against controls before
+  trusting a green result.
+  **Direct hardware evidence, not inference.** This is not the emulator result
+  extended to the device by engine equivalence — the counter was read on the
+  phone, in both runs.
+
+- **AF33** 🧪👁 — **AF31 residue item 4 is CLOSED: `\p{L}` at
+  `src/core/reader/bionic.ts:31` works under device Hermes.** AD23 promoted
+  this from "adjacent" to MVP-blocking when bionic returned to scope, and
+  required the acceptance probe to exercise bionic rendering on a real device.
+  The evidence is deliberately split by level, following AF31's own
+  three-level discipline, because the two surfaces did not produce the same
+  kind of evidence:
+  **Emulator — level C (a correct match observed).** All five split samples
+  matched the expected `lead`/`head`/`tail` decomposition **exactly**,
+  confirmed by screenshot: `quick`→`«»/«qui»/«ck»`, `(e.g.`→`«(»/«e»/«.g.»`,
+  `éclair`→`«»/«écl»/«air»`, `अक्षर`→`«»/«अक»/«्षर»`,
+  `2026`→`«»/«»/«2026»`. Those five expectations were computed **by me** this
+  session by esbuild-bundling the real `src/core/reader/bionic.ts` and running
+  `splitBionic` under Node (🧪), then printed on the probe screen, so the
+  device comparison was against a pre-committed value rather than a judgement
+  made after seeing the output.
+  **Physical device — level A (parsed) and visible bionic rendering only.**
+  The screen rendered and bionic bolding was visible in the word-box layout.
+  Because an unparseable regex *literal* fails at **module load** rather than
+  at call time (AF12 #1), a rendered screen is proof that `/\p{L}/u` **parsed**
+  on hardware, and visible bolding is proof `splitBionic` ran and produced a
+  non-empty `head`. **The device split table was NOT transcribed, so it is not
+  claimed that the device reproduced the five-way table.**
+  **Why the emulator match carries.** The two surfaces run the same arm64
+  Hermes build from the same Expo SDK 57 / RN 0.86.3 project, so a Unicode
+  property-escape match is an engine-level behaviour, not a
+  hardware-dependent one — stated explicitly rather than elided, because the
+  inference is what does the work here.
+  **`अक्षर` is the strongest of the five**, and the reason is worth recording:
+  its virama (U+094D) is Unicode category **Mn**, a combining mark, not a
+  letter. `head=«अक»` therefore proves `\p{L}` correctly returned **false**
+  for a combining mark sitting adjacent to letters — not merely that it
+  matched *something*. A `\p{L}` that over-matched would have produced a
+  different, longer head.
+
+- **AF34** 👁 — **NEGATIVE RESULT: `requestAnimationFrame`'s callback
+  timestamp and `performance.now()` share a time base on real hardware, so
+  the anticipated clock skew DOES NOT OCCUR and AD22's ported clock needs no
+  patch.** Recorded as a negative result following **AF30**'s precedent, so
+  it is not mistaken for a fix or for a hazard that was found.
+  The concern was specific and structural, not hypothetical: the ported
+  `usePacer` seeds `lastRef` from `performance.now()` (web line 175) and then
+  differences it against rAF's `now` argument (web line 130). If those were
+  different time bases, the **very first frame delta** would be garbage — a
+  large jump or a stall — and AD22 stated that "if React Native's timing
+  source or backgrounding behaviour differs materially from the browser's …
+  the port becomes a rewrite." AD22 asserted both primitives from vendor
+  documentation and measured neither.
+  The probe sampled both clocks at the same instant on the first frame and
+  reported the difference. **Physical device: −0.12 ms (run A) and −0.13 ms
+  (run B).** **Emulator: −0.07 ms.** Sub-millisecond on every surface, i.e.
+  the same time base. Both primitives were also confirmed present rather than
+  assumed: the probe printed their availability and reported
+  `clock in use: performance.now()`, meaning its `Date.now()` fallback was
+  never taken.
+  **Consequence:** AD22's seeding assumption is verified rather than silent,
+  and the four-line port stands as ported. Nothing about the clock needed
+  changing.
+
+- **AF35** 👁 — **Emulator frame timing is NOT a proxy for device frame
+  timing. This is the measurement that establishes it for this project.**
+  Recorded as a finding in its own right because it changes how every future
+  performance observation in this repo must be read.
+  **Physical device — essentially locked 60 fps.** Run A: mean **16.62 ms**,
+  min 4.34, max **31.03**. Run B: mean **16.82 ms**, min 3.85, max **33.98**.
+  A 60 fps frame is 16.67 ms, so both means sit on it, and both maxima are
+  roughly **one dropped frame**.
+  **Emulator — a stall that never occurred on hardware.** Second run: mean
+  **19.93 ms**, min 8.33, max **120.82 ms**. That maximum is about **seven
+  frames** at 60 fps, and nothing like it appeared in either device run.
+  **Why this matters beyond one number.** AD24 `D-G` settled "no
+  virtualization for the MVP" with an explicit revisit trigger — "the first
+  document that visibly stutters on scroll, or takes more than a moment to
+  mount." A 120 ms stall observed on an emulator would trip that trigger and
+  would be **the wrong signal**: it is an artifact of the surface, not of the
+  document or the mechanism. The trigger must be evaluated on hardware.
+  **Device figures are the operative ones** for every frame-timing claim in
+  this repo; emulator figures are recorded separately and must stay separate.
+  Note the direction of the asymmetry: the emulator is *pessimistic* here, so
+  it can raise false alarms but is unlikely to hide a real device stall.
+
+- **AF36** ❓ — **Probe question (d), word-box layout acceptability, is
+  DEFERRED — not failed, and not passed.** No tuning ruling has been made, and
+  the reason is that the instrument is not the artifact.
+  The probe was **22 hard-coded words at 19 px on an otherwise empty screen**,
+  with no headings, no paragraph spacing, no scroll and no reading density.
+  The reader surface is a **full document** with heading sizes 36/27/21/18/15/12
+  against a 19 px body, web's block margins (28.8 / 9.6 / 17.6), a
+  `ScrollView`, and auto-scroll following the active line. Judging the second
+  against measurements taken on the first would be guessing at a visual
+  question, so no ruling was made rather than a weak one being recorded.
+  **Stage 4 therefore ships with the current `LAYOUT` values unchanged**, and
+  tuning happens once the real reader is on screen. That is a one-place edit:
+  `src/reader/palette.ts`'s `LAYOUT` export is the single source of every
+  spacing and type value the surface uses, which is why the probe's `TUNING`
+  block was carried forward into it rather than scattered across `WordBox` and
+  `ReaderSurface`.
+  One value is already knowingly divergent from web and is the most likely
+  first thing to revisit: `LAYOUT.bodyFontSize` is **19**, whereas web's
+  `index.css:629` is `1.125rem` = **18**. 19 was chosen so that the probe's
+  pending (d) ruling would transfer to the surface without a translation step.
+
+## Process — concurrent-session incident
+
+- **AF37** 🧪📐 — **Two Claude Code sessions wrote this branch simultaneously
+  and each destroyed the other's work. Recorded as an observation, not a
+  decision: nothing was chosen here, something happened.**
+
+  **Cause.** Two prompts intended for two different windows were issued in a
+  single chat message, without labels that unambiguously assigned each to a
+  window. Both were acted on, in the same working directory, on the same
+  branch, at the same time.
+
+  **What each session destroyed.**
+  - The other session **deleted the stage 1 acceptance probe**
+    (`src/app/index.tsx`), replacing it with a 15-line stage 4 wiring. That
+    probe was the *only* instrument for collecting the (c) and (d) device
+    readings, which at that moment were still outstanding.
+  - This session **truncated a `src/reader/palette.ts` it had not created**, by
+    writing with `cat >` without first checking whether the path existed.
+    `cat >` truncates in place. This was my error, not a collision artifact.
+
+  **A third failure, and the most serious of the three.** The other session
+  appended an **AD entry to `DECISIONS.md` asserting that the layout values
+  "was hand-tuned on-device and represent the MVP's accepted visual
+  baseline."** No device tuning had occurred: probe question (d) was — and per
+  AF36 still is — **deferred with no ruling made**. It also cited
+  `index.css:634-643` where the rule runs to 644. That entry was **reverted
+  rather than merged**, and a corrected AD26 written in its place.
+
+  **Three operational lessons.**
+  1. **One Claude Code session per repository at a time.** Two agents in one
+     working tree have no shared lock, no awareness of each other, and no merge
+     step — the tree is the only shared state, and last write wins.
+  2. **Check whether a path exists before writing to it.** `cat >` truncates
+     silently, and an untracked file has no git history to recover from. Both
+     halves matter: the redirect is destructive, and `??` in `git status` means
+     there is no safety net.
+  3. **A decision-log entry asserting an event that did not happen is the most
+     corrosive possible failure in an append-only file.** Code that is wrong
+     gets caught by `npm run check`. A false `AD`/`AF` entry is caught by
+     nothing, is never rewritten by convention, and is treated as ground truth
+     by every later reader — including by future sessions reconstructing why a
+     choice was made. The invented device-tuning claim would have justified
+     skipping the real (d) ruling forever.
+
+  **How it was detected**, recorded because neither signal is obvious: `ps`
+  showed a **second `claude` process (PID 25107)** started roughly three
+  minutes before the foreign files appeared, and `stat` **birth times** proved
+  truncation rather than creation — `src/reader/palette.ts` reported
+  `birth=09:08:01` against `mod=09:13:55` on the same inode, i.e. the file
+  pre-existed the write that emptied it. Modification times alone would not
+  have shown this; a same-inode birth/modify mismatch is what distinguishes "I
+  created this" from "I overwrote someone".
+
+  **What made the revert reversible.** Every foreign artifact — the deleted
+  `ReaderSurface.tsx`, the foreign `index.tsx`, and the foreign AD entry as a
+  patch — was **copied into the session scratchpad before anything was
+  reverted**, so the revert destroyed no information and remained undoable.
+  Nothing was discarded on the assumption it was wrong.
+
+  **Not claimed:** that any of this reached a commit. Both sessions' work was
+  uncommitted throughout, which is why the foreign `DECISIONS.md` entry could
+  be reverted with `git checkout --` rather than needing an append-only
+  correction entry of its own.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -670,3 +884,37 @@
   three of the four — `\p{M}` and `normalize('NFC')` in `orp.ts`, `matchAll`
   in `epubStructure.ts` — plus `\p{L}` in `bionic.ts` and `\p{N}`'s matching
   behaviour. AF28 is left unedited.
+- 2026-09-02 — appended AF32–AF36 on `feature/mvp-reader`, recording the stage
+  1 acceptance probe that AD21, AD22 and AD23 each listed as pending. AF32:
+  AD21's mechanism is proven on **physical hardware** — 1339 frames and 66
+  word advances across two device runs with zero spontaneous React renders,
+  and run B's render total of 7 explained as seven negative-control taps
+  rather than a regression. AF33: **AF31 residue item 4 is CLOSED** — `\p{L}`
+  in `bionic.ts` parses and runs on device; the exact five-way split table was
+  matched on the **emulator** (screenshot) and the device gave module-load and
+  visible-bolding evidence only, with engine-level equivalence stated as the
+  reason the emulator match carries. AF34: a **negative result** per AF30's
+  precedent — rAF and `performance.now()` share a time base on hardware
+  (−0.12 / −0.13 ms), so AD22's seeding assumption is verified and the ported
+  clock needs no patch. AF35: **emulator frame timing is not a proxy for
+  device frame timing** (emulator max 120.82 ms, a seven-frame stall, against
+  device maxima of 31.03 and 33.98 ms on device means of 16.62 / 16.82 ms) —
+  which matters because AD24 `D-G`'s virtualization revisit trigger must be
+  evaluated on hardware. AF36: probe question (d) is **deferred, not failed**
+  — the probe is 22 words on an empty screen and the reader is a full document,
+  so tuning waits for the real surface and stays a one-place edit in
+  `palette.ts`. Surfaces are attributed throughout and never merged into
+  ranges.
+- 2026-09-02 — appended **AF37**, recording the concurrent-session incident
+  that interrupted stages 3–4: two Claude Code sessions wrote this branch at
+  once because two prompts meant for different windows arrived in one message,
+  and each session destroyed work — one deleted the stage 1 probe, the other
+  (mine) truncated a `palette.ts` it had not created by using `cat >` without
+  checking whether the path existed. Written as an `AF` rather than an `AD`
+  because nothing was decided. Records the three operational lessons, how the
+  collision was detected (a second `claude` PID, and a same-inode
+  birth/modify mismatch), and that preserving the foreign artifacts in a
+  scratchpad is what kept the revert reversible. The foreign `DECISIONS.md`
+  entry asserting on-device tuning that never happened is called out
+  specifically: a decision log that records an event which did not occur is
+  the one failure mode nothing in this repo can catch.
