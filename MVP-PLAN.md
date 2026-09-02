@@ -81,21 +81,21 @@ Pointer and one-line status only. Rationale lives in the `AD` entry, never here.
 
 | # | Item | Status | Where |
 |---|---|---|---|
-| **D-A** | Feature scope: modes, bionic, themes, presets, settings | **DECIDED** | [AD19](DECISIONS.md) |
+| **D-A** | Feature scope: modes, bionic, themes, presets, settings | **DECIDED** | [AD19](DECISIONS.md) + [AD23](DECISIONS.md) |
 | **D-B** | Which document formats ship in v1 | **DECIDED** | [AD20](DECISIONS.md) |
 | **D-C** | Where decisions get logged | **DECIDED** | [AD18](DECISIONS.md) |
 | **D-D** | Core drift across the repo boundary | **OPEN** — options in web PORT-PLAN.md §5.2, none chosen | §4.1 |
 | **D-R** | Web issue #108 (`**hi **`) — fix sequence across repos | **OPEN — blocked on D-D** — agreed in principle | §4.2 |
 | **D-E** | Per-tick highlight mechanism (CLAUDE.md §4 invariant) | **DECIDED** | [AD21](DECISIONS.md) |
 | **D-F** | The pacer clock | **DECIDED** | [AD22](DECISIONS.md) |
-| **D-G** | Reading surface and virtualization | **OPEN** — AD19 selects no virtualization; open only whether that holds on a device | §4.5 |
-| **D-H** | Getting a file in | **OPEN** | §5.1 |
-| **D-I** | Storage scope — what actually persists | **OPEN** — MMKV itself settled (AD6) | §5.2 |
-| **D-J** | Screens and navigation | **OPEN** | §5.3 |
-| **D-K** | Settings and presets | **DECIDED** | [AD19](DECISIONS.md) |
-| **D-L** | How the APK reaches a physical phone | **OPEN** | §6.1 |
-| **D-M** | App identity — icon, splash, display name | **OPEN** — package name settled (AD17) | §6.2 |
-| **D-N** | Headless suites on Android | **OPEN** — interacts with D-D | §6.3 |
+| **D-G** | Reading surface and virtualization | **DECIDED** | [AD24](DECISIONS.md) |
+| **D-H** | Getting a file in | **DECIDED** | [AD24](DECISIONS.md) |
+| **D-I** | Storage scope — what actually persists | **DECIDED** | [AD24](DECISIONS.md) |
+| **D-J** | Screens and navigation | **DECIDED** | [AD24](DECISIONS.md) |
+| **D-K** | Settings and presets | **DECIDED** | [AD19](DECISIONS.md) + [AD23](DECISIONS.md) |
+| **D-L** | How the APK reaches a physical phone | **DECIDED** | [AD24](DECISIONS.md) |
+| **D-M** | App identity — icon, splash, display name | **DECIDED** | [AD24](DECISIONS.md) |
+| **D-N** | Headless suites on Android | **DECIDED** | [AD24](DECISIONS.md) |
 | **D-O** | pdf.js on React Native | **SPIKE** — not started; post-MVP per AD20, blocks nothing | §7.1 |
 | **D-P** | JSZip on React Native | **SPIKE** — not started; post-MVP per AD20, blocks nothing | §7.2 |
 | **D-Q** | Virtualization + imperative highlight together | **SPIKE** — not started; deferred out of the MVP by AD19, returns whenever virtualization does | §7.3 |
@@ -109,9 +109,10 @@ register section below is deleted from this file.
 
 ### 3.1 · D-A — Feature scope: modes, bionic, themes, presets, settings
 
-**DECIDED.** Flowing Highlight is the only pacer mode; RSVP, Chunk, bionic
-rendering and presets are cut; one theme (`light`) and one setting (WPM). See
-**AD19** in [DECISIONS.md](DECISIONS.md). Rationale is not restated here.
+**DECIDED.** Flowing Highlight is the only pacer mode; RSVP, Chunk and presets
+are cut; one theme (`light`), one user control (WPM). **Bionic rendering and
+always-on natural pauses ship** — AD23 supersedes AD19 on that point. See
+**AD19 + AD23** in [DECISIONS.md](DECISIONS.md). Rationale is not restated here.
 
 ### 3.2 · D-B — Which document formats ship in v1
 
@@ -174,19 +175,9 @@ differing from the web original by exactly two added `export` keywords. See
 
 ### 4.5 · D-G — Reading surface and virtualization
 
-What renders the document, and is it virtualized? The web app used
-`@tanstack/react-virtual@^3.14.3` 📐; React Native's list model is different
-❓, and CLAUDE.md §4 records that on the web *two* independent fixes were needed
-— pub/sub decoupling *and* virtualization — with neither sufficient alone, while
-noting a virtualized list hands you one half for free and the other not at all.
-Any answer must not break D-E's invariant, and in particular must respect the
-guard that `onViewableItemsChanged` may never trigger a scroll. **No
-virtualization at all may be the right MVP answer** — the §1 definition of done
-does not name a document size — and that possibility is part of the question,
-not a fallback. **AD19 selects it for the MVP** — a `ScrollView` rather than a
-list ❓ — and **AD21** fixes what sits inside it: one `flexWrap` `View` per
-block, one text element per word. Open here only whether that holds on a real
-device.
+**DECIDED.** No virtualization for the MVP — a `ScrollView` with one `flexWrap`
+`View` per block — settled *for the MVP*, with an explicit revisit trigger. See
+**AD24** in [DECISIONS.md](DECISIONS.md). Rationale is not restated here.
 
 ---
 
@@ -194,46 +185,28 @@ device.
 
 ### 5.1 · D-H — Getting a file in
 
-There is no DOM File API on React Native ❓, so the web app's file-input path
-does not carry. The likely shape is `expo-document-picker` plus
-`expo-file-system`, and **neither is installed** — neither appears in
-`package.json` 📐. But the prior question is whether the MVP needs file loading
-at all: `core/ui/sample.ts` seeds `SAMPLE_MARKDOWN`, which already parses and
-renders on a device (AF28) 👁, so a v1 that reads the seeded sample plus pasted
-text is a coherent product. The §1 definition of done says "open a document,"
-which does not by itself settle whether "open" means a file picker.
+**DECIDED.** No file picker — the seeded `SAMPLE_MARKDOWN` plus a
+paste-your-own-text box, both reaching the same parser. See **AD24** in
+[DECISIONS.md](DECISIONS.md). Rationale is not restated here.
 
 ### 5.2 · D-I — Storage scope: what actually persists
 
-The storage *engine* is settled — MMKV, synchronous (AD6) — but
-`react-native-mmkv@^4.3.2` is still a declared dependency with **zero**
-references anywhere under `src/` 🧪, so nothing is implemented. Open: what the
-MVP persists. Reading position only is the minimum the §1 definition of done
-requires ("reopen it, and be where you left off"). **AD19** cuts presets
-entirely, so the only additional candidate is the WPM value, whose persistence
-AD19 explicitly leaves to this item. Position persistence is keyed by a
-content fingerprint, and web issue #102 (OPEN, `documentation` + `android`)
-sharpens the obligation beyond "make it byte-identical": it asks for a
-**fixed-hash conformance test built before any RN implementation**, because the
-current web implementation is proven only against itself, and a divergent hash
-loses every saved position silently.
+**DECIDED.** Reading position only — not WPM, not settings, not anything else.
+See **AD24** in [DECISIONS.md](DECISIONS.md). Rationale is not restated here.
 
 ### 5.3 · D-J — Screens and navigation
 
-One screen, or a picker plus a reader? `expo-router` is present (`~57.0.17`,
-and `main` is `expo-router/entry`), with `typedRoutes` enabled 📐. Today there
-is exactly **one** route — `src/app/index.tsx` — and it is the Hermes probe
-screen from AF27/AF28, not a reader 📐. So this question is genuinely
-unanswered by the current code rather than merely undocumented by it, and it
-interacts with D-H: no file picker means there may be nothing for a second
-screen to do.
+**DECIDED.** One screen — `src/app/index.tsx` becomes the reader. See **AD24**
+in [DECISIONS.md](DECISIONS.md). Rationale is not restated here.
 
 ### 5.4 · D-K — Settings and presets
 
-**DECIDED.** Presets are cut entirely; the MVP has one setting, WPM. See
-**AD19** in [DECISIONS.md](DECISIONS.md), which settles this item alongside
-D-A. Rationale is not restated here. The residue is not open, it is elsewhere:
-persistence is D-I's, the control's shape and placement are D-J's.
+**DECIDED.** Presets are cut entirely; WPM is the MVP's only user control. See
+**AD19 + AD23** in [DECISIONS.md](DECISIONS.md) — AD19 settles this item
+alongside D-A, and AD23 adds that a natural-pauses toggle and a bionic
+intensity control are both post-MVP. Rationale is not restated here. The
+residue is not open, it is elsewhere: persistence is D-I's and the control's
+shape and placement are D-J's, both now settled by **AD24**.
 
 ---
 
@@ -241,37 +214,22 @@ persistence is D-I's, the control's shape and placement are D-J's.
 
 ### 6.1 · D-L — How the APK reaches a physical phone
 
-Local `npx expo run:android --device` over USB, or an EAS Build APK? The §1
-definition of done says *physical Android phone*, and every device observation
-in this repo so far is from an **emulator** (AF27, AF28, AF29 👁), so nothing
-here has yet been demonstrated on real hardware ❓. This also carries the
-debug-vs-release question: all existing device evidence is from a debug
-development build, stated explicitly by AF27, and AF26 point 3 records that
-**no finding covers release-mode bytecode precompilation, Metro+Babel's actual
-transform output, or R8/Proguard interaction** ❓. Release is where real Hermes
-bytecode appears, and it is currently unobserved.
+**DECIDED.** Two answers: `npx expo run:android --device` for development, and
+a locally built **release** APK installed manually for delivery. See **AD24** in
+[DECISIONS.md](DECISIONS.md). Rationale — and the release-mode evidence gap it
+creates — is not restated here.
 
 ### 6.2 · D-M — App identity: icon, splash, display name
 
-Smaller than it sounds, and worth stating so it is not over-scoped. The Android
-package name is already correct and permanent — `com.arishh.readingaid` (AD17)
-📐 — and `app.json` already carries a complete adaptive-icon set, a splash
-configuration, and a `scheme` 📐. What is open is only whether the MVP replaces
-the Expo template *assets* and picks a display name other than
-`ReadingAidAndroid`, and when.
+**DECIDED.** Display name only; the Expo template's adaptive-icon and splash
+configuration is kept. See **AD24** in [DECISIONS.md](DECISIONS.md). Rationale
+is not restated here.
 
 ### 6.3 · D-N — Headless suites on Android
 
-The eight ported suites are Node-only **by construction**, not by accident:
-AF23 records that they cannot run under Hermes because they import
-`node:assert/strict`, `node:path`, `node:url` and `esbuild`, none of which the
-Hermes CLI provides 🧪. So "run the suites on-device" is a rewrite, not a
-configuration change. Does the MVP need on-device suites at all, or is Node
-(`npm run check`, 125/125 — AF18/AF25) plus a targeted on-device probe
-sufficient evidence? **Interacts with D-D:** whichever sync mechanism D-D picks
-determines whether these suites stay duplicated across two repos too, and the
-web repo's PORT-PLAN.md §6 already records the fate of the twelve suites as an
-open item on its side.
+**DECIDED.** No — four targeted device probes replace them, and D-N is post-MVP
+and better answered after D-D. See **AD24** in [DECISIONS.md](DECISIONS.md).
+Rationale is not restated here.
 
 ---
 
@@ -335,6 +293,12 @@ the register; it goes into GitHub issues in this repo.
   particular `nearestWordlike`'s backward fallback when no word-like token
   exists at or after the target; it becomes the **ninth** suite in `npm run
   check`. Rationale is in AD22, not here.
+- **Add a headless suite for `bionic.ts` (AD23).** `splitBionic` has **no test
+  coverage in either repo** — no suite here and none in the web repo bundles
+  `src/core/reader/bionic.ts`; AD23 records the resolved-to-literal sweep. AD23
+  puts bionic in the MVP, so as things stand the module ships untested. A new
+  Android-local suite bundles the real source, alongside the `usePacer` suite
+  above. Rationale is in AD23, not here.
 - **The web repo's open issues.** **17** open as of 2026-09-01 (`gh issue list
   --state open`, count only — deliberately not enumerated here; the web repo is
   untouched and its backlog is its own). Some are Android-tagged and will be
