@@ -899,6 +899,258 @@
   `D-R` in particular is a cosmetic emphasis-stripping edge case (web issue
   #108), not a parse failure, and it is gated behind `D-D`, which is post-MVP.
 
+- **AD25 · The `usePacer.ts` port is a FOUR-line diff, not two. This corrects
+  AD22.** AD22 states that "The Android copy therefore differs from the web
+  original by **exactly two added `export` keywords and nothing else**." That
+  is **false**, and it was written without tracing the file's imports. AD22 is
+  **not edited** — this file is append-only, and the correction lives here, the
+  same way AF31 records a correction to AF28 without touching AF28's text.
+
+  **The correct figure: four changed lines.** Two are the added `export`
+  keywords AD22 describes, on `lastWordlikeUpTo` (line 29) and `nearestWordlike`
+  (line 37). The other two are **repointed imports**: line 2
+  `'../model/types'` becomes `'../core/model/types'`, and line 3 `'./dwell'`
+  becomes `'../core/pacer/dwell'`.
+
+  **Why AD22 was wrong.** It inherited AD9's relative-path property — that the
+  eight ported headless suites needed no path edits — but AD9's own wording
+  carries the precondition AD22 dropped: those paths "already resolve correctly
+  **once the suite sits beside its subject under `src/core/`**." That holds only
+  for files *inside* `src/core/`. AD22 then placed `usePacer.ts` deliberately
+  **outside** it while its two imports point **into** it, so the precondition
+  fails by construction. Verified rather than reasoned: only `src/app/` and
+  `src/core/` existed under `src/` before this change, so `'../model/types'` and
+  `'./dwell'` resolved from `src/pacer/` to nothing at all 📐.
+
+  **The controlled contrast that proves the diagnosis is not a guess.**
+  `src/storage/readingPosition.ts` was ported in the same change and is
+  **byte-identical** to its web original — zero lines differ, `sha256
+  3385b12b1a6d8e4a6190bbbe53fed40505d028a7ec74794125fab5776a73e5fb` on both
+  sides 🧪. It imports `'./storage'`, and both it and its dependency sit in
+  `src/storage/`, so AD9's property holds and no edit was needed. Same port,
+  same session, opposite outcome — the variable is whether a file's relative
+  imports stay inside its own directory, exactly as diagnosed.
+
+  **How byte-equality of the remaining 227 lines was established**, rather than
+  asserted: the four edits were **programmatically reversed** and the result
+  hash-compared against the web original. Both sides `sha256
+  c9f3938973e7c3b85a1eb27b6c1995b8a3337e64bbdda9de8c606e7882fd3a93`, 231 lines
+  each 🧪. So the port differs from web on lines 2, 3, 29 and 37, and is
+  byte-identical everywhere else.
+
+  **Alternative rejected: re-export shims** at `src/model/types.ts` and
+  `src/pacer/dwell.ts`, which would have preserved AD22's literal
+  byte-identity claim. Rejected because it creates a **second drift surface** —
+  two modules that look like the real ones, shadowing `src/core/`, kept correct
+  by nothing. This repo has documented value-duplication drift three times
+  already (AD2's `settings-defaults.ts` false positive, AF8's manual `exclude`
+  copy, AD18's anti-duplication rule), and a four-line auditable diff is
+  strictly cheaper than two files that must not be mistaken for their
+  originals.
+
+  **The port needs no clock patch — AD22's acceptance probe has now run.**
+  AD22 recorded `requestAnimationFrame` and `performance.now()` as asserted
+  from vendor documentation and measured nowhere, and warned that if the timing
+  source differed materially "the port becomes a rewrite." **AF34** settles it
+  as a negative result: the first-frame seeding assumption — `lastRef` seeded
+  from `performance.now()` at web line 175, then differenced against rAF's
+  `now` argument at line 130 — was measured on physical hardware at **-0.12 ms
+  and -0.13 ms** across two runs. The two clocks share a time base, so the
+  rewrite risk did not materialise and the four-line port stands as ported.
+
+  **What this does not change.** AD22's `D-D` scoping stands and is widened by
+  AD26: `D-D` must decide over the twelve seeded files, this file, **and**
+  `src/reader/palette.ts`.
+
+- **AD26 · The reader's colours and layout live in `src/reader/palette.ts`,
+  hand-copied from the web repo's `src/index.css` with NO sync mechanism. It is
+  a `D-D` surface.**
+
+  **Why the file exists at all.** `src/core/ui/theme.ts` contains **no colour
+  values** — it is the `Theme` union, a four-entry label list and
+  `DEFAULT_THEME` (16 lines, read for this entry 📐). The actual colours are CSS
+  custom properties in the **web** repo's `src/index.css`, which React Native
+  cannot read. So the `light` theme (AD19's only theme) had to be transcribed.
+
+  **What was transcribed**, each value verified by reading the web file
+  directly 📐: the seven `light` tokens at `index.css:12-18` — `--bg #faf9f7`,
+  `--surface #ffffff`, `--text #1c1b19`, `--muted #6b6a67`, `--border #e6e3de`,
+  `--accent #3b6ea5`, `--anchor #c0392b` — plus the highlight treatment from
+  `.pacer-overlay` (`index.css:634-644`): `border-radius: 4px` at line 640 and
+  `color-mix(in srgb, var(--accent) 32%, transparent)` at line 641. The
+  highlight is **derived** from `LIGHT.accent` at runtime rather than stored as
+  a second literal, so it cannot drift away from the accent it is a tint of.
+  Body type is `index.css:629`'s `1.125rem`; block margins are
+  `.reader-heading` / `.reader-paragraph` (`650-657`); reading width is
+  `--reading-width: 42rem` (line 54). `rem` is the UA default 16px — no
+  `font-size` is set on `html`, `:root` or `body` anywhere in the file
+  (checked 📐).
+
+  **The warning, stated plainly because it is the point of this entry.** Every
+  value in this file is a **hand-copied duplication across the repo boundary
+  with no sync mechanism**. If the web theme is retuned, nothing updates this
+  file and nothing warns anyone; the two will diverge silently. This is a
+  **`D-D` surface**, and `D-D` now decides over **three** things, not one: the
+  twelve seeded `src/core/` files, the ported `src/pacer/usePacer.ts` (AD22,
+  AD25), and this. It differs from the other two in kind, which is worth
+  recording for whoever answers `D-D`: the seeded files are held byte-identical
+  *on purpose* (AD1, AF7), whereas this file is **expected to change** under
+  visual tuning (AF36) and so can never be kept byte-identical to anything.
+
+  **Two deliberate divergences from web.**
+
+  **(1) `bodyFontSize` is 19, not web's 18.** `index.css:629` is `1.125rem` =
+  18px. The stage 1 acceptance probe measured question (d) at **19**, and AF36
+  records that ruling as still pending. Matching the probe means the pending
+  ruling transfers to the reader surface **without a translation step** —
+  judging a 19px instrument and then shipping 18px would invalidate the
+  judgement. A one-value edit to revert.
+
+  **(2) Heading base weight is 400 with the bionic head at 700, so headings are
+  distinguished by SIZE ALONE.** Web emits real `<h1>`..`<h6>`
+  (`Reader.tsx:95-97`, level clamped 1-6) and **sets no heading `font-weight`
+  anywhere** — verified exhaustively: the only `font-weight` declarations in
+  `index.css` are at lines 244, 445, 490, 601 and 855, and none is a heading
+  rule 📐. Headings therefore inherit the UA's **bold 700**. But `.bionic-head`
+  is **also 700** (`index.css:243-244` 📐), so head and tail render at the same
+  weight and **the bionic anchor is invisible inside every web heading**.
+  Reproducing that faithfully would discard the reading aid's one signal on
+  precisely the lines a reader scans hardest, so it was not reproduced.
+
+  The web behaviour is **arguably a defect**, but it is **web-layer rather than
+  shared surface** — it lives in `index.css` and `Reader.tsx`, neither of which
+  is seeded here — so it carries **no cross-repo obligation** and is **not
+  being filed**. Recorded here only so a future reader does not "fix" the
+  Android divergence back into web's behaviour thinking it was an oversight.
+
+  **Heading sizes have no web source, and they derive from web's 18px base —
+  NOT from this file's 19px body.** Web sets no heading font-size at all, and
+  React Native has no UA defaults to inherit, so the browser UA scale was
+  applied explicitly: h1 2em, h2 1.5em, h3 1.17em, h4 1em, h5 0.83em, h6
+  0.67em. Against **18** that yields exactly the shipped values —
+  36 / 27 / 21 / 18 / 15 / 12 — and the arithmetic was re-checked against
+  `palette.ts` for this entry: all six match a base of 18, and **none** matches
+  a base of 19 (which would give 38 / 28 / 22 / 19 / 16 / 13) 🧪. Also with no
+  web source: `scrollTopInset` (140), which parks the active line below the
+  viewport top on a line change — fixed rather than derived from viewport
+  height, so the auto-scroll path needs no measurement beyond the per-word Y it
+  already collects.
+
+  **KNOWN DEFECT that ships in this change, recorded rather than quietly
+  fixed.** Because the heading scale is based on 18 while the body is 19, the
+  lower heading levels are **smaller than body text**: h4 is 18 against a
+  19 body, h5 is 15, h6 is 12. Combined with divergence (2)'s heading base
+  weight of 400 — the same weight as body text — an **h4 heading has neither a
+  size advantage nor a weight advantage and is indistinguishable from a
+  paragraph**; h5 and h6 are actively smaller. Markdown `####` produces exactly
+  this. The seeded sample only uses `#` and `##`, so nothing in the MVP's
+  default document exhibits it, but any pasted document with deeper headings
+  will. The fix is **deferred to a follow-up change** and deliberately not made
+  here, so that this entry describes what actually ships rather than what was
+  intended; it should be settled together with AF36's pending (d) tuning
+  ruling, since both concern the same table of values. Two shapes the fix could
+  take, neither chosen here: rebase the scale on the live `bodyFontSize`, or
+  give headings a weight advantage independent of size.
+
+  **Alternative rejected: hard-coding colours at each use site.** Rejected for
+  the obvious reason, and the codebase now enforces the choice — zero colour
+  literals appear in code anywhere under `src/` outside this file 🧪.
+
+- **AD27 · The content fingerprint could NOT be ported and was built fresh as a
+  pure function over bytes, exactly as web issue #102 prescribes.**
+
+  **Why a port was impossible.** `computeFingerprint` is not in the web repo's
+  storage layer at all — it is `src/parsers/index.ts:30`, it takes a Web
+  **`File`**, and it digests via **`crypto.subtle.digest`** (line 53) 📐. Three
+  independent blockers: React Native ships **neither `crypto.subtle` nor
+  `TextEncoder`** (verified by grepping `node_modules/react-native/Libraries/`
+  📐); AD24 `D-H` cut the file picker, so **there is no `File`** — MVP content
+  arrives as a string, from the seeded sample or the paste box; and
+  `readingPosition.ts` never computes a fingerprint, it takes one as a
+  parameter, so the byte-identical port of that file (AD25) neither needed nor
+  supplied one.
+
+  **The web docblock's own suggested route was considered and rejected.**
+  `parsers/index.ts:25` says: "on React Native, swap `File.slice` -> RNFS/Blob
+  reads and `crypto.subtle` -> **react-native-quick-crypto**; the logic and
+  schema are unchanged" 📐. Rejected on two grounds, either sufficient: **no new
+  packages** in this change, and — more fundamentally — with no file picker
+  there is **no `File` to read bytes from**, so the RNFS half of that advice has
+  nothing to operate on. The suggestion is sound for a future release that
+  ships a picker; it is inapplicable to the MVP.
+
+  **What was built instead.** `src/storage/fingerprint.ts`, following issue
+  #102's own "Proposed approach" — "pin the fingerprint algorithm as an
+  explicit, testable specification independent of the Web File API — a pure
+  function over bytes", then a fixed-hash conformance test, and only then a
+  platform implementation. The **algorithm is byte-for-byte the web one**: full
+  SHA-256 at or below 96 KB; above it, SHA-256 of `[first 32 KB | middle 32 KB
+  | last 32 KB | size as 8-byte big-endian]`. Only the two platform-coupled
+  halves are reimplemented — a self-contained **UTF-8 encoder** replacing
+  `TextEncoder`, and a **pure-JS SHA-256** replacing `crypto.subtle`.
+
+  **`BigInt` was deliberately avoided.** The web code writes the size suffix
+  with `DataView.setBigUint64`; this computes the two 32-bit halves
+  arithmetically instead, which is exact for any size up to 2^53. That removes
+  one more engine feature from a code path that has **no device evidence at
+  all** — nothing in `src/storage/` has run on hardware, and AF26's residue
+  already records what the desktop Hermes CLI does and does not establish.
+
+  **Validation, recorded because it is what satisfies #102's actual demand** —
+  that an implementation be checkable "against the same fixtures rather than
+  against itself" 🧪:
+  - **Canonical published NIST SHA-256 vectors**, including the **56-byte
+    multi-block** case that crosses the one-block padding boundary where a
+    length-encoding error surfaces.
+  - **Agreement with Node's `crypto`** across **17 input lengths** covering
+    every padding boundary (0, 1, 55/56/57, 63/64/65, 119/120/121,
+    127/128/129, 1000, 4096, 100000).
+  - **`utf8Encode` byte-identical to Node's real `TextEncoder`** across **20
+    strings**, including **lone surrogates** (which WHATWG requires to become
+    U+FFFD — encoding them raw instead would silently disagree with every other
+    encoder).
+  - **`fingerprintBytes` matching the real, unmodified web
+    `computeFingerprint`** on **all 13 cases**, including **exactly at the
+    threshold: 98303 / 98304 / 98305**, where 98304 takes the full path and
+    98305 the sampled one. The web function was run under Node v26, which has a
+    global `File` and `crypto.subtle`, so it executed **as-is with no mirror** —
+    the strongest available oracle.
+
+  **The cross-platform divergence is DECODE-PATH, not re-encoding.** This was
+  measured, not assumed, and the distinction matters because it relocates the
+  hazard. Web hashes **raw file bytes**; this hashes a **string re-encoded to
+  UTF-8**. Re-encoding is faithful — for a BOM-prefixed string and a CRLF
+  string the two produce **identical** hashes 🧪 — so re-encoding alone can
+  never diverge. The real hazard is one step earlier: the fingerprint **is**
+  sensitive to a UTF-8 BOM and to CRLF vs LF (both confirmed to change the hash
+  🧪), so divergence occurs **if and only if** the two platforms' decode paths
+  disagree about what the string is — one stripping a BOM or normalizing line
+  endings where the other does not. Then the same book keys differently and
+  **every saved position is silently lost**, which is precisely the failure
+  #102 was filed to prevent. Both sensitivities are pinned by fixed vectors in
+  the suite so the divergence is caught by `npm run check` rather than by a
+  user.
+
+  **The sampled-path vector is recorded as literal code, not prose**, so it is
+  reproducible without access to the web repo: `bytes[i] = i % 251` for `i` in
+  `0..199999`, length exactly `200000`, giving
+  `ab4a551e0dea3dd7a6351dffde4a1e0785a969e18f3b14b9a613db09d6220b46`. 251 is
+  prime and coprime with the 32 KB region size, so the three sampled regions
+  differ from one another instead of repeating on a power-of-two cycle. A
+  conformance vector nobody else can derive is not conformance.
+
+  **One adjacent decision, recorded here rather than left implicit.**
+  `resolveResumeTarget` (web issues #48 and #76) is the body of web's
+  `handleResume` (`App.tsx:250-280`), a React component function closing over
+  component state, so nothing there is importable — which is why the web
+  headless suite **mirrors** it. The Android copy was extracted to
+  `src/storage/resumeTarget.ts` as a pure function, and this repo's suite was
+  changed to import the **real** module. A mirror of shipped *Android* code
+  would have tested nothing about shipped code: the AD2 / AF8 duplication trap.
+  Only `resolveResumeTargetOldBuggy` remains mirrored, deliberately, since that
+  logic exists nowhere in either codebase any more and is kept solely to
+  demonstrate that it gets the #76 case wrong.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -984,3 +1236,29 @@
   `MVP-PLAN.md` (§4.5, §5.1, §5.2, §5.3, §6.1, §6.2, §6.3) were **deleted** and
   their board rows now point at AD24; §3.1's and §5.4's pointers now read
   AD19 + AD23. **AD19 itself is not edited.**
+- 2026-09-02 — appended AD25–AD27 on `feature/mvp-reader`, closing the MVP
+  build. **AD25 corrects AD22**: the `usePacer.ts` port is a **four-line**
+  diff (two added `export` keywords plus two repointed imports), not the
+  "exactly two added `export` keywords and nothing else" AD22 claims — AD22
+  inherited AD9's relative-path property, which holds only for files *inside*
+  `src/core/`, and `usePacer.ts` deliberately lands outside it while importing
+  into it. The byte-identical port of `readingPosition.ts` in the same change
+  is the controlled contrast. AD22 is **not edited**. **AD26** records
+  `src/reader/palette.ts` as a hand-copied duplication of the web `light`
+  theme with no sync mechanism — a third `D-D` surface alongside the twelve
+  seeded files and `usePacer.ts` — with two deliberate divergences (body 19px,
+  heading weight 400) and one **known defect that ships**: the heading scale
+  derives from web's 18px base while the body is 19, so h4/h5/h6 are smaller
+  than body text and, at weight 400, an h4 is indistinguishable from a
+  paragraph; fix deferred to a follow-up. **AD27** records that the fingerprint
+  could not be ported (`crypto.subtle` and `File` both absent, `react-native-
+  quick-crypto` rejected) and was built as a pure-bytes SHA-256 validated
+  against NIST vectors, Node's `crypto`, Node's `TextEncoder` and the real web
+  implementation. The concurrency incident that interrupted this milestone is
+  recorded separately as FINDINGS **AF37**, since nothing was decided there.
+  **MVP functional acceptance:** the project owner ran the built app on a
+  physical device and on the emulator and reported every MVP behaviour passing
+  — auto-scroll follows the active line, reading position resumes across a full
+  app close, Restart works at end of document, the paste box parses, and the
+  WPM control is functional. Those runs were witnessed by the project owner and
+  **not** by me; I ran no device or emulator at any point.
