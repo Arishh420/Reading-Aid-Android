@@ -684,6 +684,221 @@
   misbehave, the port becomes a rewrite. That check belongs with AD21's
   acceptance probe, in the same session, and will produce its own `AF` entry.
 
+- **AD23 · The MVP's feature scope is revised: bionic rendering is IN, and
+  natural pauses are IN — always on, with no toggle. This supersedes AD19 in
+  part.** AD19 cut bionic and scoped the MVP to a single setting, WPM, with
+  natural pauses excluded by omission. **The bionic cut is superseded
+  outright.** The single-control scope survives but now means something
+  different: natural pauses ship as always-on *behaviour*, not as a setting.
+  **AD19 is not edited** — this file is append-only, and the supersession is
+  recorded here, the same way AF31 records a scope correction to AF28 in
+  FINDINGS.md without touching AF28's text.
+
+  **Why the bionic cut no longer holds.** AD19 deferred bionic on the grounds
+  that it turns every word into a *composite* node and so changes the **shape**
+  of the node `D-E` must manipulate — bionic sitting *underneath* `D-E` rather
+  than on top of it. AD21 already recorded that this reasoning expired the
+  moment `D-E` settled: under word boxes the animated node is the **box**, and
+  **static** nested text inside a box works fine — only **animated** nested
+  text is unsupported. The cost AD19 was avoiding does not exist under the
+  mechanism that was subsequently chosen, and AD21 says so in as many words.
+
+  What is left is small, and was verified against the file rather than taken on
+  trust: `src/core/reader/bionic.ts:39` is
+  `export function splitBionic(text: string, ratio: number): BionicSplit`, and
+  `BionicSplit` is the three-slot `{ lead, head, tail }` at lines 22–29 📐. The
+  MVP already renders one box per word (AD21); bionic renders **three text runs
+  inside that box** instead of one. No new module, no new dependency, and
+  nothing on the per-tick path — the split is computed at render, not per tick.
+
+  **Why natural pauses are in.** They are close to free, and were left out of
+  AD19 only because AD19 was scoping aggressively. `buildDwellMultipliers(doc)`
+  is already exported from the seeded `src/core/pacer/dwell.ts:64` 📐, and the
+  `usePacer` that AD22 ports already accepts both arguments — `PacerOptions`
+  declares `dwell?: number[]` and `naturalPauses?: boolean` at the web
+  original's lines 63–70 📐 (read from the web file for this entry, read-only;
+  `src/pacer/` does not exist in this repo yet, because AD22's port is queued
+  work). This is **one call at document load plus two arguments**. `dwell.ts`
+  is covered 9/9 by its headless suite inside `npm run check` 🧪.
+
+  **"Always on" is continuity with web behaviour, not a new MVP choice — but
+  the seam still needs an explicit argument, and the two facts are easy to
+  confuse.** The *web app* already ships natural pauses **on**: `src/App.tsx:69`
+  is `const [naturalPauses, setNaturalPauses] = useState(true);` 📐. So an
+  always-on MVP gives a reader the same behaviour the web app gives them today;
+  what the MVP drops is the ability to turn it **off**, not the default.
+  Separately, and one level down, the `usePacer` **option** defaults to `false`
+  (`options.naturalPauses ?? false`, lines 83–84 📐) — the hook is off unless
+  told otherwise, and on web it is `App.tsx` that tells it. That is a fact
+  about the **seam**, not about the product: this repo's call site must pass
+  `naturalPauses: true` explicitly rather than inherit it from the option
+  default.
+
+  **No toggle.** The web app makes natural pauses switchable — a checkbox at
+  `src/ui/Settings.tsx:91` 📐 — the MVP does not. AD19's single-control scope
+  otherwise stands: **WPM is the only user control.** A natural-pauses toggle
+  and a bionic intensity control (`BIONIC_RATIO` at `bionic.ts:16–20` already
+  defines `low`/`medium`/`high` 📐) are both post-MVP.
+
+  **Two consequences, recorded because they are now MVP-blocking rather than
+  deferred.**
+  - **AF31 residue item 4 is promoted.** `\p{L}` at
+    `src/core/reader/bionic.ts:31` (`const LETTER = /\p{L}/u;` 📐) has never run
+    on-device. AF31 recorded it as an *adjacent* gap — explicitly on the
+    reading that a device probe covering `orp.ts` "should not stop short of
+    it" — and that framing assumed bionic was not shipping. It ships, so the
+    gap stops being adjacent: **the AD21/AD22 acceptance probe must exercise
+    bionic rendering on a real device**, not only the highlight mechanism.
+    AF31's own text is not edited; the promotion lives here.
+  - **`bionic.ts` has no test coverage in EITHER repo.** Swept rather than
+    assumed, by resolving every `entryPoints` and every `bundleAndImport` call
+    site to a literal. This repo's eight suites bundle exactly seven modules —
+    `tokenize.ts`, `delimiterSpans.ts`, `orp.ts`, `dwell.ts`, `markdown.ts`,
+    `pdfText.ts`, `epubStructure.ts` 🧪. The web repo's twelve bundle those
+    seven plus `keyboard.ts`, `pdf.ts` and `readingPosition.ts` 🧪 (read-only).
+    **None bundles `bionic.ts`** — consistent with AF11, which already lists it
+    among the modules no suite bundles. One apparent hit is a false positive
+    and is recorded so the sweep is not re-run: the web repo's
+    `src/presets/headless-test.mjs` matches "bionic" nine times, but every
+    match is the settings-bundle *field* `bionic.enabled` / `bionic.intensity`,
+    and that suite imports only `node:assert/strict` and bundles no source at
+    all 📐 — exactly as AD8 records. A bionic headless suite is queued
+    alongside the `usePacer` suite AD22 queued.
+
+  **Post-MVP return order,** recorded because the project owner asked for the
+  removed features to be tracked rather than forgotten. AD19's order (bionic
+  first, then RSVP) is superseded by bionic shipping. The revised ladder,
+  cheapest first, each item naming what gates it:
+  1. **File picker** — `expo-document-picker` + `expo-file-system`, **both
+     uninstalled** (neither appears in `package.json` 📐); needs a native
+     build, not a Metro reload ❓. See AD24, `D-H`.
+  2. **RSVP mode** — gated on the on-device `orp` probe closing AF31 residue
+     items 1 and 2 (`\p{M}` and `normalize('NFC')`, both in `orp.ts`).
+  3. **Chunk mode.**
+  4. **The remaining three themes** — all four are already seeded in
+     `src/core/ui/theme.ts:9–14` (`light`, `sepia`, `dark`, `dim`) 📐; only the
+     RN styling layer is missing.
+  5. **Presets** — needs the web repo's `src/presets/presets.ts` ported 📐 and
+     web issue #105 resolved (OPEN, `bug` — `DEFAULT_BUNDLE.bionic` duplicates
+     `DEFAULT_BIONIC` by value 🧪).
+  6. **A bionic intensity control and a natural-pauses toggle.**
+  7. **EPUB** — gated on the `D-P` spike.
+  8. **PDF** — gated on the `D-O` spike.
+  9. **Virtualization** — the `D-G` revisit (AD24) plus `D-Q`.
+
+  **This is a ladder, not a schedule. No dates.**
+
+- **AD24 · The seven remaining MVP-blocking register items are settled as a
+  batch.** Each gets its own labelled paragraph below, so a board row can point
+  at this entry unambiguously. None was blocked on another; they are batched
+  because each had shrunk to the point where leaving it OPEN was the more
+  expensive option.
+
+  **`D-G` · Reading surface. No virtualization for the MVP: a `ScrollView`
+  with one `flexWrap` `View` per block.** AD19 selected no virtualization and
+  AD21 fixed what sits inside it, so what remained on this item was never
+  arguable — whether it survives a real document on a real phone is a
+  **measurement, not a decision**, and no amount of reasoning here produces
+  one. It is therefore settled **for the MVP**, with an explicit revisit
+  trigger: **the first document that visibly stutters on scroll, or takes more
+  than a moment to mount.** The range that matters, recorded so the trigger is
+  not vague: the seeded sample is **176 words** (AF28, AF31), and a book
+  chapter is roughly **3,000–5,000** — an estimate, not a measurement. Leaving
+  this OPEN indefinitely would be worse than settling it, because OPEN implies
+  someone will argue it and nobody can.
+
+  **`D-H` · Getting a file in. No file picker.** The MVP ships the seeded
+  `SAMPLE_MARKDOWN` plus a paste-your-own-text box, both reaching the same
+  parser. `expo-document-picker` and `expo-file-system` are **both
+  uninstalled** — neither appears in `package.json` 📐 — and installing native
+  packages requires a Gradle run rather than a Metro reload ❓. AD20 already
+  cut PDF and EPUB, so a picker could only open a `.md` file, which pasting
+  reaches with **zero** native surface. Recorded honestly: this **bends**
+  `MVP-PLAN.md` §1's "open a document" — pasting text and reading it satisfies
+  the spirit, not the letter. The picker is item 1 on AD23's ladder.
+
+  **`D-I` · Storage scope. Reading position only** — not WPM, not settings,
+  not anything else. §1 names exactly one thing that must survive a restart,
+  and the asymmetry is decisive: **WPM resetting costs the user one gesture;
+  position resetting costs them the entire product.** The storage engine is
+  already settled (MMKV, synchronous — AD6). The real work here is the
+  **content fingerprint**, and web issue #102 (OPEN, `documentation` +
+  `android` 🧪, read in full for this entry) asks for a **fixed-hash
+  conformance test built before any RN implementation**, because the web
+  implementation is currently proven only against itself and a divergent hash
+  loses every saved position **silently**. Scoping `D-I` tightly is what keeps
+  attention on the part with a known correctness trap, rather than spreading it
+  across settings that have none.
+
+  **`D-J` · Screens and navigation. One screen.** `expo-router` is present
+  (`~57.0.17` 📐, `main` is `expo-router/entry` 📐, `typedRoutes` enabled 📐),
+  and `src/app/index.tsx` currently holds the Hermes probe screen from
+  AF27/AF28 📐 — it becomes the reader. With no file picker (`D-H`) there is
+  nothing for a second screen to do, and the WPM control and play/pause live on
+  the reader itself. A picker screen arrives when a picker does.
+
+  **`D-L` · How the APK reaches the phone. Two answers**, because the
+  development loop and the delivery artifact are different questions and the
+  register conflated them.
+  - *Development:* `npx expo run:android --device` over USB, with Metro serving
+    JS. Fast iteration, no service dependency, and the toolchain is already in
+    place (AD17).
+  - *Delivery:* a locally built **release** APK, copied to the phone and
+    installed manually. This is a **requirement rather than a preference** —
+    the project owner wants an artifact they built, not one downloaded or
+    shared, and it must run with **no laptop attached**. A *debug* APK cannot
+    satisfy that: it expects Metro to serve it JS, so it would install and then
+    fail on launch ❓.
+
+  **The risk this creates, recorded plainly.** A release build means real
+  precompiled Hermes bytecode. **AF26 point 3** states that nothing in this
+  repo speaks to "release-mode bytecode precompilation, Metro+Babel's actual
+  transform output …, Proguard/R8 interaction, or ABI-specific `libhermes.so`
+  behaviour", and **AF27** states "Not claimed: anything about release builds.
+  This was exclusively a debug development build" — both quoted after checking
+  them against FINDINGS.md for this entry 📐. **Every piece of device evidence
+  this repo holds was gathered in debug.** The MVP therefore ships on a
+  configuration **nothing has verified**, and the first release build is itself
+  a finding that will need its own `AF` entry.
+
+  **Release signing requires a keystore the project owner generates
+  themselves.** Noted here as a prerequisite only: no keystore was generated,
+  none is written into any config, and no credential of any kind is recorded in
+  this repo.
+
+  **`D-M` · App identity. Display name only for the MVP**; the Expo template's
+  adaptive-icon and splash configuration is kept. The package name is already
+  correct and permanent — `com.arishh.readingaid` (AD17), confirmed in
+  `app.json` 📐 — and `app.json` already carries a complete
+  `android.adaptiveIcon` block (foreground, background, monochrome) plus an
+  `expo-splash-screen` plugin configuration 📐; the display name is currently
+  the template's `ReadingAidAndroid` 📐. Real assets are a **design** task, not
+  a port task. One scheduling note: editing `app.json` requires a native build
+  rather than a Metro reload ❓, so this should ride along with whatever native
+  change happens first rather than being done on its own.
+
+  **`D-N` · Headless suites on Android. No — and what replaces them is recorded
+  here, because "no" on its own would read as a gap.** The eight local suites
+  are Node-only **by construction**: they import `node:assert/strict`,
+  `node:path`, `node:url` and use `esbuild` as a library (AF23), so running
+  them on-device means **rewriting the harness**, not relocating files. The web
+  repo's **PORT-AUDIT §7 item 5** — "What happens to the 12 `.mjs` headless
+  suites" — is still listed there as unresolved 📐 (back-reference, read-only),
+  and it predates this repo's device evidence entirely. What actually needs
+  device evidence is narrower and already specified: **AD21's acceptance probe,
+  AD22's acceptance probe, AD23's bionic addition to it, and the queued
+  on-device `orp` port** closing AF31 residue items 1 and 2. Four targeted
+  probes beat a general-purpose harness for the MVP, and each produces its own
+  `AF` entry. `D-N` is therefore post-MVP, and it **interacts with `D-D`** — if
+  the core files gain a sync mechanism, the suites arguably should too — so it
+  is better answered **after** `D-D` than before.
+
+  **Register state after this batch — a status statement, not rationale.**
+  Nothing MVP-blocking is open. `D-D` and `D-R` remain **OPEN** and
+  `D-O`/`D-P`/`D-Q` remain **SPIKE**, and none of the five blocks the MVP —
+  `D-R` in particular is a cosmetic emphasis-stripping edge case (web issue
+  #108), not a parse failure, and it is gated behind `D-D`, which is post-MVP.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -752,3 +967,20 @@
   rather than claiming the port is proven. `MVP-PLAN.md` §4.4 was **deleted**
   and its board row now points here; one authorized sentence was added to the
   still-open §4.1, and the ninth suite was added to §8 as queued work.
+- 2026-09-01 — appended AD23–AD24 on `docs/ad23-ad24-mvp-scope-revision`.
+  **AD23 supersedes AD19 in part:** bionic rendering returns to the MVP (AD21
+  had already retired the node-shape objection AD19 cut it on) and natural
+  pauses ship always-on with no toggle; WPM remains the only user control, and
+  a post-MVP return ladder is recorded for everything still cut. AD23 promotes
+  AF31 residue item 4 (`\p{L}` in `bionic.ts`) into the AD21/AD22 acceptance
+  probe, and records that `bionic.ts` has **no** test coverage in either repo.
+  **AD24 settles the seven remaining MVP-blocking register items as a batch** —
+  `D-G` (no virtualization, with an explicit revisit trigger), `D-H` (no file
+  picker; seeded sample plus pasted text), `D-I` (reading position only), `D-J`
+  (one screen), `D-L` (dev over USB; delivery as a locally built **release**
+  APK, and the release-mode evidence gap that creates), `D-M` (display name
+  only) and `D-N` (no on-device suites; four targeted probes instead) — and
+  records that nothing MVP-blocking is left open. Seven sections in
+  `MVP-PLAN.md` (§4.5, §5.1, §5.2, §5.3, §6.1, §6.2, §6.3) were **deleted** and
+  their board rows now point at AD24; §3.1's and §5.4's pointers now read
+  AD19 + AD23. **AD19 itself is not edited.**
