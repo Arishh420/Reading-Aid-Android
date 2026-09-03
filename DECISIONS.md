@@ -1843,6 +1843,202 @@
   `keystore.properties` temporarily absent that fails with the `GradleException`
   rather than emitting an artifact.
 
+## Milestone: working-agreement ownership
+
+> **Ordering note.** AD32 below extends **AD31**, which sits ABOVE this section
+> in the earlier MVP-planning milestone. AD30, between them, belongs to the
+> release-signing milestone and is unrelated to either. Entries are grouped by
+> milestone rather than by number; the change log at the bottom of this file is
+> dated and correct.
+
+- **AD32 · `CLAUDE.md` becomes ANDROID-OWNED. Byte-identity to the web repo's
+  copy is abandoned, and the file joins
+  [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md)'s manifest as row 26 — a
+  baseline-pinned file like the other twenty-five. This is an EXTENSION OF
+  AD31, not a fresh case, and it is written that way deliberately: AD31's
+  argument is not restated here, only applied to a file AD31 left out.**
+
+  **Why AD31 already decided most of this.** AD31 settled `D-D` by forking
+  `src/core/` on the finding that the web repo is frozen and **is not a live
+  sync source** — "byte-identity to WEB is no longer maintained or checked for
+  anything." AD12 and AD14 hold this one file byte-identical to that same
+  repo. Holding one file identical to a repo already declared
+  non-authoritative is **residue from a decision that has been reversed**, not
+  a surviving obligation. AD31's own scoping simply did not name `CLAUDE.md` —
+  the same way its scoping missed three storage files, which it found by
+  investigation and folded in.
+
+  **The two working agreements now describe two different repos, and that is
+  what makes a shared document not worth maintaining.** This repo has a fork
+  manifest, a baseline check inside `npm run check`, a release signing
+  configuration and [RELEASE-SIGNING.md](RELEASE-SIGNING.md). The web repo has
+  none of these and, frozen, will not get them. A shared working agreement
+  describing a **shared** situation earns its maintenance cost; one describing
+  two divergent situations does not — it just guarantees that whichever repo
+  changes first is the one the document is wrong about.
+
+  **THE CONCRETE TRIGGER, and it is not stylistic.** CLAUDE.md §4 stated the
+  React Native highlight mechanism was **"UNDECIDED — do not treat this as
+  settled"**, offering `setNativeProps` and Reanimated shared values as
+  candidates. **AD21 decided it** — word boxes, one `flexWrap` `View` per
+  block, one text element per word, a single Reanimated shared value compared
+  on the UI thread against each word's flat index, no React re-render on a
+  tick — and established that `setNativeProps` is not merely "deprecated" but
+  **unavailable**, there being no `newArchEnabled` flag to set under Expo
+  SDK 55+. **AF32 then proved it on physical hardware**: zero spontaneous
+  React renders across **1339 frames and 66 word advances** over two device
+  runs, against a negative-control button that moved the counter by exactly one
+  per tap. So the governing document was wrong about the **single most
+  important architectural fact in the repo**, and §2's own rule — "If code and
+  a doc disagree, fix one and flag the drift — never leave them at odds" —
+  forbids leaving it. The document that forbids the drift was the document
+  carrying it.
+
+  **Alternatives rejected**, recorded so this is not read as unopposed.
+  - **(a) Leave `CLAUDE.md` alone and let a future `ARCHITECTURE.md` carry the
+    correction.** Cheapest, and needs no cross-repo work at all. Rejected
+    because it **knowingly institutionalises a doc-versus-doc contradiction
+    inside the governing document**, which §2 forbids in as many words — and
+    the ordering is against it: a reader arriving cold opens `CLAUDE.md`
+    first, and `ARCHITECTURE.md` **does not exist in this repo** (📐 — `ls`
+    fails on it; this file's change log records it as deliberately out of
+    scope), so the correction would live nowhere for an unbounded period.
+  - **(b) Fix it in the web repo and copy across, repeating AD14.**
+    Convention-clean, and it is the **established precedent** — AD14 did
+    exactly this for §3, and AD18 provided for a single-PR freeze exception.
+    Rejected on two grounds. It requires a deliberate freeze exception on a
+    repo **AD31 has just finished establishing is not a sync source**, which
+    spends the exception to preserve a property AD31 abandoned. And it would
+    leave the **web** repo's working agreement asserting an **Android**
+    mechanism decision (word boxes, Reanimated shared values, Expo SDK 55+)
+    that web has no stake in and cannot exercise.
+
+  **THE COST, recorded honestly.** Byte-identity here was **deliberate**, not
+  accidental: AD12 declined to edit §3 locally precisely to avoid desyncing the
+  two copies, and AD14 restored identity by hash after web PR #107. AD32 gives
+  that up, and the two working agreements can now **drift silently from each
+  other** — nothing will ever again compare them, and no mechanism proposes to.
+  That is accepted because the manifest catches drift **from the RECORDED
+  BASELINE**, which is the drift that matters for this repo, and because under
+  AD31 drift from web **is no longer a defect**. The same trade, for the same
+  reason, as the twenty-five rows already in the manifest.
+
+  **Row 26 ships `Diverged? = y` on day one, and is the manifest's FIRST
+  diverged row.** Its baseline is the hash the file had at the fork —
+  `407d965a93d176bc5da85922c7aef0965fd53749e5f2e63cd753490b7f30e8a6` —
+  **verified against the file before editing it** rather than taken from AD14
+  or from the task instruction (🧪, `shasum -a 256`); its current hash,
+  `4bc3379715f0b12a5856603b09fada2a6327aa09ac9c47c612d8c9e1d7c64ddf`, is what
+  the two §4 edits below produce, and `Record` points here. That is
+  CORE-DIVERGENCE.md §3's procedure running exactly as written, in the same PR
+  as the edit, and §3 already says what to make of it: "A red baseline check is
+  not a bug report… the fix is almost always 'write the row'." The baseline
+  value is also the web copy's hash at the fork revision `15b6ca3` — whose
+  commit *is* AD14's `#107` — so this file's fork point is precisely
+  documented; that identity is inherited from AD14 and CORE-DIVERGENCE.md §1
+  and was **not** re-measured against web here.
+
+  **The check needed no change, verified by reading it rather than by running
+  it green.** Rows resolve as `path.join(repoRoot, row.file)`
+  (`scripts/check-core-baseline.mjs:138` 📐), so a repo-root path works with no
+  `src/`-prefix assumption; the completeness walk covers `src/core/` only
+  (`:168-177` 📐), so row 26 is a manifest row **without** being under that
+  walk; and a diverged row is *accepted* on condition of `y` plus a non-empty
+  `Record` (`:159-164` 📐), which is the condition this row meets. **No script
+  edit and no workaround** — had the check rejected either a root-level path or
+  a diverged row, that would have been a defect to report, not something to
+  design the manifest around.
+
+  **THE `CLAUDE.md` EDIT IS TWO CHANGES, AND THE SECOND WAS INITIALLY DEFERRED
+  IN ERROR. Recorded because the reasoning that pulled it in is the reusable
+  part.**
+  - **(1) The mechanism's status.** The bullet now reads settled by AD21 and
+    proven by AF32, and retires `setNativeProps` explicitly. **The invariant
+    itself and all three guards are left byte-for-byte as written.** AD21
+    changed none of them — the integer-callback seam, the index-stays-a-ref
+    rule and the viewability-callback prohibition are what the section exists
+    for, and AF38 records guard 3 holding **structurally** in the shipped
+    surface. Only the mechanism's status was ever undecided, never the rule it
+    serves.
+  - **(2) §4's preamble premise, at line 43.** It read "Each is stated in full
+    below because this file carries verbatim between repos and must stand
+    alone." **AD32 makes the first clause false** — and false about the very
+    section AD32 edits. It now reads "because this file is Android-owned
+    (AD32) and must stand alone": the premise is swapped and **nothing else
+    is**. The "stated in full" requirement and "must stand alone" both
+    survive, and *stand alone* arguably **binds harder** under ownership than
+    under carry-over, since there is no longer a second copy to fall back on.
+    The following sentences — F1, F16 and PORT-AUDIT.md §4.5 living in the web
+    repo, to be treated as back-references rather than live pointers — are
+    **untouched**; AD31 already established that back-references survive the
+    fork, and nothing about them is affected.
+
+  **This second edit was deferred as "a second decision" in the plan and the
+  project owner overruled that, correctly.** The distinction that settles it,
+  recorded for reuse: a statement **your own change negates** is part of that
+  change, whereas a statement that was **already** false independently of it is
+  not. Shipping edit (1) without edit (2) would have **manufactured** a
+  falsehood in the governing document one paragraph above the fix for a
+  falsehood — reproducing the exact defect AD32 exists to correct, and handing
+  a future reader a §4 that cites AD32 as its authority while also asserting it
+  carries verbatim to a repo AD32 just cut it loose from. Correcting a
+  consequence of a change is finishing that change, not opening another one.
+
+  **KNOWINGLY LEFT UNEDITED — three further statements in `CLAUDE.md` that are
+  false or stale but are NOT consequences of AD32, so each remains its own
+  decision.** They are recorded so a future reader finds them acknowledged
+  rather than discovering them, and the boundary against edit (2) above is the
+  whole reason they are separable.
+  1. **§2's document list names `PROJECT_CONTEXT.md` and `ARCHITECTURE.md`,
+     neither of which exists in this repo** 📐. Pre-existing and entirely
+     independent of AD32. Expected to be resolved by the `ARCHITECTURE.md` and
+     `PROJECT_CONTEXT.md` work that follows this change rather than by an edit
+     to §2 in isolation.
+  2. **§2's list omits `CORE-DIVERGENCE.md`, `MVP-PLAN.md` and
+     `RELEASE-SIGNING.md`** — so the document defining "done" does not mention
+     the manifest whose §3 requires a row *in the same PR as the file edit*.
+     Incomplete rather than false, also pre-existing, and folded into the same
+     follow-up.
+  3. **Invariant 2's prose says "re-render only at block /
+     virtualization-window boundaries."** Android has no virtualization
+     (AD24 `D-G`), so there are no virtualization-window boundaries and every
+     block mounts. The principle holds and the parenthetical is web-shaped.
+     **Deliberately reserved: it is invariant text**, and this entry changes
+     the mechanism's status only, never the rule.
+
+  **CORRECTION TO AD26, which is append-only and is NOT edited.** AD26 states
+  that "zero colour literals appear in code anywhere under `src/` outside this
+  file 🧪". **That is now false**, and the line numbers were verified for this
+  entry rather than inherited: `src/reader/palette-headless-test.mjs` carries
+  two, at **lines 355–356** — ``HIGHLIGHT_BG === `rgba(59, 110, 165,
+  ${LAYOUT.highlightOpacity})` `` and `LIGHT.accent === '#3b6ea5'` — inside the
+  `ok(...)` call opening at line 353, whose label reads *"the highlight is
+  still DERIVED from the accent, not a second literal (AD26)"* 🧪. A sweep of
+  all of `src/` for hex and `rgba()` values returns exactly two files:
+  `palette.ts` (seven literals) and that suite 🧪.
+  **Harmless in substance, wrong in fact.** The literals are **test
+  expectations about `palette.ts`**, not styling — AD26's real point, that no
+  use site hard-codes a colour, still holds, and no styling code outside
+  `palette.ts` carries one. The claim was **true when AD26 was written** on
+  `feature/mvp-reader` and was falsified later the same day by AD29's
+  thirteenth suite. Recorded here for the reason AF37 gives: a log entry
+  asserting something measurably untrue is caught by nothing and is treated as
+  ground truth by every later reader. Noted for whoever restates it: the
+  assertion that falsifies the claim is the one **guarding** AD26's other
+  claim, so the fix is to **reword the scope, never to delete the check**.
+
+  **What this does NOT do.** It creates **no obligation on the web repo** and
+  no web file was modified, no web issue opened, edited or closed — the web
+  `CLAUDE.md` keeps its own wording, including §4's UNDECIDED note, which is
+  **correct for that repo**, since web's mechanism is the DOM one and it has no
+  React Native port. It makes no claim about the freeze lifting or holding. It
+  does not extend the manifest's completeness walk beyond `src/core/`, so
+  AD31's recorded residue — a future hand-copy landing outside `src/core/`
+  being unguarded until someone lists it — is **unchanged**. And it settles
+  nothing about `MVP-PLAN.md`, which needs no change: its `D-D` row already
+  reads DECIDED → AD31, and its `D-E` row already reads DECIDED → AD21, which
+  is the agreement the §4 edit restores 📐.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -2078,3 +2274,49 @@
   become ordinary Android bugs, and #110's bionic pin plus its
   `CORE-DIVERGENCE.md` row will be the fork's first real exercise. No web file
   was modified and no web issue was edited or closed.
+- 2026-09-03 — appended **AD32** on `feature/ad32-claude-md-ownership`, opening
+  a working-agreement-ownership milestone and **extending AD31 to `CLAUDE.md`**:
+  byte-identity to the web repo's copy is abandoned and the file becomes row 26
+  of [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md), the manifest's **first diverged
+  row**, shipping `Diverged? = y` on day one with its baseline
+  (`407d965a…f7f30e8a6`) **verified against the file before editing** rather
+  than taken from AD14. The argument is recorded as an extension rather than a
+  fresh case: AD31 established the web repo is not a live sync source, so
+  holding one file identical to it is **residue from a reversed decision**, and
+  the two agreements now describe different repos — this one has a fork
+  manifest, a baseline check inside `npm run check` and `RELEASE-SIGNING.md`,
+  and the frozen web repo will get none of them. **The concrete trigger:** §4
+  called the React Native highlight mechanism "UNDECIDED — do not treat this as
+  settled", when AD21 decided it and **AF32 proved it on physical hardware**
+  (zero spontaneous React renders across 1339 frames and 66 word advances), so
+  the governing document was wrong about the repo's most important
+  architectural fact and §2's own fix-one-and-flag rule forbade leaving it.
+  Alternatives rejected: deferring the correction to a **nonexistent**
+  `ARCHITECTURE.md` (a reader opens CLAUDE.md first), and repeating AD14's
+  copy-across, which would spend a freeze exception to preserve the property
+  AD31 abandoned and leave web's agreement asserting an Android decision. The
+  cost is stated plainly — the two agreements can now drift silently, accepted
+  because the manifest catches drift from the **recorded baseline** and drift
+  from web is no longer a defect. **The edit is TWO changes, and the second was
+  deferred in error and pulled in on the project owner's overrule:** the
+  mechanism bullet (settled by AD21, proven by AF32, `setNativeProps` retired
+  as unavailable under the New Architecture Expo SDK 55+ mandates) **and** §4's
+  line-43 premise, which said the file "carries verbatim between repos" — a
+  statement **AD32 itself negates**, one paragraph above the fix. The reusable
+  distinction is recorded: a statement your own change negates is part of that
+  change; one already false independently of it is not. **The invariant and all
+  three guards are left byte-for-byte**, and the F1/F16/PORT-AUDIT §4.5
+  back-references are untouched. Three further stale statements are recorded as
+  **knowingly left** — §2 naming two documents that do not exist here, §2
+  omitting the three mutable companions, and invariant 2's
+  virtualization-window prose, which is reserved as invariant text. **AD26 is
+  corrected without being edited:** its "zero colour literals under `src/`
+  outside this file" is false — `palette-headless-test.mjs:355-356` carries two,
+  inside the very check guarding AD26's *other* claim — true when written,
+  falsified the same day by AD29's suite, and the fix is to reword the scope,
+  never to delete the check. The baseline check needed **no change**, confirmed
+  by reading it (root-level paths resolve via `path.join(repoRoot, …)`, the
+  completeness walk is `src/core/`-only, and a diverged row is accepted given a
+  non-empty `Record`) rather than by trusting a green run. No web file was
+  modified and no web issue was edited or closed; `MVP-PLAN.md` needed no
+  change.
