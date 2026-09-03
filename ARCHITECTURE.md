@@ -11,7 +11,8 @@
 > in place to describe the code as it now is, so if it disagrees with the code,
 > **the code wins and this file is stale** — fix one and flag the drift
 > (CLAUDE.md §2). Its mutable companions are
-> [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md), [MVP-PLAN.md](MVP-PLAN.md) and
+> [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) (scope),
+> [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) and
 > [RELEASE-SIGNING.md](RELEASE-SIGNING.md).
 >
 > **What this file is NOT: it is not a decision log.** Every choice described
