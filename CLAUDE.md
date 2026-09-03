@@ -27,6 +27,12 @@ each documents its own purpose at its top:
   rejected). Append-only; never rewrite history — corrections are appended and marked.
 - **FINDINGS.md** @FINDINGS.md  — what was LEARNED by building/testing, tagged with how it was
   verified (unit / build / user-confirmed / derived / assumed). Be honest.
+- **CORE-DIVERGENCE.md** @CORE-DIVERGENCE.md  — the fork manifest. Changing a file it lists
+  means updating that file's row in the SAME change; see its §3 for the procedure.
+- **RELEASE-SIGNING.md** @RELEASE-SIGNING.md  — how release signing is configured, and how to
+  restore it after a prebuild destroys it.
+**DECISIONS.md and FINDINGS.md are append-only**; every other document above is mutable and
+is rewritten in place to state current truth.
 If code and a doc disagree, fix one and flag the drift — never leave them at odds.
 
 ## 3. Verify honestly

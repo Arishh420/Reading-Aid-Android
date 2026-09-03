@@ -2039,6 +2039,68 @@
   reads DECIDED → AD31, and its `D-E` row already reads DECIDED → AD21, which
   is the agreement the §4 edit restores 📐.
 
+- **AD33 · CLAUDE.md §2's document list now names every document that carries
+  an obligation, and states which documents are append-only. This closes the
+  second of AD32's three recorded residues.**
+
+  **What was wrong, and why it mattered.** §2 defines what "done" requires
+  updating, and it listed four documents. It omitted
+  [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) — whose §3 makes updating a listed
+  file's manifest row part of **the same change** as the file edit — and
+  [RELEASE-SIGNING.md](RELEASE-SIGNING.md). The omission was not cosmetic: **a
+  contributor following §2 literally would edit a listed file, leave the
+  manifest alone, and fail the baseline check inside `npm run check`.** The
+  document defining "done" did not mention a requirement of being done. §2 now
+  states that obligation in its own terms and **cites** CORE-DIVERGENCE.md §3
+  rather than restating the procedure (AD18).
+
+  **Why it waited, and the rule that made waiting correct.** AD32 recorded it
+  as residue item 2 and deferred it. AD32's boundary rule is that **a statement
+  your own change negates is part of that change; one already false
+  independently of it is not.** This residue was squarely in the second
+  category — §2's list was incomplete before AD32 and untouched by it — so
+  deferring was right, and this is the separate decision AD32 said it would
+  take. Residue item 1 (§4's "carries verbatim between repos") was in the
+  *first* category and was therefore fixed inside AD32 itself.
+
+  **The other half of residue item 2 closed with no action at all.** §2 named
+  `PROJECT_CONTEXT.md` and `ARCHITECTURE.md` when neither existed, so those
+  `@`-references pointed at nothing. Both have since been written
+  (`ARCHITECTURE.md` in PR #20, `PROJECT_CONTEXT.md` in #21), and **all four
+  original `@`-references now resolve** 🧪. None of the four existing bullets
+  was edited.
+
+  **Append-only versus mutable is stated in §2 because §2 is where a
+  contributor meets the list.** `DECISIONS.md` and `FINDINGS.md` are
+  append-only; every other document is mutable and rewritten in place to state
+  current truth. Previously "Append-only" appeared on the `DECISIONS.md` bullet
+  alone, leaving `FINDINGS.md`'s status implicit and the mutable documents'
+  unstated — and a contributor who guessed wrong in either direction would
+  rewrite history or leave a stale record standing.
+
+  **`MVP-PLAN.md` needed no repointing: CLAUDE.md never named it** 🧪. Its
+  deletion in #21 left no dangling reference here.
+
+  **Row 26's `Record` becomes `AD32, AD33` — append, never replace — and that
+  is the convention this entry sets.** CLAUDE.md is the first manifest row to
+  diverge a **second** time, and §3's step 3 is written in the singular. The
+  rule follows from CORE-DIVERGENCE.md §2's own definition: `Record` names the
+  entry accounting for the row's **current state**, and the current bytes are
+  the product of both edits — AD32's §4 correction and this §2 correction — so
+  dropping either would leave half the divergence unexplained. The cell format
+  is not new: rows 21 and 22 already carry comma-separated pairs.
+  `Baseline sha256` is untouched, per §3. A **reverting** edit needs no new
+  rule: §3 already returns such a row to `Diverged? = n` with `Current` equal
+  to `Baseline`.
+
+  **The edit is six added lines and no deletions**, `4bc33797…` →
+  `0382990a…`; §2's four existing bullets and its closing "fix one and flag the
+  drift" line are byte-identical.
+
+  **Knowingly left, unchanged from AD32's list:** residue item 3, invariant 2's
+  "virtualization-window boundaries" prose, which is invariant text and stays
+  reserved. AD32's boundary applies to this change too.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -2320,3 +2382,24 @@
   non-empty `Record`) rather than by trusting a green run. No web file was
   modified and no web issue was edited or closed; `MVP-PLAN.md` needed no
   change.
+- 2026-09-03 — appended **AD33** on `docs/ad33-claude-md-doc-list`, closing the
+  second of AD32's three recorded residues. CLAUDE.md §2 now names
+  **CORE-DIVERGENCE.md** and **RELEASE-SIGNING.md** alongside the original four
+  and states which documents are append-only. The omission mattered because §2
+  defines what "done" requires updating while leaving out the manifest whose §3
+  makes a row update part of the same change — **a contributor following §2
+  literally would fail the baseline check inside `npm run check`**. §2 states
+  the obligation in its own terms and **cites** §3 rather than restating it
+  (AD18). Why it waited is recorded against AD32's boundary rule: a statement
+  your own change negates belongs to that change, one already false
+  independently of it does not, and this was the second kind. The **other half
+  of residue item 2 closed with no action** — §2's `PROJECT_CONTEXT.md` and
+  `ARCHITECTURE.md` `@`-references now resolve because both documents were
+  written (#20, #21). `MVP-PLAN.md` needed no repointing: **CLAUDE.md never
+  named it** 🧪, so its deletion in #21 left nothing dangling. The edit is a
+  **pure addition — six lines, zero deletions**, `4bc33797…` → `0382990a…`.
+  Row 26 is the first manifest row to diverge **twice**, so its `Record` becomes
+  **`AD32, AD33`** — append, never replace — a convention *derived* from
+  CORE-DIVERGENCE.md §2's own definition of `Record` as accounting for the row's
+  current state, not chosen; a reverting edit needs no new rule. Residue item 3
+  (invariant 2's virtualization-window prose) stays reserved as invariant text.
