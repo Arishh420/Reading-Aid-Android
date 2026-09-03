@@ -44,7 +44,8 @@
     "test:core": "fail=0; for f in src/core/model/headless-test.mjs src/core/model/delimiterSpans-headless-test.mjs src/core/pacer/orp-headless-test.mjs src/core/pacer/dwell-headless-test.mjs src/core/parsers/headless-test.mjs src/core/parsers/pdfText-headless-test.mjs src/core/parsers/epubStructure-headless-test.mjs src/core/parsers/spine-integrity-headless-test.mjs; do echo; echo \"==== $f\"; node \"$f\" || fail=1; done; exit $fail",
     "test:local": "fail=0; for f in src/pacer/usePacer-headless-test.mjs src/reader/bionic-headless-test.mjs src/reader/palette-headless-test.mjs src/reader/prepareDocument-headless-test.mjs src/storage/headless-test.mjs; do echo; echo \"==== $f\"; node \"$f\" || fail=1; done; exit $fail",
     "test:all": "fail=0; npm run test:core || fail=1; npm run test:local || fail=1; exit $fail",
-    "check": "npm run build && npm run test:all",
+    "check:baseline": "node scripts/check-core-baseline.mjs",
+    "check": "npm run build && npm run check:baseline && npm run test:all",
     "lint": "expo lint"
   },
   "private": true
