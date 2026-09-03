@@ -1083,6 +1083,297 @@
   manually-scrolled-away-line no-op, and `lastScrolledY` not being reset on
   document change, were neither exercised nor reported on.
 
+## Second prebuild — app identity, and zero template drift
+
+- **AF41** 🧪📐 — **The repo's SECOND `expo prebuild` ran deliberately clean,
+  destroyed and regenerated all 54 files under `android/`, and produced ZERO
+  drift in `android/app/build.gradle` against the copy AD17's prebuild left
+  behind on 2026-09-01.** Recorded because a prebuild is a destructive,
+  rarely-run action whose outputs nothing in this repo tracks — `android/` is
+  gitignored — so if it is not written down here it is not written down
+  anywhere. Unlike almost every device-flavoured entry above, **this one was
+  executed by me**, in this session, on this machine; no emulator, device or
+  Gradle build was involved, and none is claimed.
+
+  **Pre-flight: `android/` held no hand edits, established mechanically rather
+  than assumed.** Before running anything, every non-build file under
+  `android/` was stat'd for modification time:
+
+  ```
+  $ find android -type f -not -path '*/build/*' -not -path '*/.gradle/*' \
+      -not -path '*/.cxx/*' -exec stat -f "%Sm %N" -t "%Y-%m-%d %H:%M" {} \; \
+    | grep -v "^2026-09-01 09:47 "
+  (no output)
+  in-window: 54    total non-build: 54
+  ```
+
+  All 54 files sit inside a **two-second window** (09:47:18-09:47:19), which is
+  the signature of a single machine-generated write. **The method is the point:
+  a hand edit carries an isolated, later mtime**, so a clean 54/54 is positive
+  evidence of absence rather than merely a failure to find something. This is
+  what made a destructive regeneration safe to run.
+
+  **The command, and what it did.** `npx expo prebuild --platform android
+  --no-install`, run once. Output verbatim:
+
+  ```
+  - Clearing android
+  ✔ Cleared android code
+  - Creating native directory (./android)
+  ✔ Created native directory
+  - Updating package.json
+  ✔ Updated package.json | no changes
+  - Running prebuild
+  ✔ Finished prebuild
+  ```
+
+  `clean` is the **default** in SDK 57 (`prebuild/index.js:112`,
+  `clean: !args['--no-clean']` 📐), so this deleted `android/` outright —
+  including the `build/` and `.gradle` caches — and regenerated it. The
+  regenerated tree again contains **54** non-build files. This is the **second**
+  prebuild this repo has ever had; AD17's, on 2026-09-01, was the first.
+
+  **`applicationId` survived the regeneration**, verified from the regenerated
+  file rather than from `app.json`: `android/app/build.gradle:92` is
+  `applicationId 'com.arishh.readingaid'`, with `namespace 'com.arishh.readingaid'`
+  at `:90`, `versionCode 1` at `:95` and `versionName "1.0.0"` at `:96` 🧪. So
+  AD17's package rename is reproduced by prebuild from `app.json` and is not an
+  artifact of the first generation that could have been lost here.
+
+  **The display name landed in both places the `withName` plugin writes.**
+  `app.json`'s `name` was changed from `ReadingAidAndroid` to `Reading Aid`
+  (one line; `slug`, `scheme`, `version` and `android.package` untouched), and
+  the regenerated tree shows:
+  - `android/app/src/main/res/values/strings.xml` → `<string name="app_name">Reading Aid</string>` 🧪
+  - `android/settings.gradle:34` → `rootProject.name = 'Reading Aid'` 🧪
+
+  Both are predicted by `@expo/config-plugins/build/android/Name.js` —
+  `applyNameFromConfig` writes `app_name` verbatim (line 65), and
+  `applyNameSettingsGradle` rewrites `rootProject.name` through
+  `sanitizeNameForGradle`, which strips only `/ \ : < > " ? * |`, so the space
+  survives (lines 43-49, 84-88) 📐. **The APK output filename is unaffected**:
+  AGP names the artifact from the **module** (`app-release.apk`), not from
+  `rootProject.name`. Not verified by a build — no Gradle was run — so that last
+  clause is 📐 reasoning about AGP's naming, not an observed filename.
+
+  **NULL RESULT — zero template drift in `build.gradle`, recorded explicitly per
+  AF30's precedent.** The pre-prebuild `android/app/build.gradle` was snapshotted
+  to the session scratchpad before the run and compared afterwards. `diff`
+  produced **no output**, and both sides hash
+  `9eb4b9c8e1c34b6dbf1b3fceeddf8772a4eb0f1f180beb288d322ca129919a4a` 🧪 — **byte
+  identical**, line numbers included. So no Expo/RN template change between
+  2026-09-01 and 2026-09-02 touched this file, and the signing edit applied
+  afterwards sits on exactly the text AD17's prebuild produced. **This is a
+  finding, not an absence of one:** had it drifted, the verbatim blocks recorded
+  in `RELEASE-SIGNING.md` would have been anchored against stale text on their
+  first day. The only two generated files that differ from their snapshots are
+  `strings.xml` and `settings.gradle`, each by exactly the one predicted line.
+
+  **NULL RESULT — `package.json` was not modified.** `prebuild` can rewrite it
+  (`prebuild/updatePackageJson.js:129-132` writes when dependencies or scripts
+  changed 📐), and the plan was to **stop** if it did. It did not: the file
+  hashes `ad57f71c252e12bbfa9869f63fbab981de767b68754f017c5dccfd1dd8605d7f`
+  both before and after 🧪, matching the CLI's own `Updated package.json | no
+  changes`.
+
+  **CORRECTION to a prediction made earlier in this same session: the dirty-git
+  guard did not merely fail to block — it never even logged.** The prediction
+  was that `maybeBailOnGitStatusAsync` would print `Git status is dirty…` and
+  then continue, because `utils/git.js:91` detects a non-interactive terminal
+  and returns `false` without prompting. The warning is **absent** from the run
+  output above. The reason is one line further up: `utils/git.js:84` returns
+  immediately when `env.EXPO_NO_GIT_STATUS` is set, and
+  `utils/env.js:87` defines it as `boolish('EXPO_NO_GIT_STATUS', true)` — it
+  **defaults to true** 📐, so the function short-circuits before the `warn` and
+  before any status check at all. The guard is therefore even more inert than
+  described. It could not have protected `android/` in any case: `android/` is
+  gitignored (`.gitignore:46`) and so never appears in `git status --porcelain`,
+  which is the only signal that function consults. The working tree was in fact
+  dirty throughout (`.gitignore`, then `app.json`).
+
+  **What is NOT established.**
+  1. **Nothing about the signing configuration was executed.** No Gradle build,
+     no `assembleRelease`, no emulator, no device — by direction. The
+     `signingConfigs.release` block, the `taskGraph.whenReady` hard-fail and the
+     `signingConfig null` fail-safe added to `build.gradle` after this prebuild
+     are a **source-level design that has never run**. AD30's acceptance check
+     is pending, and it needs both halves: a release build producing a
+     certificate other than `CN=Android Debug`, and the negative control of a
+     build with `keystore.properties` absent failing with the `GradleException`
+     instead of emitting an artifact.
+  2. **Nothing about the app on a device.** The display name `Reading Aid` was
+     read out of `strings.xml`; **it has not been seen under a launcher icon**,
+     so whether it truncates on the project owner's launcher is untested.
+  3. **Still no release-mode evidence.** AF26 point 3 and AF27 are untouched by
+     this entry — every device observation this repo holds remains a debug
+     development build.
+  4. **The regenerated tree was not otherwise audited.** Only `build.gradle`,
+     `settings.gradle`, `strings.xml` and the file count were compared against
+     the snapshots; the other 50 files were not diffed, so "zero drift" is
+     claimed **for `build.gradle` specifically**, not for the tree.
+
+## Release signing acceptance — and the first release-mode evidence
+
+> Scope warning that governs this whole section: **the project owner ran every
+> command below on their own machine and physical phone and reported the
+> results. I ran no Gradle build, no device and no emulator, and I did not see
+> the `apksigner` output.** The 👁 half of the tag is inherited, exactly as in
+> AF27/AF28/AF31/AF32-AF36/AF38/AF39/AF40; the 📐 half is mine, from reading
+> this tree. **AD30 is not edited** — this entry closes its pending acceptance
+> check by cross-reference, the way AF40 closed AD28's, and the cross-reference
+> runs in this direction only.
+
+- **AF42** 👁📐 — **AD30's pending acceptance check is CLOSED. Both halves ran:
+  the negative control failed the build at the right phase, and the real build
+  produced a correctly release-signed APK that was installed and exercised on a
+  physical phone.**
+
+  **THE NEGATIVE CONTROL FIRST, because it is the stronger of the two results.**
+  With `keystore.properties` renamed away, `cd android && ./gradlew
+  assembleRelease` reported:
+
+  ```
+  BUILD FAILED in 16s
+  28 actionable tasks: 28 up-to-date
+  ```
+
+  and, at `android/app/build.gradle` **line 124**:
+
+  ```
+  Release signing is not configured: keystore.properties not found at
+  /Users/dev/.../keystore.properties. See RELEASE-SIGNING.md for the
+  keystore.properties template. Refusing to fall back to debug signing --
+  that would produce an installable but wrongly-signed APK.
+  ```
+
+  **`28 actionable tasks: 28 up-to-date` is the load-bearing line, and it is
+  what makes this a stronger result than the successful build.** Zero tasks
+  *executed*. Gradle configured the project, built the task graph, threw, and
+  stopped — it never compiled, never bundled JS, never packaged, and **never
+  produced an artifact of any kind**. That is precisely the phase behaviour the
+  guard was designed for.
+
+  **It validates the relocation from a configuration-time throw specifically.**
+  AD30 records that the hard-fail was *specified* as a `throw` inside
+  `signingConfigs { release { … } }` and was moved to
+  `gradle.taskGraph.whenReady` because configuration runs for **every** task, so
+  a configuration-time throw would have broken `assembleDebug` and
+  `npx expo run:android` on any machine without a keystore. The relocation was
+  reasoning, not measurement. It is now measured from three independent
+  observations in this one run: the guard **fired at all** (so the
+  `/(?i)release/` task-name match found the release tasks in the graph), it
+  fired **after configuration and before execution** (28 up-to-date, nothing
+  ran), and it **named the missing file by absolute path** (so the
+  `keystorePropertiesFile.canonicalPath` interpolation resolved to the repo root
+  as designed — `rootProject` being `<repo>/android`). Line 124 corroborates:
+  reading the tree, `build.gradle:124` is the first line of the
+  `GradleException` message string, inside the `whenReady` closure that opens at
+  `:121` 📐.
+
+  **What the template default would have done at this exact moment is the whole
+  point.** With `keystore.properties` absent, Expo's shipped
+  `release { signingConfig signingConfigs.debug }` would have **succeeded** and
+  emitted an installable **debug-signed** "release" APK. Instead the build
+  refused. The silent-wrong-artifact failure AD30 exists to prevent was
+  reproduced in its trigger condition and did not occur.
+
+  **THE THREE-LEVEL FAIL-SAFE IS NOW MEASURED AT LEVEL ONE ONLY.** AD30 records
+  three levels and this run exercised the first two of the three *mechanisms*
+  but only the first *failure level*:
+  - **Level 1 — the `taskGraph.whenReady` guard throws before execution:
+    MEASURED**, by the run above.
+  - **Level 2 — `signingConfigs.release` stays unpopulated when the config is
+    absent: NOT independently observable here.** It was necessarily in that
+    state during the failed run, but the guard threw first, so nothing depended
+    on it and nothing about it was witnessed.
+  - **Level 3 — `signingConfig null` yielding an UNSIGNED APK that Android
+    refuses to install: UNEXERCISED.** Reaching it requires the guard *not* to
+    fire while the config is still absent, which did not happen and cannot be
+    provoked without deliberately breaking the guard. It remains a
+    source-level property 📐, not a measured one.
+
+  So "never a wrong artifact" is now **one-third measured and two-thirds
+  structural**, which is stronger than AD30 could claim but weaker than fully
+  verified. Stated this way rather than as a blanket pass.
+
+  **THE REAL BUILD.** With `keystore.properties` restored and filled in,
+  `./gradlew assembleRelease` **succeeded**, and
+  `apksigner verify --print-certs` on the resulting APK confirmed the signing
+  certificate is **the project owner's own release key and NOT the Android
+  debug key** (`CN=Android Debug`). **No certificate field value is recorded
+  here, and none was transmitted to me** — the reported result is the
+  identification itself, which is the only part that constitutes evidence.
+
+  **AD24 `D-L`'s delivery requirement is satisfied IN FULL.** The APK was
+  **copied manually to a physical Android phone, installed, and tested**, and
+  all MVP behaviour worked. `D-L` framed this as a requirement rather than a
+  preference — an artifact the project owner **built themselves**, not
+  downloaded and not shared, running with **no laptop attached**. A debug APK
+  cannot satisfy that, because it expects Metro to serve it JS; `D-L` recorded
+  that as ❓ at the time. Every clause is now met, and the ❓ is retired by the
+  successful standalone run.
+
+---
+
+  ### This is the FIRST release-mode evidence this repo has ever held
+
+  **AF26 point 3 and AF27 are PARTIALLY SUPERSEDED.** AF26 point 3 states that
+  nothing in this repo speaks to "release-mode bytecode precompilation,
+  Metro+Babel's actual transform output …, Proguard/R8 interaction, or
+  ABI-specific `libhermes.so` behaviour", and AF27 states "Not claimed: anything
+  about release builds. This was exclusively a debug development build." AD24
+  `D-L` restated the gap and called the first release build "itself a finding
+  that will need its own `AF` entry." **This is that entry.** Neither AF26's nor
+  AF27's text is edited, per this file's append-only convention.
+
+  **Release-mode Hermes bytecode precompilation WORKS on this device.** The app
+  was built with `hermesEnabled=true` (`android/gradle.properties:42` 📐),
+  precompiled to bytecode as part of a release build, installed from a manually
+  copied APK, and exercised — and all MVP behaviour worked. Every prior device
+  observation in this file (AF27, AF28, AF31, AF32-AF36, AF38, AF39, AF40) was a
+  **debug development build** with JS served or bundled unoptimised. This is the
+  first time the seeded `src/core/` modules, the ported `usePacer`, the word-box
+  reader surface and the storage layer have run from **precompiled release
+  bytecode** at all.
+
+  **BOUND IT PRECISELY — the Proguard half of AF26 point 3 is UNTOUCHED, and a
+  green release build must not be read as covering it.** AD30 pinned this in
+  advance and the tree still confirms it: `android/app/build.gradle:69` derives
+  `enableMinifyInReleaseBuilds` from
+  `findProperty('android.enableMinifyInReleaseBuilds') ?: false`, and that
+  property is **absent** from `android/gradle.properties` 📐, so `minifyEnabled`
+  at `:178` is **false**. **R8/Proguard did not run.** AF26 point 3 names both
+  concerns in one sentence; **this entry closes the Hermes half and leaves the
+  Proguard half exactly as it was.** If minification is ever enabled, that is a
+  new configuration with no evidence behind it.
+
+  **Also NOT established:**
+  1. **No ABI coverage beyond the one device.** The APK is universal across four
+     ABIs — `reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64`
+     (`android/gradle.properties:31` 📐) — and exactly **one** of them was
+     exercised, whichever the project owner's phone uses. AF26 point 3's
+     "ABI-specific `libhermes.so` behaviour" is therefore narrowed to a single
+     architecture, not closed. The other three shipped in the artifact untested.
+  2. **No measurement of release-mode performance against debug.** Nothing
+     comparable to AF32's frame counters or AF35's frame timings was collected,
+     so whether release bytecode is faster, slower or indistinguishable here is
+     unmeasured. Per **AF35**, any such comparison must be made on hardware
+     rather than the emulator.
+  3. **No book-length document.** The revisit trigger AD24 `D-G` set — "the
+     first document that visibly stutters on scroll, or takes more than a moment
+     to mount" — is **still unevaluated**, in release mode as in debug. The
+     seeded sample remains 176 words (AF28, AF31). AF38's and AF40's identical
+     gaps are unchanged by this run.
+  4. **Granularity.** "All MVP behaviour worked" is a **pass/fail report**, not
+     a per-behaviour transcript — no timing, counter reading or screenshot was
+     reported, and none is invented here. This is the same limitation AF40
+     records, and it is weaker evidence than AF32's transcribed counters or
+     AF33's split table.
+  5. **Metro+Babel's transform output** is exercised in the sense that a release
+     bundle was produced and ran, but nothing was inspected or compared, so
+     AF26 point 3's mention of it is advanced only incidentally and is not
+     claimed as closed.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -1217,3 +1508,74 @@
   32 dp touch-target limitation unaddressed, and still a debug build. **AD28 is
   not edited**, per this file's append-only convention; AF40 cross-references it
   and not the reverse.
+- 2026-09-02 — appended **AF41** on `feature/release-signing`, recording the
+  repo's **second** `expo prebuild` (AD17's was the first) and the evidence it
+  produced. Unlike the device-flavoured entries above, this one **was executed
+  by me** — no emulator, device or Gradle build was involved. Records the
+  pre-flight that made a destructive regeneration safe: all **54/54** non-build
+  files under `android/` sat in a two-second mtime window, and the method
+  matters because a hand edit carries an isolated later mtime, so a clean 54/54
+  is positive evidence of absence. `npx expo prebuild --platform android
+  --no-install` ran clean by default (SDK 57), deleting and regenerating the
+  tree; `applicationId 'com.arishh.readingaid'` is confirmed **from the
+  regenerated file**, so AD17's rename is reproduced by prebuild rather than
+  being a fragile artifact of the first generation. `app.json`'s `name` change
+  landed as `app_name` in `strings.xml` and as `rootProject.name` in
+  `settings.gradle`, both predicted by `Name.js`; the APK output filename is
+  unaffected because AGP names the artifact from the module. **Two null results,
+  recorded explicitly per AF30's precedent:** `build.gradle` is **byte-identical**
+  to its pre-prebuild snapshot (same sha256, line numbers included), so zero
+  template drift between 2026-09-01 and 2026-09-02 — which matters because the
+  verbatim blocks in `RELEASE-SIGNING.md` are anchored against that text; and
+  `package.json` was **not** rewritten (identical hash either side), the
+  condition that would have stopped the work. **A prediction made earlier in the
+  same session is corrected:** the dirty-git guard did not merely fail to block,
+  it never logged at all — `env.js:87` defines `EXPO_NO_GIT_STATUS` as
+  `boolish(..., true)`, so `git.js:84` short-circuits before the warning and
+  before any status check; and it could not have protected `android/` regardless,
+  since a gitignored directory never appears in `git status --porcelain`. Not
+  established: **nothing about the signing configuration was executed** — no
+  Gradle run, no `assembleRelease`, so AD30's acceptance check (a non-debug
+  certificate, plus the negative control of a missing `keystore.properties`
+  failing the build) is pending; the display name has not been seen under a
+  launcher icon; AF26 point 3 and AF27's release-mode gap are untouched; and
+  "zero drift" is claimed for `build.gradle` specifically, not for the other 50
+  regenerated files, which were not diffed.
+- 2026-09-03 — appended **AF42** on `feature/release-signing`, closing AD30's
+  pending acceptance check and recording **the first release-mode evidence this
+  repo has ever held**. The **negative control is written first because it is
+  the stronger result**: with `keystore.properties` renamed away,
+  `./gradlew assembleRelease` reported `BUILD FAILED in 16s` and
+  `28 actionable tasks: 28 up-to-date` — **zero tasks executed**, so Gradle
+  configured, built the task graph, threw at `build.gradle:124` and stopped
+  without compiling, packaging or emitting any artifact. That measures the
+  relocation AD30 made on reasoning alone: the guard fired **at all**, fired
+  **after configuration and before execution**, and **named the missing file by
+  absolute path** — three independent confirmations from one run, and the
+  template default would have silently emitted a debug-signed APK in exactly
+  this condition. The three-level fail-safe is recorded as **one-third measured**:
+  level 1 (the `taskGraph.whenReady` throw) is measured, level 2 (an unpopulated
+  `signingConfigs.release`) was necessarily in that state but nothing depended on
+  it, and level 3 (`signingConfig null` → an unsigned APK Android refuses to
+  install) is **unexercised** and remains a source-level property. The real build
+  then succeeded and `apksigner verify --print-certs` confirmed the certificate is
+  **the project owner's release key, not the Android debug key** — **no
+  certificate field value is recorded and none was transmitted**. The APK was
+  copied manually to a physical phone, installed and tested, satisfying **AD24
+  `D-L` in full**: an artifact the owner built, not downloaded or shared, running
+  with no laptop attached, which retires that clause's ❓. **AF26 point 3 and AF27
+  are partially superseded** — release-mode Hermes bytecode precompilation
+  **works** on this device (`hermesEnabled=true` 📐), where every prior device
+  observation in this file was a debug build. **Bounded precisely:**
+  `minifyEnabled` is **false** and the property is absent from
+  `gradle.properties` 📐, so **R8/Proguard did not run** — AF26 point 3 names both
+  concerns and this closes the Hermes half only. Also not established: only
+  **one** of the universal APK's four ABIs was exercised, so ABI-specific
+  `libhermes.so` behaviour is narrowed rather than closed; no release-vs-debug
+  performance measurement; no book-length document, so AD24 `D-G`'s revisit
+  trigger is still unevaluated; and "all MVP behaviour worked" is a pass/fail
+  report rather than a per-behaviour transcript, the same granularity limit AF40
+  records. **The project owner ran every command; I ran no Gradle build, no
+  device and no emulator and did not see the `apksigner` output** — 👁 inherited,
+  📐 mine from reading the tree. **AD30 is not edited**; AF42 closes its pending
+  check by cross-reference, as AF40 did for AD28.
