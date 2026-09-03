@@ -4,9 +4,20 @@
  *
  * The animated node is the BOX. Its children are static nested `Text`, which
  * AD21 records as the permitted case — only *animated* nested text is
- * unsupported. Confirmed on an Android emulator by the stage 1 acceptance
- * probe: the highlight moved across 3557 frames and 179 word advances with the
- * React render count frozen at 1.
+ * unsupported.
+ *
+ * Confirmed by the stage 1 acceptance probe on an ANDROID EMULATOR, first run:
+ * the highlight moved across 3557 frames and 179 ticks with the React render
+ * counter reading 1 against one negative-control tap — i.e. it never moved on
+ * its own, and moved by exactly one when the control was pressed. That counter
+ * is a TAP count, not a reconciliation count. Those figures are AF43, which
+ * recovered this run; AF32 recorded the emulator's SECOND run and omitted the
+ * first, which is why they are cited from AF43 and not from AF32.
+ *
+ * SEPARATELY, and on PHYSICAL HARDWARE rather than the emulator, AF32 records
+ * 1339 frames and 66 word advances across two device runs with no spontaneous
+ * render. The two surfaces are cited apart and must not be merged: AF35 records
+ * that emulator and device frame timing are not interchangeable.
  *
  * Nothing in here runs React on a pacer tick. The only per-tick work is the
  * worklet below: one integer comparison against a captured primitive.
@@ -24,8 +35,10 @@
  * `onResponderTerminationRequest` to Pressability, which returns
  * `cancelable ?? true` (Pressability.js:526-529), so the enclosing ScrollView
  * can take the responder mid-touch and the press is cancelled. That is a
- * STRUCTURAL read of react-native's own source, not a device observation — the
- * on-device drag test is AD28's pending acceptance check.
+ * STRUCTURAL read of react-native's own source, not a device observation. The
+ * on-device drag test that AD28 named as its pending acceptance check has since
+ * been run: AF40 records the prediction borne out on BOTH the physical device
+ * and the emulator — a drag beginning on a word scrolls, and does not seek.
  */
 
 import { StyleSheet, Text, type LayoutChangeEvent } from 'react-native';

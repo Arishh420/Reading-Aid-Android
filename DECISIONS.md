@@ -15,6 +15,15 @@
 > rather than made fresh, the entry says so explicitly and cites the web
 > repo's ID as a back-reference, not a live pointer.
 >
+> **Reading order — entries are grouped by MILESTONE, not by date, and the two
+> disagree in one place.** Milestone sections appear in the order they were
+> opened, and an entry is appended to *its own* milestone section, so a later
+> entry can sit above an earlier one. Concretely: **AD31 appears above AD30**,
+> because AD31 settles `D-D` and belongs to the MVP-planning milestone, while
+> AD30 opened the later release-signing milestone. Read the **change log at the
+> bottom of this file** for true chronological order — it is dated and correct.
+> Nothing is missing and no entry number is skipped.
+>
 > Companion to [FINDINGS.md](FINDINGS.md) (what was *learned*, as opposed to
 > what was *decided*).
 
@@ -1662,6 +1671,13 @@
   anyone who unfreezes it.
 
 ## Milestone: release signing + app identity
+
+> **Ordering note.** **AD30 below was appended on 2026-09-02 — BEFORE AD31,
+> which appears ABOVE it** in the previous (MVP-planning) milestone and was
+> appended 2026-09-03. Entries are grouped by milestone rather than by entry
+> number, so a top-to-bottom reader meets AD31 first. This is a grouping
+> artifact, not a gap: see the change log at the bottom of this file for dated
+> order.
 
 - **AD30 · Release signing is configured by a direct edit to the generated
   `android/app/build.gradle`, reading credentials from a gitignored

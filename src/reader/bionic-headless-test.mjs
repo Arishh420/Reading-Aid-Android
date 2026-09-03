@@ -12,12 +12,19 @@
  * suite bundles no source at all.)
  *
  * PLACEMENT: this suite lives in src/reader/, NOT beside its subject in
- * src/core/reader/, for two reasons. src/core/ is byte-pinned shared surface
- * (AD9, AF7) and out of scope for Android-local changes; and every suite
- * writes a temporary `.headless-*.mjs` beside its own __dirname while running
- * (AF16), so keeping this one outside src/core/ keeps those temp files out of
- * the one directory this repo treats as byte-pinned. It reaches its subject
- * via a relative entry point instead.
+ * src/core/reader/, because every suite writes a temporary `.headless-*.mjs`
+ * beside its own __dirname while running (AF16), and src/core/ is the one
+ * directory whose contents are hash-pinned by CORE-DIVERGENCE.md. Keeping this
+ * suite outside it keeps those temp files out of that directory. It reaches its
+ * subject via a relative entry point instead.
+ *
+ * NOTE (AD31): an earlier version of this comment also said src/core/ was
+ * "byte-pinned shared surface ... out of scope for Android-local changes". That
+ * is FALSE since AD31 forked src/core/. Byte-identity to the web repo is
+ * abandoned; src/core/ is ANDROID-OWNED and editable with no freeze exception
+ * and no copy-across. It is pinned to a RECORDED BASELINE in
+ * CORE-DIVERGENCE.md, and the procedure for changing a file there is to update
+ * its row in the SAME PR, not to leave the file alone.
  *
  * Expected values here were derived by RUNNING the real module, then checked
  * against the docblock's stated contract — not predicted from the prose.
@@ -160,8 +167,14 @@ split('Devanagari: virama U+094D is Mn, not L, so it is not counted',
 // following combining mark falls on the head/tail boundary and is ORPHANED into
 // the unbolded tail. NFD "é" (e + U+0301) at ratio 0.5 bolds "e" and leaves the
 // acute in tail. These assertions record what the shipped code DOES so a future
-// change is visible; they do not claim it is correct. Flagged rather than fixed
-// — bionic.ts is byte-pinned src/core/ shared surface.
+// change is visible; they do not claim it is correct.
+//
+// FIXABLE HERE (AD31). This was originally flagged rather than fixed because
+// bionic.ts was treated as byte-pinned src/core/ shared surface. AD31 ended
+// that: src/core/ is forked and Android-owned, and AD31 explicitly nominates
+// web issue #110 -- this defect -- as "the fork's first real exercise". Fixing
+// it is a three-file change, not a two-repo negotiation: bionic.ts, the pin
+// below, and bionic.ts's row in CORE-DIVERGENCE.md, all in the same PR.
 //
 // NOT A PORT REGRESSION: the web implementation has the identical defect. The
 // only normalize() call anywhere in web src/ outside its headless tests is
