@@ -1374,6 +1374,91 @@
      AF26 point 3's mention of it is advanced only incidentally and is not
      claimed as closed.
 
+## Stage 1 probe — the first emulator run, recovered
+
+- **AF43** 👁 — **COMPLETENESS CORRECTION TO AF32: the stage 1 acceptance
+  probe's FIRST emulator run is recorded here. AF32 recorded the emulator's
+  SECOND run and omitted the first, so until now those figures existed only on
+  a screenshot and in a code comment, traceable to no entry in this file.**
+  AF32's text is **not edited**, per this file's append-only convention; AF43
+  cross-references AF32 and the cross-reference runs in this direction only,
+  exactly as AF31 corrected AF28's scope without touching AF28.
+
+  **The reading, as reported.** On an Android emulator, running the stage 1
+  acceptance probe screen — the same instrument AF32 describes: roughly twenty
+  word boxes in a `flexWrap` `View`, each an `Animated.Text` deriving its
+  background from one Reanimated shared value on the UI thread, advanced on a
+  `requestAnimationFrame` loop, with a `useRef` render counter incremented in
+  the component body and displayed on screen.
+
+  | Figure | Value |
+  |---|---|
+  | frames | **3557** |
+  | ticks (word advances) | **179** |
+  | index at tap | **3** |
+  | renders at tap | **1** |
+
+  **What "renders at tap: 1" means, because a render count of 1 is easy to
+  misread as an instrument that measured nothing.** The on-screen counter is a
+  **tap** count, not a reconciliation count. AF32 establishes this explicitly
+  when it explains that its own device run B read **7** because the
+  negative-control button was tapped seven times — and records that a future
+  reader comparing "1" against "7" would otherwise reasonably suspect the
+  mechanism had started re-rendering. Here the counter reads **1** against
+  **one** tap. So across 3557 frames and 179 word advances the render count
+  **never moved on its own**, and moved by **exactly one** when the negative
+  control was pressed. That is the same frozen-counter-plus-working-control
+  pattern AF32 records, and it carries weight for the same reason AF32 gives: a
+  counter that never moves is only trustworthy once the same instrument has
+  been shown to be capable of moving.
+
+  **Why these figures were missing, stated precisely so it is not read as an
+  error by AF32's author.** The reading was relayed into the instruction AF32
+  was written from, and the emulator figures that reached that instruction were
+  the **second** run's — 126 frames / 7 advances. **The omission was in the
+  instruction, not in AF32's reading of it.** AF32 is accurate about every run
+  it describes; it is simply not exhaustive about the emulator, and it never
+  claims to be. Nothing in AF32 is wrong and nothing in it needs correcting —
+  what was missing was an entry for this run, and this is that entry.
+
+  **Attribution.** The reading was **witnessed by the project owner on a
+  running Android emulator and reported from a screenshot**. **I did not run an
+  emulator or a device, and I did not see the screenshot** — these figures
+  reach this entry as a relayed report, which is one step weaker than the
+  transcribed counter readings AF32 carries for its physical-device runs.
+  Recorded the same way AF27/AF28/AF31/AF32-AF36/AF38/AF39/AF40/AF42 record
+  owner-witnessed evidence: 👁 is inherited, and this entry has **no** 🧪 or 📐
+  half — nothing in it was measured, run, or derived by me.
+
+  **SURFACE — this is the EMULATOR, and it is NOT merged with AF32's device
+  figures.** AF32's physical-hardware total is **1339 frames and 66 advances**
+  across two device runs, and **AF35** establishes for this project that
+  emulator and device frame timing are **not** interchangeable — an emulator
+  maximum of 120.82 ms against device maxima of 31.03 and 33.98 ms. So the
+  3557-frame figure is **not** a larger version of AF32's device evidence and
+  must never be quoted as one: it is a longer run on a **different, more
+  pessimistic** surface. What it does add is **duration** on the one property
+  here that is not timing-sensitive — that no React render occurs on the tick
+  path — where a longer run is straightforwardly more of the same evidence than
+  a shorter one.
+
+  **What this does NOT establish.**
+  1. **No frame timings were reported for this run** — no mean, no minimum, no
+     maximum. It therefore contributes **nothing** to AF35, and AF35's
+     device-versus-emulator asymmetry is untouched by it.
+  2. **Debug build**, like every device or emulator observation in this file
+     except AF42's release build.
+  3. **Nothing about book length.** The probe rendered roughly twenty
+     hard-coded word boxes on an otherwise empty screen, not a document — the
+     same limit AF36 states when it records that the instrument is not the
+     artifact. AD24 `D-G`'s revisit trigger is untouched here.
+
+  **Where these figures are cited.** `src/reader/WordBox.tsx`'s docblock quotes
+  them to justify the static-nested-`Text`-inside-an-animated-box choice. Before
+  this entry that citation pointed at no finding; it now points here, and the
+  docblock names the surface explicitly so the emulator run and AF32's device
+  runs cannot be confused for one another.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -1579,3 +1664,27 @@
   device and no emulator and did not see the `apksigner` output** — 👁 inherited,
   📐 mine from reading the tree. **AD30 is not edited**; AF42 closes its pending
   check by cross-reference, as AF40 did for AD28.
+- 2026-09-03 — appended **AF43** on `fix/doc-drift`, recovering the stage 1
+  acceptance probe's **first emulator run**: **3557 frames, 179 ticks, index at
+  tap 3, renders at tap 1**. It is a **completeness correction to AF32**, which
+  recorded the emulator's **second** run (126 frames / 7 advances) and omitted
+  the first — **the omission was in the instruction AF32 was written from, not
+  in AF32's reading of it**, so nothing in AF32 is wrong and **AF32 is not
+  edited**; AF43 cross-references it in this direction only, as AF31 did to
+  AF28. Records why a render count of **1** is evidence rather than a dead
+  instrument — the counter is a **tap** count, and AF32 itself establishes this
+  when it explains its device run B reading 7 for seven taps — so the count
+  never moved across 3557 frames on its own and moved by exactly one on the
+  negative control. **Surfaces are kept apart and explicitly not merged:** this
+  is the **emulator**, AF32's 1339 frames / 66 advances are **physical
+  hardware**, and **AF35** records that the two are not interchangeable, so the
+  3557-frame figure must never be quoted as a larger version of the device
+  evidence — it is a longer run on a more pessimistic surface, adding
+  **duration** on the one property that is not timing-sensitive. Attribution:
+  **the project owner witnessed the run and reported it from a screenshot; I
+  ran no emulator and no device and did not see the screenshot**, so 👁 is
+  inherited and the entry has no 🧪 or 📐 half. Not established: no frame
+  timings were reported, so it contributes nothing to AF35; it is a **debug**
+  build; and it says nothing about book length. The figures are cited by
+  `src/reader/WordBox.tsx`'s docblock, which before this entry pointed at no
+  finding.

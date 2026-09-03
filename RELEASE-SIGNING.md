@@ -202,5 +202,12 @@ Stated here so a green build is not read as covering more than it does.
 - The APK is **universal across four ABIs** — `armeabi-v7a, arm64-v8a, x86,
   x86_64`, with no split configured. Fine for manual install; it is just large.
 
-See FINDINGS **AF26 point 3** and **AF27** for the standing release-mode
-evidence gap.
+See FINDINGS **AF26 point 3** and **AF27** for the release-mode evidence gap as
+it was originally stated, and **AF42** for how much of it is now closed. AF42
+records the first release-mode evidence this repo has ever held, and it splits
+the gap in two: the **Hermes half is CLOSED** — release-mode bytecode
+precompilation works on the project owner's device, where every prior
+observation was a debug build — while the **R8/Proguard half is NOT**, because
+`minifyEnabled` is `false` for the reason given above, so R8 never ran. A green
+release build is evidence for the first half only. AF42 also narrows rather than
+closes ABI coverage: the APK ships four ABIs and exactly one was exercised.

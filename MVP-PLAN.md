@@ -158,8 +158,13 @@ Rationale is not restated here.
 
 **DECIDED.** The web repo's `src/pacer/usePacer.ts` is ported — not rewritten
 and not reimplemented — to Android `src/pacer/usePacer.ts`, outside `src/core/`,
-differing from the web original by exactly two added `export` keywords. See
-**AD22** in [DECISIONS.md](DECISIONS.md). Rationale is not restated here.
+differing from the web original by **four** lines: two added `export` keywords
+plus two repointed imports (`'../model/types'` → `'../core/model/types'` and
+`'./dwell'` → `'../core/pacer/dwell'`). See **AD22** in
+[DECISIONS.md](DECISIONS.md), **as corrected by AD25** — AD22 claims "exactly
+two added `export` keywords and nothing else", and AD25 records why that is
+wrong and how the remaining 227 lines were confirmed byte-identical anyway.
+Rationale is not restated here.
 
 ### 4.5 · D-G — Reading surface and virtualization
 
