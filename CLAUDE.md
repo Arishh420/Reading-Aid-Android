@@ -40,7 +40,7 @@ can check it independently. If a command produced no output, say so explicitly.
 
 ## 4. Two invariants that must never break
 Both cause silent, hard-to-trace corruption. Each is stated in full below because
-this file carries verbatim between repos and must stand alone. The originals —
+this file is Android-owned (AD32) and must stand alone. The originals —
 FINDINGS F1 and F16, plus PORT-AUDIT.md §4.5 — live in the **web repo** (Reading
 Aid Tool); treat those IDs as a back-reference for anyone who has that repo, not
 as a live pointer.
@@ -64,11 +64,17 @@ as a live pointer.
 
   The principle above is platform-neutral. The **mechanism** is not:
   - **Web:** direct DOM manipulation from the subscriber callback.
-  - **React Native: UNDECIDED — do not treat this as settled.** The candidates
-    are `setNativeProps` (deprecated under the New Architecture) and Reanimated
-    shared values (current idiom, but a dependency in a layer the port wants
-    thin). Whichever is chosen must locate word N, move a highlight to it, and
-    scroll only on line change — without re-rendering the list.
+  - **React Native: SETTLED by AD21 — proven on hardware by AF32.** Each block
+    renders as one `flexWrap` `View` holding one text element per word; a single
+    Reanimated shared value carries the active index, and each word derives its
+    highlight by comparing that value against its own flat word index (`Word.id`
+    numerically, per the invariant above) on the UI thread. React does not
+    re-render on a pacer tick — AF32 measured zero spontaneous renders across
+    1339 frames and 66 word advances on a physical device. `setNativeProps` is
+    NOT a candidate: it does not work under the New Architecture, which Expo
+    SDK 55+ mandates with no opt-out. The mechanism must still locate word N,
+    move the highlight to it, and scroll only on line change — without
+    re-rendering the list.
 
   Three guards make the invariant survivable on either platform:
   1. **The seam stays an integer callback.** It is

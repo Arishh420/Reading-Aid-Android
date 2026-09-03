@@ -58,11 +58,14 @@ Fork declared **2026-09-03**, on branch `feature/ad31-core-fork`.
 
 ## 2. The manifest
 
-Twenty-five files. **Tier 1** (rows 1–20) is what was seeded byte-identical
+Twenty-six files. **Tier 1** (rows 1–20) is what was seeded byte-identical
 from web — the twelve `src/core/` sources and the eight `src/core/` headless
 suites, which are as duplicated by value as the sources they bundle and which
 AF14 records as invisible to both `tsc` programs. **Tier 2** (rows 21–25) is
-what was hand-copied or ported with deliberate changes.
+what was hand-copied or ported with deliberate changes. **Row 26** is neither:
+it is [CLAUDE.md](CLAUDE.md), the working agreement itself, at the repo root
+rather than under `src/` — carried verbatim from web under AD12 and AD14 until
+AD32 ended that and made it Android-owned like the rest.
 
 `Baseline sha256` is the hash at the fork point and is **never edited**.
 `Current sha256` is what the file hashes to now, and is what the check compares
@@ -109,6 +112,7 @@ manifest is scoped rather than exhaustive.
 | 23 | `src/storage/storage.ts` | port, platform-swapped to MMKV | `d354bb665358fa0b60255158c9d7a4a2907188f14182ced9514adea206e64315` | `d354bb665358fa0b60255158c9d7a4a2907188f14182ced9514adea206e64315` | n | AD6 |
 | 24 | `src/storage/readingPosition.ts` | port, byte-identical to web | `3385b12b1a6d8e4a6190bbbe53fed40505d028a7ec74794125fab5776a73e5fb` | `3385b12b1a6d8e4a6190bbbe53fed40505d028a7ec74794125fab5776a73e5fb` | n | AD25 |
 | 25 | `src/storage/headless-test.mjs` | adapted copy of web's suite | `2e35f2d20b79bc12c78af9728ed1a45ad7673386047315a1892c6121d784e692` | `2e35f2d20b79bc12c78af9728ed1a45ad7673386047315a1892c6121d784e692` | n | AD27 |
+| 26 | `CLAUDE.md` | working agreement, carried verbatim from web (AD12, AD14) | `407d965a93d176bc5da85922c7aef0965fd53749e5f2e63cd753490b7f30e8a6` | `4bc3379715f0b12a5856603b09fada2a6327aa09ac9c47c612d8c9e1d7c64ddf` | y | AD32 |
 
 <!-- END MANIFEST -->
 
