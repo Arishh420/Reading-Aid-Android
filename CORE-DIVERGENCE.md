@@ -10,10 +10,11 @@
 > **This file is MUTABLE**, unlike its append-only neighbours
 > [DECISIONS.md](DECISIONS.md) and [FINDINGS.md](FINDINGS.md). It is rewritten
 > in place as files diverge, because a record of *current* state cannot live in
-> a file that is never rewritten. It is modelled on
-> [MVP-PLAN.md](MVP-PLAN.md) — a purpose-built companion to the canonical four
-> — per AD18's precedent, and on [RELEASE-SIGNING.md](RELEASE-SIGNING.md),
-> which AD30 created for the same reason.
+> a file that is never rewritten. It is modelled on `MVP-PLAN.md` — a
+> purpose-built companion to the canonical four, since retired and deleted once
+> the MVP shipped, as its own header promised — per AD18's precedent, and on
+> [RELEASE-SIGNING.md](RELEASE-SIGNING.md), which AD30 created for the same
+> reason.
 >
 > **What this file is NOT.** It is **the record of a divergence, never its
 > rationale**. Rationale lives in an `AD` or `AF` entry and **nowhere else** —
