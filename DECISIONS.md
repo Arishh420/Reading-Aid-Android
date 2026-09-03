@@ -1404,6 +1404,263 @@
   The **core 8 suites and their 125 checks are untouched** — the new suite is
   registered in `test:local` only.
 
+- **AD31 · `D-D` is settled: Android FORKS `src/core/`. The twelve seeded
+  files, the eight seeded headless suites, `src/pacer/usePacer.ts`,
+  `src/reader/palette.ts`, `src/storage/storage.ts`,
+  `src/storage/readingPosition.ts` and `src/storage/headless-test.mjs` become
+  Android-owned. There is no cross-repo obligation, no back-propagation, and no
+  freeze exception is needed to edit any of them. The web repo remains
+  authoritative for its own tree and is irrelevant as a sync source for this
+  one.**
+
+  **The scope of the decision, stated precisely so a future reader is not
+  guessing.** Three statements, and they are not the same statement:
+  1. What was seeded byte-identical (AF7, AF9) **stays** byte-identical **at
+     the baseline recorded in [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md)** — but
+     that baseline is now a **starting point for Android edits, not a
+     constraint against them**.
+  2. **Byte-identity to WEB is no longer maintained or checked for anything.**
+     No web hash appears in the manifest and nothing consults the web repo
+     again.
+  3. **Byte-identity to the RECORDED BASELINE is checked by CI**, and every
+     deviation must appear in the manifest **in the same PR that causes it**.
+     That is the mechanism that makes this a fork rather than drift.
+
+  **The load-bearing fact: three of the web repo's PORT-PLAN.md §5.2 options
+  assume a live web repo, and the fourth assumes something to reconcile
+  against.** Each was read in the web file for this entry (read-only) rather
+  than recalled, and the argument is recorded here rather than restated from
+  there.
+  - **(a) A shared package.** Its stated *for* is "one source of truth; drift
+    becomes structurally impossible; **a fix propagates by bumping a
+    dependency**." Every clause presupposes two live consumers. With web frozen
+    there is one consumer, and a package with one consumer is a publish step
+    bolted onto a single repo. Its own *against* also stands undiminished: "the
+    heaviest option", it "adds a publish/release step to every core change,
+    including one-line ones", and Metro's resolution of a linked/workspace
+    package "needs confirming ❓".
+  - **(b) A git submodule.** Its *for* is "one source of truth with an
+    explicit, recorded pin". A pin at a repo nobody commits to is a pin at a
+    constant. Its *against* is decisive independently: §5.2 records that
+    submodules re-adopt "a **git-state-confusion class problem**, the same
+    category §2.3 deliberately designed out of the repo layout."
+  - **(c) A sync script with a conformance check.** This is the closest of the
+    four and must be handled carefully, because **AD31 adopts (c)'s MECHANISM
+    while rejecting (c)'s PURPOSE, and a careless reading would say we rejected
+    (c) and then built it.** (c) is defined as "a script **copies the seed set
+    in one direction**" and a check that "fails when **the two copies** differ"
+    — a two-repo comparator. That is what is rejected: there is no second copy
+    worth comparing to. What is kept is (c)'s *tooling* — "comparing hashes of
+    the seed files", via what §5.2 itself calls "a small script plus a
+    manifest" — **repointed from the web repo to a recorded baseline**. The
+    difference is the oracle, and it is the whole difference. It also disposes
+    of (c)'s sharpest self-criticism: "a byte-comparison is too strict the
+    moment the port legitimately needs a platform-conditional line." Under a
+    fork, divergence is **expected and recorded** rather than prevented, so
+    strictness costs nothing — a mismatch is not a failure, it is a **prompt to
+    write the row**.
+  - **(d) Accept the drift deliberately, with a documented reconciliation
+    cadence.** Defensible only if there is something to reconcile against.
+    There is not. §5.2's own *against* is the epitaph: its success "depends
+    entirely on someone remembering", and "if chosen, the cadence and the
+    record-keeping need to be as concrete as the alternatives' tooling, **or it
+    degrades into (e) below by default**."
+
+  Forking is what remains once the freeze is accepted as **long-lived rather
+  than temporary**.
+
+  **THE PREMISE OF THAT ACCEPTANCE WAS CHECKED AND FOUND FALSE, AND THE
+  ARGUMENT WAS RE-DERIVED RATHER THAN INHERITED.** This decision was scoped on
+  the stated premise that the web freeze "has been on the table for months".
+  It has not: web HEAD is `15b6ca34e050f28eb1aacacaeaeabc8ef7584e28`, dated
+  **2026-08-31**, and today is **2026-09-03** — **three days**. The premise was
+  an assertion nobody had measured, it was measured for this entry, and the
+  case for forking is built below on the measured facts alone. AF37's lesson is
+  that a decision log asserting an event that did not happen is the one failure
+  mode nothing in this repo can catch; this is that lesson applied
+  **prospectively** rather than after the fact, and it is recorded because a
+  premise silently corrected leaves a future reader unable to tell a checked
+  claim from an inherited one.
+
+  **The measured basis, and what remains a judgement.** Web HEAD is the tip of
+  `main` with a clean tree 🧪. Since that commit, **two bugs have been filed
+  against seeded core files and neither has been fixed** — #108 (2026-08-31)
+  and #110 (2026-09-02, filed *after* the last web commit) — and the web
+  backlog has grown from 17 open (MVP-PLAN.md §8, 2026-09-01) to **19** 🧪. A
+  repo that receives reports but not commits is the condition being planned
+  around. **Treating that condition as long-lived is a planning judgement, not
+  a measurement**, and three days is not evidence of permanence. What makes the
+  judgement affordable is stated below: forking does not foreclose
+  reconciliation.
+
+  **Why this is NOT §5.2's option (e), "do nothing and let them drift" — stated
+  explicitly, because it is exactly the objection a careful reader will raise.**
+  §5.2 names (e) as "the unstated default … strictly worse than (d), which at
+  least writes the intention down." Superficially a fork and a drift look
+  identical: two repos, no sync, edits landing on one side only. They are
+  distinguished by four properties, and (e) has none of them:
+  1. **A baseline.** A commit-pinned hash per file, recorded once.
+  2. **A manifest.** [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md), twenty-five rows.
+  3. **CI.** `scripts/check-core-baseline.mjs`, inside `npm run check`.
+  4. **Answerability.** Six months from now, *which* files diverged, *how*, and
+     *why* is answerable from a clone with no network — the `Diverged?` column
+     says which, the two hashes say that it did, and the `Record` column points
+     at the `AD`/`AF` entry that says why.
+
+  Under (e) all four questions are unanswerable and the drift is invisible
+  until somebody diffs by hand. **The distinction is not intent, it is
+  apparatus** — which is precisely the lesson §5.1 draws from F-PRESETS-5 and
+  web issue #105, both cited there as documented intentions with no automated
+  guard.
+
+  **What was considered and REJECTED alongside forking**, recorded so this is
+  not read as an unopposed choice. The first is not a §5.2 option; the second
+  and third are §5.2's (b) and (a) re-examined under the freeze, and their
+  arguments are not repeated here.
+  - **Maintain byte-identity to web, on the theory that the freeze may lift.**
+    Rejected. AD18's carve-out has been available since 2026-09-01 and no `D-D`
+    resolution has come from the web side; #108 and #110 are both still open
+    there. **Forking does not foreclose reconciliation — it stops paying for it
+    in advance**, and the baseline is precisely the artifact a future
+    reconciliation would need. If the freeze lifts, this decision is
+    revisitable, and the manifest makes that revisit cheap rather than
+    archaeological.
+  - **A git submodule for `src/core/`.** Preserves web as a live source but
+    requires the web repo to **accept Android's fixes upstream**, which the
+    freeze precludes; and it makes routine edits require submodule dances.
+    §5.2 (b)'s git-state-confusion objection applies on top.
+  - **A shared package on npm.** Same upstream-acceptance problem, plus a
+    packaging surface **neither repo has today**.
+
+  **`D-R` and web #110 become ordinary Android bugs, and `D-R` is settled by
+  this entry.** AD18 sequenced `D-R` *after* `D-D` deliberately, so the fix
+  would be the first real exercise of whatever sync mechanism `D-D` chose. The
+  mechanism chosen is "no sync", so **the cross-repo fix sequence is retired**:
+  no freeze exception, no fix-there-then-recopy, no post-copy byte-identity
+  check. #108 (`**hi **` in `markdown.ts`) and #110 (an NFD combining mark
+  orphaned by `splitBionic` in `bionic.ts`) are fixed **here, on Android's
+  schedule**, and the corresponding web issues are left to whoever unfreezes
+  that repo. Both issues state the cross-repo obligation in their own text —
+  #110's Context section says a change there "requires a matching copy across
+  plus a re-run of the ported suite there" 🧪 — and **that obligation is what
+  this entry cancels, on the Android side only.** Neither web issue is edited
+  or closed from here.
+
+  **One concrete consequence, recorded now so it is not rediscovered as a
+  surprise.** #110 notes that the current (buggy) behaviour is **pinned by a
+  test in this repo's bionic suite**, with a note saying it records what the
+  code does rather than what is correct 🧪. Fixing #110 on Android therefore
+  requires updating that pin **and** the `bionic.ts` row in
+  [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md), in the same PR. That is the fork's
+  first real exercise, and it is a three-file change rather than a two-repo
+  negotiation.
+
+  **The manifest and the CI check are ONE decision, not two.** A manifest
+  without a check is documentation nobody enforces — §5.1's own diagnosis of
+  F-PRESETS-5, where two copies "were diffed by eye" with "no automated guard
+  against the inline copy drifting from the real source." Splitting them here
+  would reproduce that. So [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) and
+  `scripts/check-core-baseline.mjs` ship together, and the check is wired into
+  `npm run check` in the same change — CLAUDE.md §3 defines "clean" in terms of
+  the repo's full verification command, and AD5 and AD10 both record that a
+  guard which only runs when someone remembers to invoke it is a guard that
+  will eventually stop running.
+
+  **The manifest covers TWENTY-FIVE files, not the fourteen this decision was
+  scoped around, and the difference was found by investigation rather than
+  assumed.** Every file under `src/` was compared against the web tree at
+  `15b6ca3` for this entry 🧪.
+  - **The eight seeded `.mjs` headless suites under `src/core/` are included.**
+    AD9 and AF9 record them as zero-line-diff copies, and all eight were
+    re-hashed identical this session. They are **exactly as duplicated by value
+    as the sources they bundle**, and AF14 records that they are invisible to
+    both `tsc` programs — so before this change, literally nothing guarded
+    them. Excluding them would have left the manifest's largest blind spot
+    inside the very directory it exists to cover.
+  - **Three storage files are included that this decision's own scoping
+    missed.** `src/storage/readingPosition.ts` is a **byte-identical port**
+    (AD25) and is *still* byte-identical to web at `15b6ca3` 🧪 — a thirteenth
+    undeclared byte-identity surface, unrecorded as such until now.
+    `src/storage/storage.ts` names itself a port in its own docblock ("Ported
+    from the web repo's src/storage/storage.ts") with only the backing store
+    swapped per AD6 📐. `src/storage/headless-test.mjs` is an adapted copy of
+    web's suite (AD27).
+  - **`src/storage/resumeTarget.ts` and `src/storage/fingerprint.ts` are
+    deliberately EXCLUDED**, and the reason is a distinction worth keeping:
+    both derive their *logic* from web but neither is a *copy* — their own
+    docblocks say "Reimplemented rather than ported" and "This is NOT a port"
+    📐. There is no byte-relationship to a web file, so there is no baseline
+    that would mean anything. Android-original files (`src/app/*`,
+    `ReaderSurface.tsx`, `WordBox.tsx`, `prepareDocument.ts`, and the four
+    Android-written suites) are excluded for the stronger form of the same
+    reason. **The exclusion is not laziness, it is signal preservation:** a
+    manifest that lists every file makes a manifest update part of every
+    ordinary edit, which trains people to update it mechanically — and a row
+    updated mechanically is a row nobody read.
+
+  **§5.2 (c)'s remaining weakness is inherited, PARTIALLY closed, and the
+  residue is stated rather than hidden.** (c)'s *against* includes: "it only
+  guards files on the manifest, so a new pure module added here is invisible to
+  it until someone remembers to add it — the same 'remember to update the copy'
+  weakness one level up." That criticism transfers to this design and is
+  **closed for `src/core/` and left open elsewhere**: the check walks
+  `src/core/` and **fails on any file present on disk but absent from the
+  manifest**, so a new core module cannot be added silently. Outside
+  `src/core/` the manifest is opt-in, so a future hand-copy landing in, say,
+  `src/reader/` would be unguarded until someone lists it. That is a real
+  residue and it is recorded as one. The reason it is not closed by walking all
+  of `src/` is the signal-preservation argument above — a whole-tree walk would
+  force every Android-original file into the manifest.
+
+  **The `&&` ordering costs something, and the cost is accepted knowingly
+  rather than discovered later.** `check` becomes `npm run build && npm run
+  check:baseline && npm run test:all`, so the baseline check sits **ahead of**
+  the thirteen suites. **A one-line manifest staleness therefore suppresses all
+  310 suite checks** — nobody sees a real behavioural regression until the
+  manifest is fixed. That is exactly the hazard **AF17** exists to record: this
+  repo deliberately made `test:core` non-fail-fast, because "a `&&` chain would
+  have hidden suites 2–8 behind the first failure, which is the opposite of an
+  honest verification report." Accepted for two reasons. First, it adds **no
+  new class of hiding**: `build` already sits ahead of the suites under the
+  same `&&`, so a type error already suppresses them, and the baseline check is
+  a static check of that same kind — it executes nothing and asserts nothing
+  about behaviour. Second, a baseline mismatch means **a core file moved**,
+  which is the one thing you want to know *before* reading test output rather
+  than after. The alternative — placing it last so the suites always run — was
+  considered and rejected on that second point. The tradeoff is written down
+  here so a future reader finds it acknowledged in the decision rather than
+  discovering it during a red run.
+
+  **Reporting: this is "13 suites plus 1 baseline check", NOT "14 suites."**
+  The thirteen are esbuild-bundle-plus-`node:assert` behavioural suites that
+  execute real source and assert what it computes; the baseline check executes
+  nothing, asserts nothing about behaviour, and needs no esbuild. Folding it
+  into the suite count would make the tally answer a different question than it
+  has answered since AF10, and would silently inflate a number this repo's
+  findings quote repeatedly (125 core checks — AF10, AF18, AF25). It is
+  reported on its own line for the same reason `build` is not counted as a
+  suite.
+
+  **Validation, recorded because a check trusted on its first green run is not
+  a check.** Following AF21's precedent and AD29's, the script was run against
+  **six negative controls** before its passing result was believed, and the
+  manifest was confirmed byte-identical afterwards by both hash and `diff` 🧪:
+  a file edited without its row updated; `Diverged?` claiming `y` while the
+  hashes agree; a `src/core/` file dropped from the manifest; a row naming a
+  path that does not exist; the fence comment removed; and the fence present
+  with every row deleted. All six exited **1**. The last two matter most: a
+  check that passes on an unparseable or empty manifest is worse than no check,
+  because it reports success while examining nothing.
+
+  **What this does NOT settle.** `D-N` (headless suites on Android) stays
+  post-MVP as AD24 left it; AD24 noted that `D-N` "interacts with `D-D`" and it
+  does, but the interaction resolves trivially under a fork — the suites are
+  Android's, so nothing constrains where they run. The web repo's PORT-AUDIT.md
+  §7 item 5 is a **web-side** question and is not answered here. And this entry
+  makes **no claim about the web repo's future**: it does not close its issues,
+  does not predict the freeze lifting or holding, and creates no obligation on
+  anyone who unfreezes it.
+
 ## Milestone: release signing + app identity
 
 - **AD30 · Release signing is configured by a direct edit to the generated
@@ -1762,3 +2019,46 @@
   across four ABIs. **Nothing was executed against Gradle** — the acceptance
   check is pending, in the same shape as AD21/AD22/AD28. The prebuild evidence
   is FINDINGS **AF41**.
+- 2026-09-03 — appended **AD31** on `feature/ad31-core-fork`, settling `D-D`
+  and, with it, `D-R`. Android **forks** `src/core/`: byte-identity to the web
+  repo is abandoned outright, and byte-identity to a **recorded baseline** is
+  enforced instead by a new mutable manifest, `CORE-DIVERGENCE.md`, plus
+  `scripts/check-core-baseline.mjs` wired into `npm run check` — the two ship
+  together because a manifest without a check is what PORT-PLAN.md §5.1
+  diagnoses in F-PRESETS-5. Each of the web repo's §5.2 options was re-read for
+  the entry: three assume a live web repo, and (d) assumes something to
+  reconcile against. **(c) is the subtle one** — AD31 adopts its *mechanism* (a
+  small script plus a hash manifest) while rejecting its *purpose* (a two-repo
+  comparator), the difference being the oracle, and in doing so disposes of
+  (c)'s own objection that byte-comparison is "too strict the moment the port
+  legitimately needs a platform-conditional line": under a fork a mismatch is a
+  prompt to write a row, not a failure. Why this is **not** §5.2's option (e) is
+  stated as four properties (e) lacks — baseline, manifest, CI, answerability —
+  because "the distinction is not intent, it is apparatus." **A false premise is
+  recorded rather than silently corrected:** the decision was scoped on the
+  claim that the freeze had stood for months; measured, web HEAD `15b6ca3` is
+  dated **2026-08-31** against today's **2026-09-03** — **three days** — so the
+  argument was re-derived from measured facts (two bugs filed against seeded
+  core files and unfixed, #110 filed *after* the last web commit; backlog 17 →
+  **19**), and treating the freeze as long-lived is labelled a **planning
+  judgement, not a measurement**. That is AF37's lesson applied prospectively.
+  **The manifest covers twenty-five files, not the fourteen the decision was
+  scoped around:** the eight seeded `.mjs` suites are as duplicated by value as
+  the sources they bundle and were guarded by nothing (AF14), and three storage
+  files were missed — `readingPosition.ts` is *still* byte-identical to web, a
+  thirteenth undeclared identity surface. `resumeTarget.ts` and `fingerprint.ts`
+  are excluded as derived-not-copied, and Android-original files are excluded
+  for signal preservation: "a row updated mechanically is a row nobody read."
+  §5.2 (c)'s "only guards files on the manifest" weakness is **closed for
+  `src/core/`** by a completeness walk and left open elsewhere, recorded as
+  residue. The **`&&` ordering cost is written into the decision**, not just
+  the PR: placing the baseline check ahead of `test:all` means a one-line
+  manifest staleness suppresses all 310 suite checks — AF17's exact hazard —
+  accepted because `build` already sits there under the same `&&` and a moved
+  core file is what you want to know first. Reporting form is fixed as **"13
+  suites plus 1 baseline check"**, never "14 suites". The script was validated
+  against **six negative controls**, all exiting 1, before its green run was
+  believed. `D-R`'s cross-repo fix sequence is **retired**: #108 and #110
+  become ordinary Android bugs, and #110's bionic pin plus its
+  `CORE-DIVERGENCE.md` row will be the fork's first real exercise. No web file
+  was modified and no web issue was edited or closed.

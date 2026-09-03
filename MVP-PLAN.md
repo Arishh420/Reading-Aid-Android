@@ -1,7 +1,8 @@
 # MVP-PLAN.md — the live register of open MVP questions
 
-> **Purpose.** The Android MVP's scope is undecided: roughly eighteen questions
-> are open. This file is where they live *while* they are open — a status
+> **Purpose.** The Android MVP's scope questions are now all settled:
+> everything MVP-blocking is closed, and only three post-MVP spikes remain
+> open. This file is where they live *while* they are open — a status
 > board, the questions themselves, and the arguments as they develop — so a
 > fresh session can pick one up instead of re-deriving it from chat.
 >
@@ -56,7 +57,7 @@ web-repo IDs. `AD#` and `AF#` are local and live.
 **Item IDs are stable, not ordered.** `D-A` … `D-R`, assigned once. Tier order
 is priority order; the letters are *not* resequenced when an item moves, so a
 pointer to `D-R` stays valid for the life of this file. (`D-R` sits in Tier 1
-despite its letter, because it is blocked on `D-D`.)
+despite its letter, because it was blocked on `D-D`.)
 
 **Nothing below is decided by this document.** The open items state a question
 and the verified facts that make it live. They deliberately do not propose
@@ -84,8 +85,8 @@ Pointer and one-line status only. Rationale lives in the `AD` entry, never here.
 | **D-A** | Feature scope: modes, bionic, themes, presets, settings | **DECIDED** | [AD19](DECISIONS.md) + [AD23](DECISIONS.md) |
 | **D-B** | Which document formats ship in v1 | **DECIDED** | [AD20](DECISIONS.md) |
 | **D-C** | Where decisions get logged | **DECIDED** | [AD18](DECISIONS.md) |
-| **D-D** | Core drift across the repo boundary | **OPEN** — options in web PORT-PLAN.md §5.2, none chosen | §4.1 |
-| **D-R** | Web issue #108 (`**hi **`) — fix sequence across repos | **OPEN — blocked on D-D** — agreed in principle | §4.2 |
+| **D-D** | Core drift across the repo boundary | **DECIDED** | [AD31](DECISIONS.md) |
+| **D-R** | Web issue #108 (`**hi **`) — fix sequence across repos | **DECIDED** | [AD31](DECISIONS.md) |
 | **D-E** | Per-tick highlight mechanism (CLAUDE.md §4 invariant) | **DECIDED** | [AD21](DECISIONS.md) |
 | **D-F** | The pacer clock | **DECIDED** | [AD22](DECISIONS.md) |
 | **D-G** | Reading surface and virtualization | **DECIDED** | [AD24](DECISIONS.md) |
@@ -131,33 +132,20 @@ section is its first demonstration.
 
 ### 4.1 · D-D — Core drift across the repo boundary
 
-Two copies of the twelve seeded files exist — this repo's `src/core/` and the
-web repo's `src/` — byte-identical at seed time (AF7) with **no mechanism of
-any kind** keeping them in sync. Nothing detects divergence; nothing prevents
-it; the only current guarantee is that nobody has edited either copy. Four
-options with trade-offs are laid out in the web repo's **PORT-PLAN.md §5.2**,
-where none was selected. *Those options are not restated here — read the
-section named.* What this register adds is that the question is no longer
-hypothetical: D-R is a real, filed, agreed-to-be-fixed bug in one of the twelve
-files, waiting on this answer. **AD22 expands this item's scope:** the decision
-is now over the twelve seeded files **plus** a known-unsynced
-`src/pacer/usePacer.ts` outside `src/core/`.
+**DECIDED.** Android **forks** `src/core/`. Byte-identity to the web repo is
+abandoned; byte-identity to a **recorded baseline** is enforced instead by
+[CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) — twenty-five files, not the fourteen
+this item was scoped around — and by `scripts/check-core-baseline.mjs` inside
+`npm run check`. See **AD31** in [DECISIONS.md](DECISIONS.md). Rationale is not
+restated here.
 
 ### 4.2 · D-R — Web issue #108: the fix sequence across two repos
 
-Web issue #108 (OPEN, `bug`): `**hi **` renders as `*hi *` — `ITALIC_ASTERISK`
-claims a delimiter pair `BOLD_ASTERISK` declined. **Decided in principle: it is
-a real bug and it will be fixed.** What is *not* decided is the cross-repo
-sequence. Confirmed present in both copies at identical lines 🧪 — the
-constants at `src/core/parsers/markdown.ts:70-71`, the call sites at `98-101`.
-The web repo is frozen, so a fix requires a deliberate freeze exception, then
-the fix there, then a re-copy into this repo's `src/core/parsers/markdown.ts`,
-then a fresh byte-identity hash check. **PENDING ON D-D**, deliberately: this is
-the first real exercise of whatever sync mechanism D-D chooses, and sequencing
-it first means performing the re-copy by hand and learning nothing about the
-mechanism. Issue #108's own acceptance criteria already anticipate the
-copy-across obligation, so the sequencing question is visible from the web side
-too.
+**DECIDED.** The cross-repo fix sequence is **retired**: #108 — and #110, filed
+since against `bionic.ts` — are ordinary Android bugs, fixed here on Android's
+schedule with no freeze exception and no copy-across. This item's "blocked on
+D-D" qualifier is resolved by D-D being settled. See **AD31** in
+[DECISIONS.md](DECISIONS.md). Rationale is not restated here.
 
 ### 4.3 · D-E — The per-tick highlight mechanism
 
@@ -286,24 +274,22 @@ the register; it goes into GitHub issues in this repo.
   NFD/combining-mark suite and exercises both directly — and does **not** cover
   `matchAll`, which lives in a module it never bundles. AF31, not AF28, is the
   current statement of what on-device coverage exists.
-- **Port `usePacer.ts` and add its headless suite (AD22).** The web original is
-  copied to Android `src/pacer/usePacer.ts` — outside `src/core/` — with the two
-  added `export` keywords AD22 specifies and no other change. A new
-  Android-local suite bundles the copy and covers the three pure helpers, in
-  particular `nearestWordlike`'s backward fallback when no word-like token
-  exists at or after the target; it becomes the **ninth** suite in `npm run
-  check`. Rationale is in AD22, not here.
-- **Add a headless suite for `bionic.ts` (AD23).** `splitBionic` has **no test
-  coverage in either repo** — no suite here and none in the web repo bundles
-  `src/core/reader/bionic.ts`; AD23 records the resolved-to-literal sweep. AD23
-  puts bionic in the MVP, so as things stand the module ships untested. A new
-  Android-local suite bundles the real source, alongside the `usePacer` suite
-  above. Rationale is in AD23, not here.
-- **The web repo's open issues.** **17** open as of 2026-09-01 (`gh issue list
+- ~~Port `usePacer.ts` and add its headless suite (AD22).~~ **DONE.** The port
+  landed as a **four-line** diff, not the two-line one AD22 predicted — **AD25**
+  corrects it — and `src/pacer/usePacer-headless-test.mjs` runs **20** checks
+  inside `npm run check`.
+- ~~Add a headless suite for `bionic.ts` (AD23).~~ **DONE.**
+  `src/reader/bionic-headless-test.mjs` runs **73** checks inside `npm run
+  check`. One of them deliberately **pins current buggy behaviour** rather than
+  correct behaviour — web #110's NFD combining-mark defect. Under **AD31** that
+  pin is Android's to update when #110 is fixed here.
+- **The web repo's open issues.** **19** open as of 2026-09-03 (`gh issue list
   --state open`, count only — deliberately not enumerated here; the web repo is
   untouched and its backlog is its own). Some are Android-tagged and will be
   mirrored into this repo as they become relevant. Mirroring one is not a
-  decision and does not need a register entry.
+  decision and does not need a register entry. Under **AD31**, two of them —
+  #108 and #110, both defects in seeded core files — are now Android's to fix
+  here, with no obligation back.
 
 Note: **this repo currently has no GitHub issues at all** 🧪 (`gh issue list
 --state all` returns empty). The destination for spikes and queued work is
