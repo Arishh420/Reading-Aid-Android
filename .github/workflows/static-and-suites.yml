@@ -3,7 +3,7 @@
 # why lint runs last.
 #
 # The name is deliberate and must not become `tests` or `build`. A green tick
-# here means tsc passed, the fork baseline matched, 13 headless suites passed
+# here means tsc passed, the fork baseline matched, 14 headless suites passed
 # and lint was clean. It means NOTHING about the device behaviour this repo
 # depends on -- the highlight mechanism, the pacer clock, auto-scroll, MMKV,
 # release-mode Hermes. ARCHITECTURE.md §6 lists what has no automated coverage,
@@ -53,8 +53,8 @@ jobs:
       - name: Typecheck and core portability guard
         run: npm run build
 
-      # Its own step to preserve AD31's reporting form: "13 suites plus 1
-      # baseline check", never "14 suites". This asserts nothing behavioural.
+      # Its own step to preserve AD31's reporting form: "14 suites plus 1
+      # baseline check", never "15 suites". This asserts nothing behavioural.
       - name: Core fork baseline
         run: npm run check:baseline
 

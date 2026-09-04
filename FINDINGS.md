@@ -2244,6 +2244,259 @@
   gaps) or AF26's point 3 — both untouched. Every 👁 limit recorded in
   AF27–AF43 stands.
 
+## The UAT config overlay — a live no-op found in `app.json`, and two loaders
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, in this tree, against the installed `@expo/prebuild-config` /
+> `@expo/config` / `@expo/require-utils` packages and this repo's own asset
+> files. **No prebuild, Gradle build, emulator, device or install was run**, and
+> none is claimed. This section therefore carries **no 👁 at all**, like AF45
+> and AF47, and nothing in it is behavioural evidence about the app on hardware.
+> The decisions taken in response are **AD37**; nothing from that entry is
+> restated here (AD18).
+
+- **AF48** 🧪📐 — **`app.json`'s `adaptiveIcon.backgroundColor` is ALREADY a
+  no-op in the SHIPPED release app, and this is recorded as a present-tense fact
+  about the current configuration rather than only as context for the UAT
+  variant.**
+
+  `app.json` sets **both** `adaptiveIcon.backgroundColor: "#E6F4FE"` **and**
+  `adaptiveIcon.backgroundImage: "./assets/images/android-icon-background.png"`.
+  An adaptive icon's background layer is one or the other, and the plugin
+  resolves it at
+  `node_modules/@expo/prebuild-config/build/plugins/icons/withAndroidIcons.js:239`
+  📐:
+
+  ```js
+  const background = backgroundImage ? `@mipmap/ic_launcher_background` : `@color/iconBackground`;
+  ```
+
+  So while `backgroundImage` is present, `ic_launcher.xml` in `mipmap-anydpi-v26`
+  points its background at the **drawable**. The colour is still written into
+  `colors.xml` as `iconBackground` (`:99`, `:123-128`, `:232-237`) and is then
+  **referenced by nothing**. Expo says so in its own comment at `:288` —
+  `// backgroundImage overrides backgroundColor`. Two further confirmations that
+  the colour cannot reach the icon by another route: `configureAdaptiveIconAsync`
+  (`:206`) is never passed `backgroundColor` at all, and the legacy pre-API-26
+  path nulls both at `:159-160` because `app.json` sets a top-level `icon`.
+  Swept for other consumers: `withAndroidIcons` is the **only** reader of
+  `adaptiveIcon.backgroundColor`/`backgroundImage` anywhere in
+  `@expo/prebuild-config` or `@expo/config-plugins`; the sole other
+  `adaptiveIcon` reference is `withAndroidManifestIcons.js:19` testing
+  `!!adaptiveIcon` for `android:roundIcon` 🧪.
+
+  **WHY IT WENT UNNOTICED, which is the interesting half.** The two settings do
+  not merely coexist — they **agree by value**. Decoding both PNGs (pure Node
+  `zlib`, no new dependency) 🧪:
+
+  | asset | measured |
+  |---|---|
+  | `android-icon-background.png` | 512×512 RGBA, **100% opaque**, **97.5% of it exactly `#e6f4fe`** — a flat fill of the same colour `backgroundColor` declares, plus 2.5% faint light-blue detail |
+  | `android-icon-foreground.png` | 512×512 RGBA, **95% transparent**; the 5% opaque is a blue glyph, dominant `#1884eb` |
+
+  The Expo template ships the image and the colour matched, so the redundant
+  field has never produced a visible discrepancy for anyone to notice.
+
+  **NOT FIXED IN THIS CHANGE, deliberately.** Release identity is untouched by
+  AD37 and removing the redundant field would be a change to it. It is recorded
+  here so that a reader can **discover the field does nothing** rather than
+  reasoning from it. Nothing depends on the redundancy; it is inert, not
+  harmful.
+
+  **The consequence for the UAT overlay** is that setting a yellow
+  `backgroundColor` while `backgroundImage` remained would have been an
+  invisible no-op — which is why AD37 omits the image instead. Contrast against
+  the foreground glyph, computed for the candidate backgrounds 🧪 (WCAG
+  luminance ratios, used here as a proportionality check that the beta icon is
+  no worse than the release one — an icon glyph is not text and no compliance
+  claim is made):
+
+  | background | vs glyph `#1884eb` |
+  |---|---|
+  | `#E6F4FE` — release, today | **3.38:1** |
+  | **`#FFEB3B` — chosen for UAT** | **3.10:1** |
+  | `#FFF176` | 3.27:1 |
+  | `#FDD835` | 2.72:1 |
+  | `#FFC107` | 2.33:1 |
+  | `#F9A825` | 1.92:1 |
+
+  ---
+
+  ### CORRECTION to a premise this change was scoped under — TypeScript 7 would not "silently break" config loading
+
+  **The instruction was to record that a TS 7 bump would silently break
+  `app.config.ts` loading. Measured, that is too strong, and the project owner
+  corrected it on being shown the measurement.** It is recorded as a correction
+  rather than quietly softened, for AF37's reason: a log entry asserting a
+  mechanism that does not exist is caught by nothing.
+
+  Expo loads a `.ts` config through **two** transpilers, not one:
+
+  1. **`typescript`'s `transpileModule`** — `@expo/require-utils/build/load.js:316`,
+     reached via `loadTypescript()` at `:73-92` 📐. That function carries Expo's
+     own comment at `:77-78`: *"typescript v7 ships without the necessary
+     compiler/public APIs to use it for transpilation or other purposes"*, and
+     returns `null` when `typeof _ts?.transpileModule !== 'function'`. **So a TS
+     7 bump is anticipated in the installed source**, not merely plausible.
+  2. **Node's native `module.stripTypeScriptTypes`** — `load.js:335-341`, guarded
+     by `hasStripTypeScriptTypes` at `:282`. Measured present on this repo's
+     toolchain: `typeof require('node:module').stripTypeScriptTypes` is
+     `'function'` under **Node v26.7.0** 🧪.
+
+  **So there are two couplings, not one.** A TS 7 bump does not break loading —
+  it **silently switches transpilers**, and the fallback's availability is
+  itself Node-version-dependent. `package.json`'s `"typescript": "~6.0.3"` is
+  load-bearing for config loading as well as for `tsc`, which it was not before
+  this change, but the failure it guards against is a *substitution*, not an
+  outage. On a Node without the native stripper, `inputCode === code` at `:342`
+  and raw `.ts` would be evaluated as JavaScript — that path was **not**
+  exercised here and is ❓.
+
+  **THE OPERATIVE CONSTRAINT, and the reason it needed a test rather than a
+  comment.** The native stripper accepts only **erasable** TypeScript — no
+  `enum`, no `namespace`, no parameter properties. **`tsc` does not enforce
+  erasability**, so nothing in the repo's ordinary gates would catch a
+  violation, and the failure would surface only on a machine that took the
+  fallback path. Demonstrated rather than described 🧪: with
+  `enum Leaked { A, B }` appended to `app.config.ts`,
+
+  ```
+  tsc --noEmit                     -> exit 0
+  node app.config-headless-test.mjs -> exit 1
+       FAIL  app.config.ts is ERASABLE TypeScript ...:
+             stripTypeScriptTypes threw: TypeScript enum is not supported in strip-only mode
+  ```
+
+  The real source is erasable today: `stripTypeScriptTypes` accepted it and
+  returned **6,698 bytes from 6,698** 🧪 — Node's stripper blanks type syntax to
+  whitespace rather than deleting it, so equal length is the expected result and
+  "erasable" is proven by *not throwing*, not by a size change.
+
+  ---
+
+  ### The overlay resolved both ways, through Expo's real loader
+
+  `evalConfig('./app.config.ts', { config })` was called directly against a
+  clone of `app.json`'s `expo` block 🧪:
+
+  | | `READING_AID_UAT` unset | set |
+  |---|---|---|
+  | `name` | `Reading Aid` | `BETA Reading Aid` |
+  | `scheme` | `readingaidandroid` | `readingaiduat` |
+  | `android.package` | `com.arishh.readingaid` | `com.arishh.readingaid.uat` |
+  | `android.version` | *(absent)* | `1.0.0-uat` |
+  | `android.versionCode` | `1` | `29809161` |
+  | `adaptiveIcon.backgroundColor` | `#E6F4FE` | `#FFEB3B` |
+  | `adaptiveIcon.backgroundImage` | present | **absent** |
+  | `mayHaveUnusedStaticConfig` | **false** | **false** |
+
+  **That last row is the one worth keeping.** `evalConfig.js:59-62` stamps a
+  `Symbol('non-standard')` onto the object handed to the config function and
+  `:79-81` reports `mayHaveUnusedStaticConfig` when the returned object has lost
+  it. `false` on the unset path confirms the by-reference return preserves the
+  marker; `false` on the UAT path confirms object spread carries symbol-keyed
+  properties through, which was not assumed.
+
+  ### versionCode headroom, measured
+
+  | unit | value on 2026-09-04 | headroom below the 2.1e9 ceiling |
+  |---|---|---|
+  | **minutes since epoch** | **29,809,147** | **~3,939 years** (+525,600/yr) |
+  | seconds since epoch | 1,788,548,840 | **~9.9 years** |
+
+  Minutes is the unit AD37 takes; seconds was rejected on that second row 🧪.
+
+  ### Four negative controls before the suite's green run was believed
+
+  Following AF21's, AD29's and AD31's precedent. Each control failed **exactly**
+  the checks it should and no others 🧪:
+
+  | control | result |
+  |---|---|
+  | unset path returns `{ ...config }` instead of the same reference | 46 passed, **1 failed** — the reference check alone |
+  | `backgroundImage` re-added to the UAT adaptive icon | 46 passed, **1 failed** — the Q1 guard alone |
+  | a non-erasable `enum` added | 43 passed, **2 failed**, exit 1, while `tsc` stayed at exit 0 |
+  | release identity rewritten on the *unset* path (`versionCode: 99`) | 44 passed, **3 failed**, exit 1 |
+
+  `app.config.ts` was restored after each and confirmed byte-identical by hash
+  (`0d79578c556167b5c9c169270cb2e53992bbb2b563949b15c77930213540197f`) and by a
+  silent `diff` 🧪; the suite returned to **47 passed, 0 failed**.
+
+  ### A THIRD self-caught invalid control, and the pattern is worth seeing
+
+  **The first attempt at the `tsc` control was invalid and is recorded rather
+  than discarded.** To prove a root-level `.ts` file is in the main `tsc`
+  program, a probe was written to **`.probe-env.ts`** — with a leading dot. It
+  reported `tsc` **exit 0 despite a deliberate type error**, and
+  `--listFilesOnly` matched it **zero** times, which reads exactly like "root
+  `.ts` files are not typechecked." The real cause is that **TypeScript's
+  `include` globs do not match dotfiles**, so `**/*.ts` never saw it: the
+  control was measuring its own filename. Re-run as `probe-env-check.ts` 🧪:
+
+  ```
+  const v: number = process.env.SOME_VAR;   -> TS2322, tsc exit 2
+  const v: string | undefined = ...          -> tsc exit 0
+  eslint probe-env-check.ts --max-warnings 0 -> exit 0
+  ```
+
+  So a root `.ts` **is** in the program, `process.env` types as
+  `string | undefined` there, and the probe was deleted with `git status`
+  confirmed clean.
+
+  **This is the third control in this repo caught being invalid before its
+  result was trusted**, after AF44's two — the flat-config probe that threw
+  `ReferenceError` at load and so measured ESLint's *loader* rather than its
+  linter, and the `paths:` sweep whose only hit was the comment forbidding the
+  key. The pattern is worth being visible: in all three the invalid control
+  produced a **confident, plausible, wrong** answer, and in all three what
+  exposed it was checking the instrument against a case whose outcome was known
+  in advance.
+
+  ### One implementation constraint found by measurement
+
+  `eslint-plugin-expo`'s **`no-dynamic-env-var`** rule rejects computed access:
+  `process.env[SOME_CONST]` fails lint with *"Unexpected dynamic access. Cannot
+  dynamically access … from process.env"* 🧪, because Expo inlines environment
+  variables statically and a computed key cannot be seen. `app.config.ts`
+  therefore reads `process.env.READING_AID_UAT` and
+  `process.env.UAT_VERSION_CODE` as **literal** properties; the names are kept
+  together in one docblock instead of in constants.
+
+  ### The new tallies
+
+  `npm run check` is now **14 suites and 357 checks**, `0 failures` 🧪 —
+  `test:core` 8 / **125** unchanged (17+18+14+9+15+14+12+26), `test:local` 6 /
+  **232** (47+20+73+27+35+30). The baseline check still reports **26 files
+  checked, 20 under `src/core/`, 0 mismatches**: no manifest row changed, and
+  `app.config.ts` is deliberately not one (AD37). Tracked `.mjs` files go from
+  14 to **15**.
+
+  ### NOT ESTABLISHED
+
+  1. **Nothing here was built, prebuilt, installed or run on a device.** The
+     yellow icon, the `BETA Reading Aid` launcher label, the side-by-side
+     install and the `versionCode` upgrade path are **all unverified on
+     hardware**. Q1 in particular is a **read of `withAndroidIcons.js`**, not an
+     observation of a rendered icon — the prediction is that dropping
+     `backgroundImage` makes `@color/iconBackground` the background layer, and
+     it has not been seen.
+  2. **No claim that the two `applicationId`s actually install side by side.**
+     That they occupy independent `versionCode` spaces is documented Android
+     `PackageManager` behaviour ❓ (AD36), not something measured here.
+  3. **The suite is not the resolver.** It calls the overlay's exported function
+     directly with `app.json`'s `expo` block. Expo's own base is
+     `ensureConfigHasDefaultValues(...).exp` (`Config.js:275-284`), which may
+     fill defaults the suite's base lacks. The fields the overlay touches are
+     all declared in `app.json` verbatim, so the gap does not reach them — but
+     the suite tests **the overlay**, not Expo's config resolution.
+  4. **The raw-`.ts`-evaluation path is unexercised** — a Node lacking
+     `stripTypeScriptTypes` combined with a TypeScript lacking `transpileModule`
+     was not simulated ❓.
+  5. **Every 👁 limit recorded in AF27–AF43 stands untouched**, and
+     ARCHITECTURE.md §6's list of what has no automated coverage is not
+     shortened by one line. A fourteenth suite is still static, Node-only
+     evidence.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -2662,3 +2915,46 @@
   `CN=Android Debug, O=Android, C=US`; the measured value is `CN=Android
   Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US`. No
   `DECISIONS.md` entry: nothing here is a decision.
+- 2026-09-04 — appended **AF48** on `feature/uat-config-overlay`. **Measured by
+  me**, in this tree; no prebuild, Gradle, emulator or device was involved, so
+  the section carries **no 👁**. Records that **`app.json`'s
+  `adaptiveIcon.backgroundColor` is ALREADY a no-op in the shipped release
+  app** — `withAndroidIcons.js:239` resolves the adaptive icon's background to
+  `@mipmap/ic_launcher_background` whenever a `backgroundImage` is set, leaving
+  `@color/iconBackground` written to `colors.xml` and referenced by nothing,
+  with Expo's own `// backgroundImage overrides backgroundColor` at `:288` and
+  `withAndroidIcons` swept as the only reader. **Why it went unnoticed is the
+  interesting half**: decoding both PNGs shows the background image is **97.5%
+  exactly `#e6f4fe`**, the very colour the redundant field declares, so the two
+  have never disagreed visibly. **Deliberately NOT fixed** — release identity is
+  untouched by AD37 — and recorded so the field can be discovered to do nothing.
+  **Corrects a premise the change was scoped under, at the project owner's
+  direction**: TypeScript 7 would not silently break config loading, because
+  `require-utils/load.js:335-341` falls back to Node's
+  `module.stripTypeScriptTypes` (present on Node v26.7.0), and Expo's source
+  anticipates the TS 7 case in a comment at `:77-78`. Two couplings, not one;
+  the failure mode is a silent transpiler **substitution**, and the operative
+  constraint is **erasability**, demonstrated by a control in which `tsc` exits
+  0 and the suite exits 1 on an added `enum`. Also records: the overlay resolved
+  **both ways through Expo's real `evalConfig`**, with
+  `mayHaveUnusedStaticConfig: false` on both paths — confirming the by-reference
+  return preserves Expo's `Symbol` marker and that object spread carries
+  symbol-keyed properties; the `#FFEB3B` contrast table (3.10:1 against the
+  release background's 3.38:1); versionCode headroom (**minutes 29,809,147, ~3,939
+  years**; seconds ~9.9 years, which is why minutes won); **four negative
+  controls**, each failing exactly the checks it should, with `app.config.ts`
+  restored byte-identical; and `eslint-plugin-expo`'s `no-dynamic-env-var`
+  forcing literal `process.env.NAME` access. **A THIRD self-caught invalid
+  control** is recorded rather than discarded: the first `tsc` probe was named
+  `.probe-env.ts` and reported exit 0 on a deliberate type error, because
+  **TypeScript's `include` globs do not match dotfiles** — it was measuring its
+  own filename. Re-run undotted it gave TS2322 / exit 2. With AF44's two
+  (the flat-config probe that threw at load and so measured the loader, and the
+  `paths:` sweep whose only hit was the comment forbidding the key) the pattern
+  is now visible: each invalid control produced a confident, plausible, wrong
+  answer, and each was exposed by testing the instrument against a
+  known-in-advance outcome. New tallies: **14 suites, 357 checks**, baseline
+  unchanged at 26 files / 0 mismatches. Not established: **nothing was run on
+  hardware** — the icon, label, side-by-side install and upgrade path are all
+  pending acceptance checks; the suite tests the overlay, not Expo's resolution;
+  and every 👁 limit in AF27–AF43 stands. Decisions are **AD37**.
