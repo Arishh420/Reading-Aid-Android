@@ -32,13 +32,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Pinned to the major that every recorded measurement was taken on
       # (AF10, AD27): v26.7.0. The suites are pure Node with no native
       # dependency and no network, so a CI/local split would add a variable
       # with nothing to buy for it.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm

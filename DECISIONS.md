@@ -2373,6 +2373,167 @@
   list is a hand-maintained copy that no mechanism keeps in sync; this is one
   more entry in it.
 
+- **AD35 · `actions/checkout` and `actions/setup-node` are bumped from `@v4`
+  to `@v7`, on moving major tags rather than SHAs. Separately, this repo STAYS
+  ON ESLint 9: the `npm ci` deprecation warning is EXPECTED and is not a
+  defect.** Two follow-ups from reading PR #23's first workflow run, batched
+  because both are positions about the same file's toolchain and neither
+  touches `src/`. **No file listed in
+  [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md)'s twenty-six rows changed, and
+  `package.json`, `package-lock.json` and `eslint.config.js` are untouched.**
+  Measurements are **AF45**.
+
+### The action bump is DEADLINE-BEARING, not housekeeping
+
+  PR #23's run closed with
+  `##[warning]Node.js 20 is deprecated. The following actions target Node.js 20
+  but are being forced to run on Node.js 24: actions/checkout@v4,
+  actions/setup-node@v4`. **It is green only because GitHub is currently
+  forcing the upgrade**, and that fallback has a date on it: GitHub's own
+  changelog states *"we upgrade the runner and remove Node20 on September 23rd,
+  2026"* — **nineteen days after this entry**, against 2026-09-04. Node 24
+  already became the runner default on 2026-06-16.
+
+  **The consequence is what makes this urgent rather than tidy.** `main` is
+  now protected with `static-and-suites` as the **sole required status check**
+  and `enforce_admins` **enabled**. A workflow that breaks on 2026-09-23 does
+  not merely go red: the required check fails on every pull request, there is
+  **no admin bypass**, and that includes the pull request that would fix it.
+  The window in which this is a one-line change closes on that date.
+
+  **`runs.using` per major, read from each action's `action.yml` at its moving
+  major tag** 🧪 — the evidence the version number alone does not give:
+
+  | major | `actions/checkout` | `actions/setup-node` |
+  |---|---|---|
+  | `v4` | `node20` | `node20` |
+  | `v5` | `node24` | `node24` |
+  | `v6` | `node24` | `node24` |
+  | `v7` | **`node24`** | **`node24`** |
+
+  **So the runtime argument does not discriminate between v5, v6 and v7 — all
+  three are already `node24`, and any of them retires the warning.** This is
+  worth stating plainly because the obvious reading ("bump until the runtime is
+  new enough") would have stopped at v5. **v7 is chosen as the CURRENT line,
+  not as the only safe one:** `releases/latest` resolves to **v7.0.1**
+  (checkout) and **v7.0.0** (setup-node) 🧪, so v7 is where fixes land first
+  rather than by backport. The older majors are still maintained today — all of
+  checkout v2 through v7 received a release on 2026-07-20 🧪 — but depending on
+  a backport policy is a weaker position than tracking the current line, and
+  costs the same here.
+
+  **Bumping does not walk into a second deprecation.** Node.js 24's own EOL is
+  **2028-04-30** (nodejs/Release `schedule.json` 🧪), and GitHub has announced
+  no `node24` deprecation. The precedent from Node 20 is that GitHub removed
+  the runtime roughly five months after Node's EOL, so this is one deliberate
+  step with years of headroom, not the first of two.
+
+  **`setup-node`'s behaviour for THIS workflow's inputs is unchanged, verified
+  by diffing `action.yml` at v4 against v7 rather than by reading release
+  notes** 🧪. `node-version`'s description is byte-identical (`Version Spec of
+  the version to use…`), so **nothing about how `'26'` resolves changes**; the
+  `cache` input is unchanged and still supports `npm`. The only removed input
+  is `always-auth`, which this workflow never used; the additions
+  (`package-manager-cache`, and the `cache-primary-key` / `cache-matched-key`
+  outputs) are additive. v5's automatic caching — the one genuinely breaking
+  change in the range — triggers **only** on a `packageManager` or
+  `devEngines.packageManager` field in `package.json`, and **this repo has
+  neither** 🧪; the explicit `cache: npm` this workflow passes settles it
+  regardless.
+
+  **`checkout`'s two behavioural changes in the range are inert here.** v7
+  blocks checking out a fork PR under `pull_request_target` and `workflow_run`;
+  this workflow triggers on `pull_request` and `push` only 📐. v6 persists
+  credentials to a separate file; nothing here reads them. The minimum runner
+  for v5 and above is **2.327.1**, and PR #23's run was on **2.337.0** 🧪.
+
+  **Alternative rejected: SHA-pinning.** Pinning each action to a commit SHA is
+  the stronger supply-chain position and is not disputed — a moving major tag
+  is mutable by the action's owner, so `@v7` is trust in `actions/*` rather
+  than in a fixed artifact. It is **deliberately deferred to its own decision**
+  rather than smuggled in here, for the reason AD32 gives about scope: this
+  change is a runtime deadline, and a SHA pin is a supply-chain policy that
+  would apply to every action this repo ever adds, needs a re-pinning practice
+  to go with it, and would make this entry's evidence — `runs.using` per
+  **major** — the wrong evidence for what shipped.
+
+  **Alternative rejected: leaving `@v4` until the warning becomes an error.**
+  It costs nothing today and everything on 2026-09-23, and the `enforce_admins`
+  consequence above means the failure mode is a repository that cannot be
+  repaired through its own gate.
+
+  **NOT VERIFIABLE LOCALLY, stated plainly.** Nothing on the development
+  machine can execute a GitHub Actions runner, so **no local command proves
+  `@v7` resolves, runs, or behaves identically in CI.** The `action.yml` reads
+  and release-note evidence above are evidence about the **actions**, not about
+  this workflow executing. This pull request's own run is the proof — and
+  unlike PR #23's, a failure now lands on a protected `main`. This is the same
+  shape of pending acceptance check AD21, AD22, AD28 and AD30 each recorded,
+  and it will produce its own `AF` entry.
+
+### ESLint stays on 9 — the deprecation warning is expected
+
+  A clean `npm ci` prints
+  `npm warn deprecated eslint@9.39.5: This version is no longer supported.` **No
+  change is made in response, and this paragraph exists so that a future reader
+  does not "fix" it.**
+
+  **The warning is a line-support policy, not a defect in 9.39.5.** Measured
+  against the live registry on **2026-09-04** 🧪: `eslint` dist-tags are
+  `latest: 10.10.0` and `maintenance: 9.39.5`. So `package.json`'s `^9.39.5`
+  resolved **correctly, to the top of the 9 line**, and the message is ESLint's
+  blanket text for every non-current line — it points at
+  `eslint.org/version-support`, not at a fault.
+
+  **ESLint 10 is PERMITTED and has not been TESTED, and the gap between those
+  two words is the decision.** `eslint-config-expo@57.0.2` declares
+  `peerDependencies: { "eslint": ">=8.10" }` 🧪 — an **open upper bound**, so
+  npm would install ESLint 10 without complaint. But an open range is a
+  statement about what the config's author did not forbid, not about what
+  anyone ran. The transitive plugin set that config pulls in —
+  `@typescript-eslint/eslint-plugin@8.69.0`, `eslint-plugin-import@2.32.0`,
+  `eslint-plugin-react-hooks@7.1.1` 🧪 — **has never been exercised at ESLint 10
+  in this repo**, and it is those plugins, not ESLint's core, that produce the
+  rules AD34 reasoned about.
+
+  **The cost of moving is re-opening AF44 in full.** AD34's three `files`
+  overrides were each justified by a measurement: the **eight**-error stock
+  baseline, the **82**-problem Level 2 count, and above all the **67 rules
+  still active on a `.mjs` file** (46 error, 21 warn), resolved with
+  `calculateConfigForFile`. Every one of those is a property of *this* resolved
+  plugin set. A major ESLint bump can change rule defaults, remove rules, and
+  shift what a preset spreads — so it does not merely risk a red run, it makes
+  the recorded numbers no longer describe the config. **That is a real piece of
+  work with a real finding to rewrite, and there is no present benefit to buy
+  it with:** `npm run lint` is at 0 errors and 0 warnings, and 9.39.5 still
+  receives security fixes as the maintenance line.
+
+  **Therefore: the `npm ci` warning is EXPECTED on every clean install, in CI
+  and locally, and is not a defect.** It is not to be silenced, and
+  `package.json`'s `"eslint": "^9.39.5"` is not to be widened — the caret is
+  what keeps the resolution on 9, so it is load-bearing rather than incidental.
+
+  **Revisit trigger, so this is a position rather than an omission:** move when
+  `eslint-config-expo` ships a release whose own CI runs against ESLint 10, or
+  when the 9 line stops receiving security fixes — whichever comes first. That
+  move is its own change, and it carries a re-measurement of AF44's three
+  figures as part of its definition of done.
+
+### One doc fix rides along; one is flagged and not fixed
+
+  **[ARCHITECTURE.md](ARCHITECTURE.md) §6 said "That workflow has never
+  executed"**, citing AF44. **AF45 negates that sentence**, so under AD32's
+  boundary rule — a statement your own change negates belongs to that change,
+  one already false independently of it does not — the clause is corrected in
+  this pull request, to point at AF45 instead. It is a one-clause replacement;
+  no rationale is restated there (AD18).
+
+  **[README.md](README.md)'s document table is flagged, NOT fixed.** Lines
+  178-179 give the entry ranges as `AD1`–`AD32` and `AF1`–`AF43`, both stale —
+  AD34 and AF44 already existed before this change 🧪. That falsity is
+  **independent of this change**, which puts it in AD32's second category, so it
+  is recorded here and left for its own edit rather than folded in.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -2724,3 +2885,56 @@
   `tsconfig.json`'s `exclude` still names the now-absent `example`, one more
   entry in the hand-maintained list **AF8** records. Measurements are
   **AF44**.
+- 2026-09-04 — appended **AD35** on `chore/ci-action-majors`, batching two
+  follow-ups from reading PR #23's first workflow run. **The action bump is
+  deadline-bearing, not housekeeping:** that run was green only because GitHub
+  is *forcing* `actions/checkout@v4` and `actions/setup-node@v4` onto Node 24,
+  and GitHub's changelog puts a date on the fallback — *"we upgrade the runner
+  and remove Node20 on September 23rd, 2026"*, **nineteen days** after this
+  entry. Because `static-and-suites` is now the **sole required status check**
+  on a protected `main` with **`enforce_admins` enabled**, a workflow that
+  breaks that day makes `main` unmergeable **with no admin bypass — including
+  for the pull request that would fix it**. Both actions go to **`@v7`**, and
+  the entry records `runs.using` **per major** rather than arguing from the
+  version number: v4 is `node20` for both, while **v5, v6 AND v7 are all
+  `node24`** — so the runtime argument does not discriminate among them and any
+  would retire the warning. **v7 is chosen as the current line, not as the only
+  safe one** (`releases/latest` → v7.0.1 checkout, v7.0.0 setup-node), since
+  depending on a backport policy is weaker than tracking the line fixes land on
+  first. It walks into no second deprecation: Node 24's EOL is **2028-04-30**
+  and no `node24` deprecation is announced. **`setup-node` behaviour was checked
+  by diffing `action.yml` v4 against v7, not by reading release notes** —
+  `node-version`'s description is byte-identical so `'26'` resolution is
+  untouched, `cache` still supports `npm`, the only removal is the unused
+  `always-auth`, and v5's automatic caching cannot fire because it needs a
+  `packageManager` field this repo does not have. checkout's changes are inert
+  here (v7's fork-PR block applies to `pull_request_target`/`workflow_run`, and
+  this workflow uses `pull_request`/`push`). **SHA-pinning is rejected for this
+  PR and deferred to its own decision** — it is the stronger supply-chain
+  position, but it is a policy for every action this repo will ever add and
+  would make per-**major** `runs.using` the wrong evidence for what shipped.
+  **Stated plainly: the bump is not verifiable locally at all** — no local
+  command executes a runner, so this PR's own CI run is the proof, and unlike
+  PR #23's it lands on a protected `main`. **The second half records a position,
+  not a change: ESLint STAYS ON 9.** `eslint` dist-tags measured against the
+  live registry on 2026-09-04 are `latest: 10.10.0`, `maintenance: 9.39.5`, so
+  `^9.39.5` resolved **correctly** to the top of the 9 line and the `npm ci`
+  warning is ESLint's **blanket line-support policy, not a defect**.
+  `eslint-config-expo@57.0.2`'s `peerDependencies: { eslint: '>=8.10' }` has an
+  **open upper bound**, so ESLint 10 is **permitted** — but permitted is not
+  tested, and its transitive plugin set (`@typescript-eslint@8.69.0`,
+  `eslint-plugin-import@2.32.0`, `eslint-plugin-react-hooks@7.1.1`) has never
+  been exercised at 10 here. Moving would **re-open every measurement in AF44** —
+  the eight-error baseline, the 82-problem count, and above all the **67 rules
+  active on a `.mjs` file** — all of which are properties of *this* resolved
+  plugin set, for no present benefit. So the warning is **EXPECTED on every
+  clean install and must not be silenced**, and `"eslint": "^9.39.5"`'s caret is
+  load-bearing rather than incidental; a revisit trigger is recorded so this is
+  a position and not an omission. **One doc fix rides along and one is flagged:**
+  ARCHITECTURE.md §6's "That workflow has never executed" is a statement **this
+  change negates**, so it is corrected here to cite AF45 (AD32's boundary rule);
+  README.md's stale `AD1`–`AD32` / `AF1`–`AF43` ranges were **already false
+  before this change**, so they are flagged and left. No file in
+  CORE-DIVERGENCE.md's twenty-six rows changed, nothing under `src/` changed,
+  and `package.json`, `package-lock.json` and `eslint.config.js` are untouched.
+  Measurements are **AF45**.

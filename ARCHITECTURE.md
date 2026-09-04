@@ -432,8 +432,9 @@ Running only the first is a green result that has not been linted. Both run as
 separate steps on every pull request via
 `.github/workflows/static-and-suites.yml`, whose required check is named
 **`static-and-suites`** rather than `tests` precisely so a green tick cannot be
-read as the device coverage below. **That workflow has never executed** — it
-was parsed locally and nothing more (AF44).
+read as the device coverage below. **That workflow has run, once, green** —
+PR #23's run, whose measurements are AF45 (AF44 records the file as parsed
+locally and nothing more, which was true when written).
 
 **ESLint is the only static analysis that sees the 14 tracked `.mjs` files.**
 `tsc` covers `.ts`/`.tsx` only — the main `tsconfig.json` includes just those

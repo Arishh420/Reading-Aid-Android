@@ -1697,6 +1697,191 @@
      acted on: `"source.organizeImports"` is **already** live through VS Code's
      built-in TypeScript service, independent of ESLint.
 
+## The workflow's first run — AF44's last open item, closed
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, from the run log of PR #23 (`gh run view 33886447430 --log`)
+> and from live registry and GitHub API queries. **No device, emulator or Gradle
+> build was involved and none is claimed** — so, unlike AF27-AF43, this section
+> carries **no 👁 at all**. Nothing here was owner-witnessed, and nothing here is
+> behavioural evidence about the app.
+
+- **AF45** 🧪📐 — **AF44's "THE WORKFLOW HAS NEVER RUN" is CLOSED: it ran, and
+  it was green.** AF44 stated the file "was parsed locally and nothing more",
+  which "establishes the file's shape and **NOTHING** about whether GitHub
+  accepts the schema, resolves Node 26 on the runner, or renders the check name
+  as expected", and said the first run "will be worth its own entry". This is
+  that entry. **AF44's text is not edited**, per this file's append-only
+  convention; AF45 cross-references it and the cross-reference runs in this
+  direction only, exactly as AF43 did to AF32. The decisions taken in response
+  are **AD35**; nothing from that entry is restated here (AD18).
+
+  **The run.** Workflow `static-and-suites`, run **33886447430**, event
+  `pull_request`, head branch `feature/lint-and-ci`, PR #23, **conclusion
+  `success`**. Runner **2.337.0**, image `ubuntu-24.04` version
+  `20260831.293.1` 🧪. Wall clock **14:54:42Z → 14:55:23Z**, about **41
+  seconds**. A second run (**33886890855**) fired on the `push` to `main` at
+  merge and also succeeded; every figure below is from the **pull-request** run.
+
+  ### What the green tick actually establishes
+
+  **1 · The required-check name renders as `static-and-suites`.** This was the
+  single highest-risk property, because the job key **is** the identifier a
+  branch-protection rule binds to. The jobs API reports `"name":
+  "static-and-suites"` 🧪 — the job key verbatim, with no `name:` override to
+  displace it, exactly as AF44 asserted from the parsed file. GitHub accepts the
+  schema, which local parsing could not establish.
+
+  **2 · All eight authored steps executed, in the intended order**, each
+  `success` 🧪: checkout, setup-node, `npm ci`, `npm run build`, `npm run
+  check:baseline`, `test:core`, `test:local`, `npm run lint` — steps 2 through 9
+  of the job, the remainder being the runner's own `Set up job`, two `Post`
+  steps and `Complete job`. AD34's separate-steps design survives contact: the
+  step boundaries are visible in the log, so a failure would be attributable
+  without reading a chained `&&`.
+
+  **3 · The suites agree with the local run EXACTLY.** Baseline printed
+  `26 files checked, 20 under src/core/, 0 mismatches` 🧪. The suites printed
+  **17 + 18 + 14 + 9 + 15 + 14 + 12 + 26 = 125** for `test:core` and
+  **20 + 73 + 27 + 35 + 30 = 185** for `test:local`, **310 checks across 13
+  suites, 0 failures** — the same tally AF10, AF18 and AF44 record locally,
+  summed from the log rather than taken from a summary line. AD31's reporting
+  form survives too: the baseline check has its own step and is not folded into
+  the suite count.
+
+  ### CI and local are not byte-identical environments — recorded as a fact
+
+  **`node-version: '26'` resolved to v26.8.1 on the runner; local is v26.7.0**
+  🧪. The log reads `Attempting to download 26...`, then
+  `Acquiring 26.8.1 - x64`, then `node: v26.8.1`.
+
+  **This is the pin behaving as designed, not a defect.** AD34 pinned the
+  **major** deliberately, and a major pin floats the patch by construction —
+  the alternative, an exact pin, would have to be bumped by hand forever and
+  would drift from whatever the development machine happens to have. The point
+  worth recording is the consequence: **the two environments are not
+  byte-identical**, so a result reproducible on one is not thereby proven on the
+  other. It has cost nothing so far — the 310 checks matched exactly across the
+  patch gap — but a future disagreement between a local run and a CI run should
+  look here **first**, before looking at the code.
+
+  ### Install cost — COLD figures, and what they retroactively support
+
+  **These are cold-install numbers and must not be read as steady-state.** The
+  log reads `npm cache is not found` 🧪 — this run was a cache **miss**, which
+  then saved the cache on the way out. A later run restoring that cache pays
+  less; how much less is **unmeasured**.
+
+  | Figure | Value |
+  |---|---|
+  | packages installed | **818** (`added 818 packages, and audited 819 packages in 19s`) |
+  | `npm ci` self-reported | **19s** |
+  | install step wall clock | **18s** (14:54:51Z → 14:55:09Z) |
+  | cache saved | **186,214,307 bytes** (~186 MB) |
+
+  **This retroactively supports AD34's one-job decision, and the support is
+  quantitative rather than rhetorical.** AD34 rejected separate jobs on the
+  grounds that each would pay a fresh `npm ci` to parallelise a few seconds of
+  compute. Measured: the install is **19s** of a **41s** job, while the four
+  behavioural steps together run **14:55:09Z → 14:55:13Z**, about **4 seconds**,
+  of which the suites are **~1 second**. **Splitting them would multiply a 19s
+  install to parallelise roughly 4s of work** — the trade AD34 predicted, now
+  with numbers on it.
+
+  ### New install-time surface, and a correction about who owns it
+
+  **`unrs-resolver@1.12.2` now runs a postinstall script**, alongside the
+  pre-existing `esbuild@0.28.2` 🧪:
+
+  ```
+  npm warn install-scripts 2 packages have install scripts not yet covered by allowScripts:
+  npm warn install-scripts   esbuild@0.28.2 (postinstall: node install.js)
+  npm warn install-scripts   unrs-resolver@1.12.2 (postinstall: node postinstall.js)
+  ```
+
+  It arrives transitively through `eslint-import-resolver-typescript`, which
+  `eslint-config-expo` declares — so **AD34's lint adoption is what introduced
+  it**. Both scripts are **unapproved and did not run**, and nothing broke:
+  **AF13** already records exactly this for esbuild, whose platform binary
+  arrives via an optional platform dependency rather than via its postinstall.
+  Whether `unrs-resolver` has the same property was **not** investigated here —
+  what is measured is that lint passed without its postinstall having run.
+
+  **`npm ci` also reports 14 moderate severity vulnerabilities. THE SCOPING
+  CLAIM THIS WAS RECORDED UNDER — "devDependencies only" — IS FALSE, and was
+  measured false rather than inherited** 🧪. `npm audit --omit=dev` still
+  reports all **14**: they are in the **production** dependency tree, because
+  `expo`, `expo-router` and `expo-splash-screen` are all `dependencies`, not
+  `devDependencies`. The 14 fan out from exactly **two** root advisories:
+
+  | Advisory | Path |
+  |---|---|
+  | `decode-uri-component@0.2.2` — DoS via exponential decoding of malformed percent-encoded input (GHSA-vcc3-ghjq-m6fr) | ← `query-string@7.1.3` ← **`expo-router@57.0.17`** |
+  | `uuid@7.0.3` — missing buffer bounds check in v3/v5/v6 when `buf` is provided (GHSA-w5hq-g745-h8pq) | ← `xcode@3.0.1` ← `@expo/config-plugins@57.0.9` ← **`expo-splash-screen@57.0.8`** |
+
+  **Recorded, not actioned. No fix is available to this repo**: both are
+  transitive through Expo's own pinned tree, so closing them requires **Expo**
+  to bump — `npm audit fix` cannot reach them without `--force`, which would
+  mean overriding Expo's pins, and this repo has no mechanism that would keep
+  such an override honest. Noted rather than fixed, and it is **not** a
+  regression introduced by AD34: `xcode` and `query-string` predate the lint
+  work entirely.
+
+  ### An honest limit on what the tick proves — ESLint is SILENT on success
+
+  **The Lint step's entire output is the npm banner. ESLint printed nothing**
+  🧪 — the step reads, verbatim and in full:
+
+  ```
+  > readingaidandroid@1.0.0 lint
+  > eslint . --max-warnings 0
+  ```
+
+  **So the CI log contains no positive evidence that ESLint linted 39 files, or
+  any files.** A config whose `ignores` accidentally matched the whole tree
+  would exit 0 and print exactly this. The green step proves *"eslint exited
+  0"*, which is a weaker claim than *"the repo was linted"*.
+
+  **This is a limit on the evidence, not a suspected defect**, and the reason it
+  can be stated that firmly is that the gap is closed **locally** rather than in
+  CI: AF44 established coverage against two negative controls — an injected
+  `no-undef`/`no-unused-vars` violation in `eslint.config.js`, and three
+  injected violations in `scripts/check-core-baseline.mjs`, a file
+  `tsc --noEmit --listFilesOnly` includes **zero** times — and CI runs the
+  identical config bytes from the identical commit.
+
+  **It is the same principle that produced the `static-and-suites` name.** AD34
+  named the check for what it actually executes so a green tick could not be
+  read as the device coverage this repo does not have. The same discipline
+  applies one level down: a green **Lint step** should not be read as coverage
+  evidence either. Coverage was established by control, locally, once — and if
+  the config's `ignores` are ever widened, **nothing in CI will notice**.
+
+  ### NOT ESTABLISHED
+
+  1. **Nothing here is behavioural evidence about the app.** A runner cannot
+     execute a worklet, a shared value, a `ScrollView`, MMKV or release-mode
+     Hermes. Every 👁 limit recorded in AF32-AF43 stands untouched, and
+     ARCHITECTURE.md §6's list of what has no automated coverage is not
+     shortened by one line.
+  2. **The action-major bump this branch makes is NOT covered by this run.**
+     PR #23 ran `actions/checkout@v4` and `actions/setup-node@v4`, and closed
+     with `##[warning]Node.js 20 is deprecated. The following actions target
+     Node.js 20 but are being forced to run on Node.js 24` 🧪. **Nothing in this
+     entry is evidence that `@v7` works** — no local command can execute a
+     runner, so that is this branch's own pending acceptance check, and it will
+     need its own entry. AD35 holds the reasoning.
+  3. **Cache-restore behaviour is unmeasured.** Only a cold run exists. What a
+     warm run costs, and whether the key restores at all, is unknown.
+  4. **Only `ubuntu-latest` was exercised**, at image `20260831.293.1`. Nothing
+     is established about any other runner image, and `ubuntu-latest` is itself
+     a moving target.
+  5. **Branch protection was not exercised by this run.** `main` was
+     unprotected when PR #23 merged; the protection described in AD35 was
+     configured afterwards, so **no run has yet been blocked or gated by it**,
+     and that the required check binds to the job key as intended is inferred
+     from the rendered name, not observed.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -1989,3 +2174,59 @@
   pinned files if `dbaeumer.vscode-eslint` is ever installed (it is not: seven
   extensions, none ESLint), with `check:baseline` on every PR as the backstop.
   Decisions are **AD34**.
+- 2026-09-04 — appended **AF45** on `chore/ci-action-majors`, closing the one
+  item **AF44** left explicitly open: *"THE WORKFLOW HAS NEVER RUN."* It has.
+  Run **33886447430** on PR #23 (`pull_request`, `feature/lint-and-ci`)
+  succeeded in about **41 seconds** on runner **2.337.0**, image
+  `ubuntu-24.04 / 20260831.293.1`. **Measured by me** from `gh run view --log`
+  plus live registry and GitHub API queries — no device, emulator or Gradle was
+  involved, so this section carries **no 👁 at all**, unlike AF27-AF43.
+  **AF44 is not edited.** What the tick establishes: the required-check name
+  renders as **`static-and-suites`** — the job key verbatim, no `name:`
+  override — which is the property local parsing could not reach and the one
+  that branch protection binds to; **all eight authored steps executed** in
+  order; and the suites agree with local **exactly** — baseline
+  `26 files checked, 20 under src/core/, 0 mismatches`, then
+  17+18+14+9+15+14+12+26 = **125** and 20+73+27+35+30 = **185**, **310 checks
+  across 13 suites**, summed from the log. **CI and local are not
+  byte-identical:** `node-version: '26'` resolved to **v26.8.1** against local
+  **v26.7.0** — the major pin floating the patch, which is the pin working as
+  designed, recorded as a **fact** so a future local-versus-CI disagreement is
+  looked for here first. **Install figures are COLD** — the log reads
+  `npm cache is not found`, so this was a cache miss that then saved:
+  **818 packages**, `npm ci` self-reporting **19s** (step wall clock 18s), cache
+  **186,214,307 bytes**. Those numbers **retroactively support AD34's one-job
+  decision quantitatively**: the install is 19s of a 41s job while the four
+  behavioural steps total about **4 seconds** (suites ~1s), so separate jobs
+  would multiply a 19s install to parallelise ~4s. New install-time surface:
+  **`unrs-resolver@1.12.2`** now carries a postinstall alongside
+  `esbuild@0.28.2`, arriving transitively through
+  `eslint-import-resolver-typescript`, so **AD34's lint adoption introduced
+  it**; both scripts are unapproved, did not run, and nothing broke — the same
+  shape **AF13** records for esbuild, though whether `unrs-resolver` shares
+  esbuild's optional-platform-dependency property was **not** investigated.
+  **A scoping claim is corrected by measurement:** the 14 moderate
+  vulnerabilities are **NOT devDependencies-only** — `npm audit --omit=dev`
+  still reports all 14, because `expo`, `expo-router` and `expo-splash-screen`
+  are `dependencies`; they fan out from exactly **two** root advisories
+  (`decode-uri-component@0.2.2` ← `query-string` ← `expo-router`;
+  `uuid@7.0.3` ← `xcode` ← `@expo/config-plugins` ← `expo-splash-screen`), and
+  **no fix is available to this repo without Expo bumping**, so they are
+  recorded and not actioned — and they predate the lint work. **An honest limit
+  on the tick, recorded because it is the same principle that produced the
+  `static-and-suites` name:** ESLint is **silent on success**, so the Lint
+  step's entire output is the npm banner and **the CI log contains no positive
+  evidence that anything was linted** — a config whose `ignores` matched the
+  whole tree would exit 0 identically. That is a limit on the evidence, not a
+  suspected defect, because AF44 closed coverage **locally** against two
+  negative controls and CI runs the identical config bytes; but if `ignores` is
+  ever widened, **nothing in CI will notice**. Not established: nothing here is
+  behavioural evidence about the app and no 👁 limit in AF32-AF43 is narrowed;
+  **this run does NOT cover the `@v7` bump this branch makes** — PR #23 ran
+  `@v4` and closed with the Node 20 forcing warning, and no local command can
+  execute a runner, so `@v7` is this branch's own pending acceptance check;
+  cache-*restore* is unmeasured, only a cold run exists; only `ubuntu-latest`
+  was exercised, itself a moving target; and **branch protection was not
+  exercised** — `main` was unprotected when #23 merged, so that the required
+  check binds to the job key is inferred from the rendered name, not observed.
+  Decisions are **AD35**.
