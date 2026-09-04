@@ -1974,6 +1974,276 @@
   would otherwise surface as a surprise on whoever wires up the first CI
   release/UAT build.
 
+## UAT CI feasibility investigation — a corrected premise, and what was measured
+
+> Scope note that governs this section, stated the way the checkpoint that
+> opened this PR asked for: **the measurements below originate from a
+> read-only UAT-CI-feasibility investigation conducted in an earlier session
+> of this conversation, whose transcript did not survive into this one.**
+> This session independently **RE-VERIFIED a named subset** of them directly
+> against this tree and the public npm registry: `git ls-files android`
+> returning **0**; the stock `expo-template-bare-minimum@57.0.22` template,
+> pulled fresh via `npm pack` into the scratchpad (nothing installed, nothing
+> added to `node_modules`) and read directly, including its
+> `signingConfigs.debug` release line and its plaintext debug credentials;
+> the local, gitignored `android/app/build.gradle`'s guard re-read at its
+> cited anchors (`:97-106`, `:121-129`, the `=~ /(?i)release/` predicate, the
+> `:175` fallback to `null`); and `android/app/debug.keystore`'s hash plus its
+> `keytool -list -v` Distinguished Name. Each is flagged individually below as
+> **re-confirmed this session**. **Everything else — runner viability,
+> delivery-mechanism measurements, repo posture, fork-PR and
+> `pull_request_target` behaviour, `workflow_dispatch` constraints,
+> `app.config.ts` loading, the scheme collision, and the AGP property names —
+> is TRANSCRIBED from that earlier session and carries the tag that session
+> gave it, unchanged: a tag describes a claim's epistemic status, not who is
+> typing it.** No prebuild, Gradle build, emulator, device, or secret
+> operation was performed in either session. This section carries **no 👁 at
+> all**: nothing here was owner-witnessed, and nothing here is behavioural
+> evidence about the app.
+
+- **AF47** 🧪📐❓ — **CORRECTION TO AF46: the CI blocker AF46 names does not
+  fire, because CI never has the guard to fire. The real CI failure mode is
+  FAIL-OPEN, not fail-closed — the exact silent-wrong-artifact outcome AD30
+  exists to prevent.** AF46's own text is **not edited**, per this file's
+  append-only convention; this entry corrects it by cross-reference, the way
+  AF31 corrected AF28's scope and AF43 completed AF32 without touching
+  either.
+
+  **The corrected premise, and why it was wrong.** AF46 states — dictated
+  wording, not a discovered defect in the guard itself — that "`android/`'s
+  AD30 signing guard (`build.gradle:121-129`) throws on any task matching
+  `/(?i)release/` when `keystore.properties` is absent — which it always
+  would be in a CI checkout, since it is gitignored. Latent today; will fire
+  the first time a Gradle release-or-UAT task is added to CI…" **That is
+  false.** `android/` is **entirely gitignored** — `git ls-files android`
+  returns **0** 🧪 (re-confirmed this session; also recorded by AF41). A CI
+  checkout therefore has no `android/` directory of any kind, guard included.
+  When such a checkout runs `npx expo prebuild`, it generates `android/`
+  fresh from the **stock** `expo-template-bare-minimum` package — **not**
+  from the AD30-edited file, which exists only in the working copy of a
+  machine where RELEASE-SIGNING.md §3's manual edit was applied by hand, and
+  has never been committed anywhere. This is exactly AF37's failure class
+  recurring in a new place: an entry asserting a behaviour of the guard that
+  was never checked against what CI actually receives.
+
+  This session pulled that stock template directly from the npm registry —
+  `npm pack expo-template-bare-minimum@57.0.22` into the scratchpad, no
+  install — and read its `android/app/build.gradle` 🧪: line 115, inside
+  `buildTypes { release { … } }`, is `signingConfig signingConfigs.debug`,
+  under the same "Caution! In production, you need to generate your own
+  keystore file" comment AD30 quotes. **There is no guard in this file. There
+  is no `releaseSigningError`. There is no `keystorePropertiesFile` check of
+  any kind** — the whole mechanism AD30 built is absent from what a CI
+  checkout would actually generate. `assembleRelease` on that tree
+  **succeeds** and emits an installable, debug-signed "release" APK —
+  precisely the silent-wrong-artifact failure mode AD30's own text names as
+  the reason the hard-fail exists.
+
+  **One consequence stated explicitly, because it is the part most likely to
+  be assumed away:** materialising `keystore.properties` into a CI checkout
+  from repository secrets accomplishes **nothing** on its own, because
+  nothing in the stock generated tree reads that file. The AD30 mechanism
+  itself — the existence check, the `gradle.taskGraph.whenReady` throw, the
+  null-not-debug fallback — would have to be **re-delivered into the
+  CI-generated `android/` tree by some other means** before a secret alone
+  could do anything (see the four delivery mechanisms below). AF46's "unless
+  CI is given its own `keystore.properties`" is therefore **necessary but not
+  sufficient**, and AF46's framing that the guard is merely "latent" and will
+  "fire" is the part corrected here: **without a delivery mechanism, it never
+  exists to fire at all.**
+
+  **Guard mechanics as written, on a machine that HAS the guard** (i.e.
+  local, per RELEASE-SIGNING.md's own procedure) — recorded for completeness,
+  re-read this session at its cited anchors 🧪: `android/app/build.gradle:
+  97-106` computes `releaseSigningError` at **configuration time**, a plain
+  top-to-bottom set of `if`/`else` assignments that never throws by itself;
+  `:121-129`'s `gradle.taskGraph.whenReady { … }` runs once the task graph is
+  fixed and, only if `releaseSigningError != null`, checks
+  `taskGraph.allTasks.any { it.name =~ /(?i)release/ }` before throwing a
+  `GradleException`. `=~` is Groovy's find operator against a
+  case-insensitive regex — it matches on **substring**, not exact task name.
+  `:175`'s `signingConfig releaseSigningError == null ? signingConfigs.release
+  : null` is the fallback actually in force whenever the guard is somehow
+  bypassed: **`null`, never `signingConfigs.debug`**. **AF42's `BUILD FAILED
+  in 16s` / `28 actionable tasks: 28 up-to-date`** remains the daemon-log
+  corroboration that this sequence — configure, build the graph, throw before
+  any task executes — is what happens when the guard **is** present and the
+  keystore is absent; nothing here contradicts AF42. What is corrected is
+  only the assumption that this file is what CI would generate.
+
+  **Variant asymmetry.** Because `=~ /(?i)release/` matches on substring, the
+  task `assembleUatRelease` — which a `uat` product flavour (already rejected
+  by AD36 on unrelated `applicationId`-collision grounds) would produce, were
+  it ever adopted — **would** trip the same guard, once the guard exists in
+  the tree at all. A differently-shaped variant, a separate `buildType`
+  literally named `uat` rather than a flavour producing a `…Release` task,
+  would **not** match, since the string "uat" contains no substring
+  "release". Recorded as a real, independent hazard for anyone designing a
+  future CI/UAT pipeline: **the guard's coverage is name-shaped, not
+  concept-shaped**, and a differently-named variant can silently walk around
+  it.
+
+  **Four delivery mechanisms for a signing config into a CI-generated tree,
+  and what was established of each — transcribed from the earlier session,
+  original tags kept.** (1) `withAppBuildGradle`, an Expo config-plugin mod
+  hook, could inject the AD30 block on every prebuild, CI included — but
+  **nothing in the default Android plugin chain touches `signingConfigs`
+  today** 📐 (the same `withDefaultPlugins.js` chain AD30/AD36 already read
+  has no such mod), so this is a platform capability this repo does not
+  exercise anywhere. (2) `configureEasBuildAsync`, an EAS-specific
+  config-plugin hook for injecting credentials during an EAS-hosted build,
+  **has no caller anywhere in this tree** 📐 — this repo does not use EAS
+  Build, so the path is inapplicable as configured, not merely unused. (3)
+  Android Gradle Plugin's own `android.injected.signing.*` project properties
+  (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) can be passed on
+  the command line or via `-P`/`gradle.properties`, and AGP wires them into a
+  build with none of this repo's own Groovy — the property names were
+  **measured directly out of the resolved AGP 8.12.0 jar** 🧪 this repo's
+  Gradle wrapper pulls, and **they fail open to the declared debug config
+  when absent** — i.e. this mechanism carries the identical fail-open
+  property as the stock template itself if invoked without all four
+  properties set. (4) Committing a signed `android/` tree outright — named
+  only as the logical fourth option, not evaluated as a recommendation, since
+  it cuts directly against AD30/AD31's rationale for keeping `android/` out
+  of git.
+
+  **The debug keystore is FIXED across the whole ecosystem, not generated
+  per-project or per-run — and the stock template ships its unlock
+  credentials in plain text, which is a stronger rejection ground than "the
+  key is published on npm."** `android/app/debug.keystore` in this tree
+  hashes `221e0a3106aa4c3ccc154e0a418b55020b3f9ea6e84f92e8749cd9e2f39f5e58` —
+  **re-hashed this session** 🧪, matching the earlier investigation exactly —
+  and this session additionally hashed the `debug.keystore` bundled inside
+  the freshly pulled `expo-template-bare-minimum@57.0.22` package and found
+  it **identical** 🧪. `keytool -list -v` against it, run this session,
+  reports `Owner: CN=Android Debug, OU=Android, O=Unknown, L=Unknown,
+  ST=Unknown, C=US`, `Valid from: … 2013 until: … 2052` 🧪 — the value used to
+  correct README.md's and RELEASE-SIGNING.md's DN string below. **This
+  refutes a premise I supplied**, that debug-signing was somehow variable or
+  freshly generated per checkout — it is the opposite, the same fixed key on
+  every Expo project on every machine. And the credentials that unlock it are
+  not something anyone has to leak: they ship, in plain text, in the very
+  file every `expo prebuild` generates — read directly from the pulled
+  template this session 🧪:
+
+  ```gradle
+  signingConfigs {
+      debug {
+          storeFile file('debug.keystore')
+          storePassword 'android'
+          keyAlias 'androiddebugkey'
+          keyPassword 'android'
+      }
+  }
+  ```
+
+  **One file therefore corroborates two separate findings at once**: line
+  115's `signingConfig signingConfigs.debug` is the fail-open corrected
+  premise above, and these four lines are the rejection ground for
+  debug-signing generally — not "the private key is published on npm" (a
+  claim from the earlier investigation session, not re-verified here), but a
+  stronger and more local one: **the credentials are baked into the exact
+  file every `expo prebuild` generates, on every machine**, independent of
+  whatever else is published on the registry. Debug-signing is rejected
+  because the keystore is not a secret at all, not because it is merely easy
+  to obtain — it exercises nothing about the signing path a reviewer would
+  actually want tested.
+
+  **Runner viability — transcribed, original tags kept.** SDK platform 36 and
+  build-tools 36.0.0 present on the standard GitHub-hosted runner image 📐;
+  JDK 17.0.20 an exact match against this project's toolchain 📐; NDK and
+  CMake versions **mismatched** against this project's pins 📐; 4 vCPU / 16 GB
+  RAM / 14 GB free SSD ❓ — **explicitly flagged as an estimate, not a
+  measurement: no job was dispatched to a live GitHub-hosted runner to
+  confirm hardware in either session**; free, unlimited Actions minutes on a
+  public repository ❓. The measured local-build anchors — wall-clock and task
+  counts for a real release build on this machine — are AF42's, unchanged.
+
+  **Delivery-mechanism measurements — transcribed, original tags kept.** A
+  GitHub **Release asset** is downloadable **anonymously** (HTTP 206 on a
+  range request, no auth) 🧪; a workflow **artifact** returns **401** without
+  a repo-scoped token 🧪 — a real distribution difference for handing a UAT
+  build to someone outside the organisation. An artifact's download URL
+  **expires 1 minute** after being issued via the API 📐 (a documented
+  platform limit, not tested at the boundary). A Release asset carries a
+  **2 GiB per-file limit** 📐, comfortably above this project's
+  **110,763,372-byte** (AF42) release APK.
+
+  **Repo posture — transcribed, original tags kept, all against this
+  specific repository's live settings 🧪.** **Public**, **zero forks**, **one
+  collaborator**, **no Actions secrets, no repository variables, no
+  configured environments**; `default_workflow_permissions` reads **`read`**.
+  Names and settings only — **no secret value was read or is recorded,
+  because none was readable**: a public repo's secrets are write-only via the
+  API regardless of who asks.
+
+  **Fork PRs and the `pull_request_target` exception.** A pull request opened
+  from a **fork** of this public repository cannot receive repository secrets
+  under the default Actions configuration 📐 (documented platform default,
+  not this repo's own file), and there is **no public-repo opt-in available**
+  for it — the earlier session's attempt against the fork-PR
+  secrets-visibility setting returned an HTTP **422** from that settings
+  endpoint 🧪. The two trigger types that **do** run with the base
+  repository's secrets against fork-authored code —
+  **`pull_request_target`** and **`workflow_run`** — are named explicitly as
+  the ones a future UAT workflow **must not** use for anything that checks
+  out or executes fork-supplied code, the standard supply-chain hazard those
+  two triggers exist to warn about.
+
+  **`workflow_dispatch` constraints** ❓ (general GitHub product behaviour,
+  not verified against a live dispatch attempt in either session — not
+  laundered as measured): it requires the invoking actor to have **write
+  access**, **and** the workflow file must already exist **on the
+  repository's default branch** — a workflow present only on a feature branch
+  cannot be dispatched from anywhere until it merges. **Operational
+  consequence for this repo:** a UAT workflow's `workflow_dispatch` trigger
+  cannot be exercised from the feature branch that introduces it; it must
+  land on protected `main` first, which in turn interacts with `main`'s
+  `enforce_admins` posture (AD35) if a first dispatch attempt ever fails.
+
+  **`app.config.ts` loading — transcribed, original tags kept.** It resolves
+  and loads with **zero new dependencies**, via the `typescript@~6.0.3`
+  already in this repo's devDependencies, specifically its `transpileModule`
+  API — no `ts-node`, no build step 📐. **Two caveats, not glossed over:**
+  importing `@expo/config-types` for stronger typing would pull in a
+  **transitively unpinned** package this repo does not otherwise control; and
+  this makes the `typescript` version range's caret load-bearing for **config
+  loading itself**, not merely for `tsc` — a future patch bump could, in
+  principle, change how `app.config.ts` transpiles, a dependency this repo
+  did not previously have.
+
+  **The `expo.scheme` collision.** Both a UAT variant and the existing
+  release app would claim the identical URL scheme `readingaidandroid` 📐
+  (read from `app.json`) unless a UAT `app.config` overlay explicitly sets a
+  different one. Left unaddressed, Android resolves a deep link between two
+  competing claimants with a **disambiguation chooser** ❓ (documented
+  platform behaviour, not exercised by installing two such APKs side by side
+  — which the task constraints forbid regardless) — a real, observable defect
+  for a tester running both builds, not a stylistic preference. **Recorded as
+  a defect a future UAT overlay must avoid**, narrowing — without deciding —
+  the still-open UAT overlay shape AD36 left unresolved.
+
+  **A third provenance failure, named because this project has a rule about
+  exactly this.** A **"~0.52 GB install"** figure for the `static-and-suites`
+  CI job recurred across prompts in this workstream. **It appears nowhere in
+  this repo's documentation.** The only measured install-size figure this
+  repo has ever recorded for that job is **AF45**'s cache size —
+  **186,214,307 bytes**, about 186 MB, from the real run log of PR #23 —
+  neither the same figure nor the same unit as "~0.52 GB." The number was
+  carried from a prior chat's summary into later prompts without being
+  checked against the repository. Recorded here for the same reason AF37
+  records the concurrent-session incident: a false figure repeated across
+  prompts is indistinguishable from a true one until someone checks it
+  against the actual record, and CLAUDE.md §3 exists to make "checked" the
+  default rather than the exception.
+
+  **What this entry does NOT do.** It runs no CI job, adds no workflow, and
+  decides nothing about a UAT pipeline's shape — AD36 already left that
+  overlay's design open on three unrelated points, and none of them is
+  settled here. It does not close AF46's own point 3 (Hermes/R8 release-mode
+  gaps) or AF26's point 3 — both untouched. Every 👁 limit recorded in
+  AF27–AF43 stands.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -2353,3 +2623,42 @@
   secrets-injected `keystore.properties`. Per-`applicationId` `versionCode`
   monotonicity is tagged ❓ throughout as general Android platform behaviour,
   not something this repo's files could establish. Decisions are **AD36**.
+- 2026-09-04 — appended **AF47** on `docs/uat-investigation-findings`, landing
+  a read-only UAT CI feasibility investigation before it was lost, and
+  **correcting AF46**: AD30's guard does not fire in CI, because CI never
+  receives the gitignored, hand-edited `android/app/build.gradle` that
+  carries it — `git ls-files android` returns **0**, so a CI checkout
+  prebuilds from the **stock** `expo-template-bare-minimum@57.0.22` template
+  instead, whose `release { signingConfig signingConfigs.debug }` (confirmed
+  this session by pulling the package fresh from the npm registry) has no
+  guard, no `releaseSigningError`, and no keystore check of any kind — the
+  real CI failure mode is **fail-open**, the exact silent-wrong-artifact
+  outcome AD30 exists to prevent, and materialising `keystore.properties`
+  from secrets into that tree fixes nothing on its own since nothing there
+  reads it. **AF46 is not edited.** The same stock file's `debug` signing
+  block ships `storePassword 'android'` / `keyAlias 'androiddebugkey'` /
+  `keyPassword 'android'` in plain text — independently re-hashed and
+  DN-checked this session (`221e0a31…f5e58`, `CN=Android Debug, OU=Android,
+  O=Unknown, L=Unknown, ST=Unknown, C=US`) — a stronger, more local rejection
+  ground for debug-signing than "the key is published on npm." Also records:
+  the `=~ /(?i)release/` guard-match asymmetry between a `uat` product
+  flavour's `assembleUatRelease` (matches) and a differently-named `uat`
+  buildType (would not); the four mechanisms available for delivering a
+  signing config into a CI-generated tree; runner viability (SDK/build-tools/
+  JDK matched, NDK/CMake mismatched, hardware figures flagged as an estimate);
+  delivery-mechanism measurements (Release-asset-vs-artifact access, artifact
+  URL expiry, size limits); repo posture (public, no secrets/variables/
+  environments, `default_workflow_permissions: read`); fork-PR secret
+  exclusion and the `pull_request_target`/`workflow_run` hazard;
+  `workflow_dispatch`'s write-access-and-default-branch requirement;
+  `app.config.ts` loading via `typescript`'s `transpileModule` with zero new
+  dependencies; and an `expo.scheme` collision a future UAT overlay must
+  avoid. Closes with a **third** provenance correction: a "~0.52 GB install"
+  figure repeated across prompts in this workstream appears nowhere in this
+  repo's docs — **AF45** records **186,214,307 bytes** for that exact job, a
+  different figure entirely, carried in unchecked from a prior chat summary.
+  Two stale strings are corrected in the same change: `README.md` and
+  `RELEASE-SIGNING.md` both quoted a debug-signed certificate's DN as
+  `CN=Android Debug, O=Android, C=US`; the measured value is `CN=Android
+  Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US`. No
+  `DECISIONS.md` entry: nothing here is a decision.
