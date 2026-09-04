@@ -1882,6 +1882,98 @@
      and that the required check binds to the job key as intended is inferred
      from the rendered name, not observed.
 
+## versionCode mechanism, and a CI blocker found while investigating it
+
+> Scope note: **everything measured below was run by me**, in this session, in
+> this tree, against the installed `@expo/config-plugins@57.0.9` /
+> `@expo/prebuild-config` packages and the existing generated `android/`
+> directory and its built release APK. No prebuild, Gradle build, emulator or
+> device was run. **Where a claim is general Android platform behaviour rather
+> than something read out of this tree, it is tagged ❓, not 🧪** — per-app
+> `versionCode` monotonicity is documented Android `PackageManager` behaviour,
+> not a fact this repo's own files could establish either way.
+
+- **AF46** 🧪📐❓ — **The `versionCode` default mechanism, measured directly
+  from the installed package.** `getVersionCode` is
+  `config.android?.versionCode ?? 1`
+  (`node_modules/@expo/config-plugins/build/android/Version.js:74-76`), and
+  `setVersionCode` (`:77-80`) writes it into `android/app/build.gradle` with
+  the pattern `` new RegExp(`versionCode.*`) `` — **no `g` flag**, so
+  `String.replace` touches only the first match in the file. `withVersion`
+  (`Version.js:24-28`), which calls `setVersionCode` and the parallel
+  `setVersionName`, is wired into the Android default plugin chain at
+  `node_modules/@expo/prebuild-config/build/plugins/withDefaultPlugins.js:152`,
+  immediately after `Package.withPackageGradle` in that same list. Also
+  measured: `expo.android.version` overrides root `expo.version` for the
+  Android `versionName`, via `getVersionName`'s
+  `config.android?.version ?? config.version ?? null` (`Version.js:63-65`) —
+  this repo sets neither `android.version` nor root `version` beyond the
+  existing `"1.0.0"`, so the override path is unexercised here but is now on
+  record as available.
+
+  **The `applicationId`/`namespace` rewrite pattern, and the asymmetry with
+  `versionCode`.** `setPackageInBuildGradle`'s pattern, read at
+  `node_modules/@expo/config-plugins/build/android/Package.js:273`, is
+  `` new RegExp(`(applicationId|namespace)(\s*=\s*|\s+)['"].*['"]`, 'g') `` —
+  **with** the `g` flag, unlike `setVersionCode`'s pattern. **Simulated
+  directly**, in this session, against a hand-built `build.gradle` string
+  containing both a `defaultConfig` and a `productFlavors { uat { … } }`
+  block, each with its own `applicationId`: `String.replace` with this
+  pattern rewrote **both** occurrences to the single configured package name,
+  reproducing exactly the flavour-applicationId collision the investigation
+  had flagged 🧪. A parallel simulation against `applicationIdSuffix
+  ".uat"` confirmed it is **not** matched — the pattern's second capture
+  group requires `applicationId` to be immediately followed by `=` or
+  whitespace, and `applicationIdSuffix` has neither at that position, so the
+  literal substring `applicationId` inside it does not satisfy the pattern.
+  `versionCode`'s own non-global pattern was likewise simulated against a
+  flavour-bearing string and, as expected from the missing `g` flag, only the
+  first (`defaultConfig`) occurrence was rewritten; a flavour's own
+  `versionCode` line was left untouched.
+
+  **On-disk state, measured rather than assumed.**
+  `android/app/build.gradle:142-143` reads `versionCode 1` /
+  `versionName "1.0.0"` 🧪.
+
+  **The existing release APK, measured with `aapt` (found at
+  `~/Library/Android/sdk/build-tools/36.0.0/aapt`, not on `PATH`).**
+  `aapt dump badging android/app/build/outputs/apk/release/app-release.apk`
+  reports `package: name='com.arishh.readingaid' versionCode='1'
+  versionName='1.0.0' …` 🧪. The file itself is **110,763,372 bytes**, mtime
+  **2026-09-02 18:08:07** 🧪 (`stat`). `output-metadata.json` in the same
+  output directory — written by the Android Gradle Plugin, not by Expo —
+  independently states `"versionCode": 1, "versionName": "1.0.0"` for the
+  same artifact 🧪, agreeing with `aapt`. **What this does and does not
+  establish:** this is the `versionCode` baked into the **APK file on disk**,
+  matching AF42's build (same mtime day, same signing-acceptance entry). **It
+  is not a read of what is currently installed on the project owner's phone**
+  — nothing in this session queried a device or emulator, so "the phone is
+  at `versionCode 1`" is an **inference** from this being the one release APK
+  AF42 records as installed, not a device measurement. If a later,
+  unrecorded release build reached the phone, this entry would not know.
+
+  **A CI blocker, found while investigating this and unrelated to it —
+  recorded because it sits ahead of `versionCode` on the critical path for
+  any future UAT pipeline.** `android/` is gitignored (`.gitignore:46`) and
+  `keystore.properties` has never existed in a CI checkout — confirmed by
+  reading `.gitignore:46-48` and by grepping
+  `.github/workflows/static-and-suites.yml` for `gradlew`, `assembleRelease`
+  and `android`, all **zero hits** 🧪: the workflow does not invoke Gradle or
+  Android at all today. **So this is a latent blocker, not a currently-firing
+  one.** But `android/app/build.gradle:121-129`'s `taskGraph.whenReady` guard
+  (AD30) throws a `GradleException` on **any** task whose name matches
+  `/(?i)release/` when `keystore.properties` is absent — and it would be
+  absent in any CI checkout, unconditionally, since it is gitignored
+  everywhere, not just locally. **If a future CI job is ever added that runs
+  a Gradle task matching that pattern — for a UAT build or otherwise — it
+  will hit this guard and fail**, unless CI is given its own
+  `keystore.properties` (via a secrets-injection step, not a committed file)
+  or the UAT variant's task name is kept clear of the `/(?i)release/` match
+  the guard tests against. Flagged here, ahead of `versionCode`, because it
+  was discovered as a side effect of reading `build.gradle` for this task and
+  would otherwise surface as a surprise on whoever wires up the first CI
+  release/UAT build.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -2230,3 +2322,34 @@
   exercised** — `main` was unprotected when #23 merged, so that the required
   check binds to the job key is inferred from the rendered name, not observed.
   Decisions are **AD35**.
+- 2026-09-04 — appended **AF46** on `feature/versioncode-release-sequence`.
+  Measured, from the installed `@expo/config-plugins@57.0.9` /
+  `@expo/prebuild-config` packages: `getVersionCode`'s `?? 1` default and
+  `setVersionCode`'s **non-global** rewrite pattern (`Version.js:74-80`);
+  `withVersion`'s position in the Android default plugin chain
+  (`withDefaultPlugins.js:152`); and `expo.android.version`'s override of root
+  `expo.version` (`Version.js:63-65`), unexercised in this repo. **A regex
+  collision was reproduced by direct simulation, not inferred**:
+  `setPackageInBuildGradle`'s **global** `applicationId`/`namespace` pattern
+  (`Package.js:273`) rewrote both a `defaultConfig` and a `productFlavors`
+  block's `applicationId` to one value when replayed against a hand-built
+  `build.gradle` string, while a parallel simulation confirmed
+  `applicationIdSuffix` and a flavour's own `versionCode` line both survive —
+  the asymmetry that makes the collision easy to miss. On-disk state
+  (`android/app/build.gradle:142-143`, `versionCode 1`) and the existing
+  release APK (`aapt dump badging`, `output-metadata.json`, both agreeing on
+  `versionCode='1'`, file **110,763,372 bytes**, mtime 2026-09-02 18:08:07)
+  were measured directly, with `aapt` located under the Android SDK
+  build-tools rather than on `PATH`. **Explicitly flagged as inference, not
+  measurement:** that this APK is what is currently installed on the phone —
+  nothing here queried a device. **A CI blocker was found as a side effect,
+  unrelated to `versionCode` and flagged ahead of it**: the workflow runs no
+  Gradle or Android task today (zero hits for `gradlew`/`assembleRelease`
+  grepped from `.github/workflows/static-and-suites.yml`), but `android/`'s
+  AD30 signing guard (`build.gradle:121-129`) throws on any task matching
+  `/(?i)release/` when `keystore.properties` is absent — which it always would
+  be in a CI checkout, since it is gitignored. Latent today; will fire the
+  first time a Gradle release-or-UAT task is added to CI without a
+  secrets-injected `keystore.properties`. Per-`applicationId` `versionCode`
+  monotonicity is tagged ❓ throughout as general Android platform behaviour,
+  not something this repo's files could establish. Decisions are **AD36**.

@@ -18,7 +18,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.arishh.readingaid"
+      "package": "com.arishh.readingaid",
+      "versionCode": 1
     },
     "web": {
       "output": "static",
