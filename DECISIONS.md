@@ -1843,6 +1843,142 @@
   `keystore.properties` temporarily absent that fails with the `GradleException`
   rather than emitting an artifact.
 
+- **AD36 · `expo.android.versionCode` is set explicitly in `app.json`
+  (currently `1`, matching what has already shipped), and the release-time
+  bump sequence — bump, then `prebuild --no-clean`, then build — is recorded
+  in [RELEASE-SIGNING.md](RELEASE-SIGNING.md) §7, which is widened from a
+  signing-only recovery record to cover the release build procedure generally.
+  A product flavour and an Expo config plugin were both considered for a
+  future UAT variant and both rejected; the UAT overlay itself remains
+  deferred.**
+
+  **The premise this work started from was wrong, and the correction is the
+  useful part.** The problem was framed as needing a numbering scheme that
+  cannot collide with whatever CI eventually issues for a UAT build — as if
+  release and UAT `versionCode`s share one space that needs reconciling.
+  **They do not, and this is Android platform behaviour, not something read out
+  of this tree: `versionCode` monotonicity is enforced by `PackageManager` per
+  `applicationId`.** A release build under `com.arishh.readingaid` and a UAT
+  build under a different `applicationId` (e.g.
+  `com.arishh.readingaid.uat`) occupy **independent** version-code spaces,
+  each with exactly one producer. There is no collision to avoid and there
+  never was — a future reader must not re-derive a constraint that does not
+  exist.
+
+  **The mechanism, verified against the installed package in this tree.**
+  `getVersionCode` is `config.android?.versionCode ?? 1`
+  (`node_modules/@expo/config-plugins/build/android/Version.js:74-76`);
+  `setVersionCode` writes it into `android/app/build.gradle` via a
+  **non-global** `versionCode.*` pattern (`Version.js:77-80`) 🧪 — read
+  directly from the installed `@expo/config-plugins@57.0.9`. `withVersion`,
+  which calls both `setVersionCode` and its `versionName` counterpart
+  (`Version.js:24-28`), is wired into the Android plugin chain at
+  `node_modules/@expo/prebuild-config/build/plugins/withDefaultPlugins.js:152`
+  — the same chain AD24 `D-M` already relies on for the display name. On disk
+  today, `android/app/build.gradle:142-143` reads `versionCode 1` /
+  `versionName "1.0.0"`, and `aapt dump badging` against the built
+  `android/app/build/outputs/apk/release/app-release.apk` (110,763,372 bytes,
+  mtime 2026-09-02 18:08:07) reports `versionCode='1' versionName='1.0.0'`
+  🧪 — measured in this session, both independently and via
+  `output-metadata.json`'s own `"versionCode": 1` — confirming `1` is what
+  actually shipped and what `?? 1` would already produce with no `app.json`
+  entry at all. Setting the field to `1` explicitly is therefore a **no-op
+  against the generated project as it stands**: it converts an invisible
+  default into a tracked, reviewable input with no behaviour to verify,
+  rather than pre-emptively jumping to `2` — a value nobody could later tell
+  was used or unused. The bump belongs to the release procedure (§7 above),
+  not to this change.
+
+  **Why `app.json`, not a direct edit to the generated
+  `android/app/build.gradle`.** A config input reaches the native project
+  through prebuild and therefore **survives** it, by construction — that is
+  what `withVersion` is for. A direct edit to the generated file sits under a
+  mod that exists **specifically to overwrite that exact line**
+  (`Version.js:77-80`), so it is destroyed by the intended mechanism itself,
+  not merely by regeneration in general. That is strictly worse than AD30's
+  signing case: nothing in the installed plugin chain touches
+  `signingConfigs`, so a direct edit there survives `--no-clean` prebuilds
+  indefinitely; a direct `versionCode` edit would not survive the very next
+  one.
+
+  **A product flavour for a future UAT variant is REJECTED, on a measured
+  regex collision, not on a general aversion to flavours.** The candidate was
+  a `uat` product flavour carrying its own `applicationIdSuffix` and
+  `versionCode`, alongside the existing `defaultConfig`. The rejection turns
+  on `setPackageInBuildGradle`'s replacement pattern —
+  `` new RegExp(`(applicationId|namespace)(\s*=\s*|\s+)['"].*['"]`, 'g') ``
+  at `node_modules/@expo/config-plugins/build/android/Package.js:273`, read
+  directly and confirmed by simulating the replacement against a
+  flavour-bearing `build.gradle` string: it carries the **`g` flag**, so it
+  rewrites **every** `applicationId`/`namespace` assignment in the file —
+  including one sitting inside a `productFlavors { uat { … } }` block — to
+  the single package name in `expo.android.package`
+  (`com.arishh.readingaid`). **A UAT flavour's `applicationId` would be
+  silently collapsed onto the release package on every prebuild, including
+  `--no-clean` ones**, merging the two identity spaces this decision exists
+  to keep separate and making the platform-level independence argued above
+  moot in practice. The asymmetry is worth recording precisely, because it is
+  what makes the collision easy to miss: `setVersionCode`'s pattern
+  (`Version.js:77-80`) carries **no** `g` flag, so `String.replace` touches
+  only the **first** `versionCode` match in the file and a flavour's own
+  `versionCode` line survives untouched; `applicationIdSuffix` also survives,
+  because `Package.js:273`'s pattern requires `applicationId` to be
+  immediately followed by `=` or whitespace, and `applicationIdSuffix` has
+  neither at that position — the literal substring `applicationId` inside it
+  is not followed by a match for the second capture group. So a flavour's
+  `versionCode` and `applicationIdSuffix` would appear to work in isolation
+  while its `applicationId` gets overwritten out from under it. **This is
+  also why [RELEASE-SIGNING.md](RELEASE-SIGNING.md) §1's "`--no-clean` —
+  Safe" verdict does not transfer to a flavour's `applicationId`**: it is true
+  for the signing block, which nothing in the plugin chain rewrites, and it
+  would be false here, where something does.
+
+  **An Expo config plugin is REJECTED on redundancy, and the reasoning is
+  explicitly not a reflex carry-over from AD30.** AD30 rejected a config
+  plugin for signing on three grounds, and only two of them transfer here.
+  Its **first** ground — that a plugin's regeneration-survival benefit is
+  moot because nothing in that workflow performs a clean prebuild — **does
+  NOT transfer**: under this decision's own §7 procedure, `prebuild
+  --no-clean` becomes a **routine** step of every release, not a hypothetical
+  one, so if anything a plugin's survive-regeneration property would
+  actually be exercised regularly. AD30's **second** ground (an untested,
+  un-typechecked code path outside `npm run check`, per AD16's reasoning) and
+  **third** (silent failure if a future template restructures, versus a
+  direct edit failing by being deleted, which is obvious on inspection) both
+  transfer unchanged. But none of that is the decisive point. The decisive
+  point is narrower and stronger: **`android.versionCode` is already a
+  first-class field in Expo's own config schema, already read by
+  `getVersionCode`, and already written by a first-party mod
+  (`withVersion`) wired into the default plugin chain.** Unlike signing —
+  where the *template itself* pointed the release build at debug signing,
+  which is a real defect a plugin or a direct edit would each have to
+  correct — there is no defect here for a plugin to fix. A plugin duplicating
+  `withVersion`'s job buys nothing that the schema field does not already
+  buy for free.
+
+  **Alternatives rejected, summarized:**
+  1. ~~Direct edit to the generated `android/app/build.gradle`~~ — destroyed
+     by the very mod (`setVersionCode`) that would need to leave it alone; see
+     above.
+  2. ~~A `uat` product flavour~~ — `Package.js:273`'s global
+     `applicationId`/`namespace` rewrite collapses a flavour's
+     `applicationId` onto the release package on every prebuild, `--no-clean`
+     included; see above.
+  3. ~~An Expo config plugin~~ — redundant with the schema field and
+     first-party mod that already do this job; see above.
+
+  **What is deferred, and why — the UAT half of the original register is
+  untouched by this entry.** Three things remain open and are explicitly not
+  decided here: **which keystore signs a UAT build** (a UAT-specific key, or
+  the same release key under a different `applicationId` — unresolved);
+  **how a UAT build is distinguished on the phone** once installed alongside
+  a release build (app name suffix, icon badge, or something else — not
+  decided); and **whether the `app.config` overlay that would carry a UAT
+  `applicationId`/`versionCode` is written as `.ts` or `.js`** — not decided.
+  None of the three blocks anything in this entry: `expo.android.versionCode`
+  as a plain integer field, and the release procedure in RELEASE-SIGNING.md
+  §7, are correct regardless of how or whether a UAT variant is ever added.
+
 ## Milestone: working-agreement ownership
 
 > **Ordering note.** AD32 below extends **AD31**, which sits ABOVE this section
@@ -2938,3 +3074,48 @@
   CORE-DIVERGENCE.md's twenty-six rows changed, nothing under `src/` changed,
   and `package.json`, `package-lock.json` and `eslint.config.js` are untouched.
   Measurements are **AF45**.
+- 2026-09-04 — appended **AD36** on `feature/versioncode-release-sequence`.
+  `expo.android.versionCode` is set explicitly to **`1`** in `app.json`,
+  matching what has already shipped (`aapt dump badging` on the existing
+  release APK reports `versionCode='1'`, and `android/app/build.gradle:142`
+  already reads `versionCode 1`) — a no-op against the generated project,
+  converting an invisible `?? 1` default
+  (`@expo/config-plugins/.../Version.js:74-76`) into a tracked input rather
+  than pre-emptively jumping to `2`. **The framing this work started from was
+  corrected rather than carried forward:** the problem was scoped as needing a
+  scheme that avoids colliding with a future UAT build's version codes, but
+  Android enforces `versionCode` monotonicity **per `applicationId`**, so a
+  release build and a differently-packaged UAT build occupy independent
+  spaces with nothing to reconcile — recorded explicitly so a future reader
+  does not re-derive a constraint that does not exist. A direct edit to the
+  generated `build.gradle` is rejected because the same first-party mod that
+  would need to leave it alone (`setVersionCode`) exists specifically to
+  overwrite that line — worse than AD30's signing case, where nothing in the
+  plugin chain touches `signingConfigs`. A `uat` product flavour is rejected
+  on a **measured regex collision**: `Package.js:273`'s global
+  `applicationId`/`namespace` rewrite would collapse a flavour's
+  `applicationId` onto the release package on every prebuild, `--no-clean`
+  included, silently merging the two identity spaces — while, asymmetrically,
+  a flavour's own `versionCode` (non-global pattern) and `applicationIdSuffix`
+  (a different match shape) would survive untouched, making the collision easy
+  to miss. An Expo config plugin is rejected on **redundancy** rather than a
+  reflex carry-over from AD30: AD30's regeneration-is-hypothetical ground does
+  **not** transfer here, since `prebuild --no-clean` becomes routine under
+  this decision's own release procedure — but `android.versionCode` is
+  already a first-party schema field with a first-party mod doing exactly this
+  job, so there is no template defect for a plugin to correct. The release-time
+  sequence (bump, `prebuild --no-clean`, verify/restore signing, build) is
+  recorded in **[RELEASE-SIGNING.md](RELEASE-SIGNING.md) §7**, which is
+  widened from a signing-only recovery record to a release-build procedure
+  document in the same change — chosen over a new standalone document because
+  both the signing block and `versionCode` are destroyed by the same
+  `--no-clean`-less prebuild, so one document avoids cross-referencing two on
+  every release; §§1–6 keep their existing numbering since README.md
+  cross-references §2 and §3 by number. The `run:android`-skips-prebuild trap
+  is named explicitly in that section: bumping `app.json` and then using the
+  ordinary dev command changes nothing on disk, silently. **The UAT half is
+  explicitly deferred**, unresolved on which keystore signs a UAT build, how a
+  UAT install is distinguished on the phone, and whether its `app.config`
+  overlay is `.ts` or `.js` — none of which blocks this entry. Zero files under
+  `src/` changed and no manifest row in CORE-DIVERGENCE.md changed.
+  Measurements are **AF46**.
