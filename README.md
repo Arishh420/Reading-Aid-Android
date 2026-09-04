@@ -112,8 +112,9 @@ signing config:
 apksigner verify --print-certs android/app/build/outputs/apk/release/app-release.apk
 ```
 
-`CN=Android Debug, O=Android, C=US` means the config was lost and the build fell
-back to the template default — restore it from RELEASE-SIGNING.md §3 and rebuild.
+`CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US` means
+the config was lost and the build fell back to the template default —
+restore it from RELEASE-SIGNING.md §3 and rebuild.
 
 **5 · Install it** — `adb install -r android/app/build/outputs/apk/release/app-release.apk`,
 or copy the APK to the phone and open it there.

@@ -196,9 +196,10 @@ After a release build, confirm the APK is **not** debug-signed:
 apksigner verify --print-certs android/app/build/outputs/apk/release/app-release.apk
 ```
 
-A debug-signed artifact reports `CN=Android Debug, O=Android, C=US`. Seeing that
-means the signing config was lost and the build fell back to the template
-default — restore from §3 and rebuild.
+A debug-signed artifact reports
+`CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US`. Seeing
+that means the signing config was lost and the build fell back to the
+template default — restore from §3 and rebuild.
 
 ## 6. What a successful release build does and does not establish
 
