@@ -1459,6 +1459,244 @@
   docblock names the surface explicitly so the emulator run and AF32's device
   runs cannot be confused for one another.
 
+## Lint arrives — what it actually found, and what it does not cover
+
+> Scope note that governs this whole section: **unlike almost every entry
+> above, everything here was executed by me**, in this session, on this
+> machine. No emulator, device or Gradle build was involved and none is
+> claimed. The one thing that was **not** run is the CI workflow — see the
+> last block.
+
+- **AF44** 🧪📐 — **ESLint's first run on this repo, measured. Three of the
+  premises the work was scoped under were false, and the corrections are the
+  useful part.** The decisions taken in response are **AD34**; nothing from
+  that entry is restated here (AD18).
+
+  **Toolchain, resolved by `npm install --save-dev eslint@^9
+  eslint-config-expo` and read out of `node_modules` afterwards** 🧪:
+
+  | Package | Version | How it arrives |
+  |---|---|---|
+  | `eslint` | **9.39.5** | direct devDependency |
+  | `eslint-config-expo` | **57.0.2** | direct devDependency |
+  | `eslint-plugin-react-hooks` | **7.1.1** | transitive, `eslint-config-expo` declares `^7.0.0` |
+  | `@typescript-eslint/eslint-plugin` | 8.69.0 | transitive |
+  | `eslint-plugin-import` | 2.32.0 | transitive |
+  | `eslint-plugin-react` | 7.37.5 | transitive |
+  | `eslint-plugin-expo` | 1.1.0 | transitive |
+
+  Node v26.7.0, npm 11.19.0, macOS arm64 (Darwin 25.6.0) — the same toolchain
+  AF10 records for the suites.
+
+  **CORRECTION 1 — the repo had EIGHT stock-config errors, not seven.** Seven
+  are in `src/pacer/usePacer.ts` and every line number given to me was exact,
+  confirmed rather than assumed 🧪:
+
+  ```
+  ERROR src/pacer/usePacer.ts:78:3    react-hooks/refs
+  ERROR src/pacer/usePacer.ts:80:3    react-hooks/refs
+  ERROR src/pacer/usePacer.ts:82:3    react-hooks/refs
+  ERROR src/pacer/usePacer.ts:84:3    react-hooks/refs
+  ERROR src/pacer/usePacer.ts:86:3    react-hooks/refs
+  ERROR src/pacer/usePacer.ts:164:46  react-hooks/immutability
+  ERROR src/pacer/usePacer.ts:183:5   react-hooks/set-state-in-effect
+  ERROR types/hermes-globals.d.ts:19:1  no-var        <-- the eighth
+  ```
+
+  The eighth is `declare var console` — **AD4**'s five-method ambient
+  declaration. It is **not** in [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md), so
+  it could have been edited; it was not, for the reason AD34 gives.
+
+  **CORRECTION 2 — the React Compiler rules do NOT fire because of
+  `app.json`.** The scoping stated they fire because `app.json` sets
+  `"experiments": { "reactCompiler": true }`. Measured: **`eslint-config-expo`
+  contains no reference to `app.json`, `reactCompiler` or `experiments`
+  anywhere** 🧪 (swept the whole package, excluding its own
+  `node_modules`). The rules come from `eslint-plugin-react-hooks@7.1.1`'s
+  `configs.recommended`, which was loaded and read directly: sixteen rules, of
+  which `react-hooks/refs`, `react-hooks/immutability` and
+  `react-hooks/set-state-in-effect` are each `"error"` **unconditionally** 🧪.
+  `eslint-config-expo` spreads that preset wholesale at
+  `flat/utils/react.js:27` 📐. `app.json`'s opt-in is real and governs the
+  **Metro/Babel build**; there is simply no path from it to ESLint. Recorded
+  because **AF37** names a log entry asserting an event that did not happen as
+  the one failure mode nothing in this repo can catch.
+
+  **CORRECTION 3 — `no-console`'s real subject is the `.mjs` harnesses, not
+  `epubStructure.ts`.** With `allow: ['warn']`, the two intentional warns at
+  `src/core/parsers/epubStructure.ts:104` and `:193` (manifest row 7) are
+  silenced and **never appear**: measured **zero** `no-console` hits in any
+  `.ts`/`.tsx` file 🧪. The real count is **61**, every one a `console.log` or
+  `console.error` in the fourteen `.mjs` files — the calls that print each
+  `PASS`/`FAIL` line and every tally `npm run check` reports.
+
+  **Full Level 2 measurement before any override was applied — 82 problems**
+  🧪:
+
+  ```
+    61  no-console        (61 in .mjs, 0 in .ts/.tsx)
+    13  import/order      (all 13 in .mjs; identical idiom, `esbuild` before `node:path`)
+     5  react-hooks/refs
+     1  react-hooks/immutability
+     1  react-hooks/set-state-in-effect
+     1  no-var
+  ```
+
+  **Nine of the thirteen `import/order` files are manifest-pinned** (rows
+  13–20 and row 25) 📐, which is what made a config override the only
+  available answer rather than the convenient one.
+
+  **A hard config constraint, measured rather than reasoned about.**
+  `eslint-config-expo` registers the `@typescript-eslint` plugin only inside a
+  `files: ['**/*.ts', '**/*.tsx', '**/*.d.ts']` block 📐, so naming one of its
+  rules in an unscoped block does not degrade — ESLint refuses to start:
+  *"A configuration object specifies rule
+  `@typescript-eslint/no-unused-vars`, but could not find plugin
+  `@typescript-eslint`"* 🧪. Also worth recording: stock sets
+  `@typescript-eslint/no-unused-vars` to **`warn`**, so escalating it to
+  `error` is a real change, not a restatement.
+
+  ### The result, and its coverage
+
+  **`npm run lint` exits 0 with 0 errors and 0 warnings across 39 files** 🧪
+  (`eslint . --max-warnings 0`). The count is **39, not the 38** measured
+  before the config existed — `eslint.config.js` lints itself once it is on
+  disk.
+
+  **`eslint.config.js` needed no CommonJS-scoped block, and that this is a
+  genuine pass rather than a dormant rule was established by control.**
+  `package.json` declares no `"type": "module"`, so the config is CJS, while
+  flat config's default `sourceType` for `.js` is `module` — the setup in
+  which `require`/`module.exports` would ordinarily trip `no-undef`. They do
+  not, because `eslint-config-expo`'s core config already declares `module`,
+  `require`, `exports`, `global` and `console` as globals 📐. **Negative
+  control:** a never-called function referencing an undefined identifier was
+  appended to the config, and ESLint reported
+  `'someUndefinedGlobal' is not defined  no-undef` plus a `no-unused-vars`
+  warning 🧪 — so both rules are live on that file and the clean run means the
+  globals are declared, not that the rules are off. The file was restored and
+  confirmed byte-identical by `diff`.
+  *A first attempt at that control was invalid and is recorded rather than
+  discarded:* the undefined reference was placed at top level, where ESLint —
+  which **executes** a flat config to load it — threw `ReferenceError` at load
+  time and exited 2 with no diagnostic at all. A control has to leave the
+  module loadable, or it measures the loader instead of the linter.
+
+  **THE `.mjs` STATIC-ANALYSIS GAP IS NARROWED, NOT CLOSED — and the
+  distinction is the point of this block.** **AF14** recorded that the `.mjs`
+  files "are **not** typechecked or DOM-guarded by anything", and that is still
+  true of `tsc`; what changed is that ESLint now sees them. But AD34's
+  `**/*.mjs` override turns two rules off there, so "ESLint closes the gap" is
+  an overclaim and is not made.
+
+  Resolved from the real config with ESLint's `calculateConfigForFile` against
+  `src/core/model/headless-test.mjs` rather than assumed 🧪: **67 rules remain
+  active — 46 at error, 21 at warn.**
+
+  - **Error-level, live:** `no-undef`, `no-dupe-args`, `no-dupe-keys`,
+    `no-dupe-class-members`, `no-duplicate-case`, `use-isnan`, `valid-typeof`,
+    `no-var`, `prefer-const`, `eqeqeq`, `import/export`, `import/namespace`,
+    `import/no-unresolved`, plus the `react-hooks/*` and `react/*` families.
+  - **Warn-level, live:** `no-unused-vars`, `no-unreachable`,
+    `no-unsafe-negation`, `no-unused-expressions`, `no-unused-labels`,
+    `no-redeclare`, `no-empty-character-class`, `no-empty-pattern`,
+    `no-extend-native`, `no-extra-bind`, `no-with`, `unicode-bom`,
+    `import/first`, `import/no-duplicates`, `import/no-named-as-default`,
+    `import/no-named-as-default-member`, and three `react-hooks` advisories.
+  - **Off:** exactly two, `no-console` and `import/order` — **both
+    stylistic**.
+  - Of the six Level 2 rules, `prefer-const` and `eqeqeq` remain at **error**
+    on `.mjs`; `no-unused-vars` remains live at **warn** through the base rule,
+    since the TS-plugin block does not apply there.
+
+  **Because `npm run lint` carries `--max-warnings 0`, the warn-level rules
+  fail the run too** — so the practical gate on a `.mjs` file is all 67, not
+  just the 46. **Correctness rules now cover these files where nothing covered
+  them before; formatting rules do not.**
+
+  **CONTROL — ESLint really does cover `.mjs` where `tsc` cannot see it.**
+  Run against `scripts/check-core-baseline.mjs`, chosen because it is
+  unpinned, sits outside `src/`, and is the one file `expo lint`'s
+  `DEFAULT_INPUTS` would never have reached. First, the negative half:
+  `tsc --noEmit --listFilesOnly` includes it **zero** times 🧪. Then a
+  deliberate violation was appended and ESLint reported 🧪:
+
+  ```
+    186:10  warning  '__controlProbe' is defined but never used  no-unused-vars
+    186:36  error    Expected '===' and instead saw '=='         eqeqeq
+    186:39  error    'undefinedGlobalForControl' is not defined  no-undef
+  ```
+
+  Reverted with `git checkout --`, and the file re-hashed
+  `4583e26a67c38b3c10daf1007b07158280ea0982f4758fb41f0a1c3717733e36`,
+  identical to its pre-control hash 🧪; `npm run lint` returned to exit 0.
+
+  ### Cleanups, measured
+
+  - **`npm ci` cleared 201 extraneous top-level packages** — 229 entries
+    before, **28** after, **0** extraneous, no `eslint` present 🧪. The residue
+    was a full `eslint`/`eslint-config-expo` dependency tree from a reverted
+    `expo lint` run, which is why `expo lint` behaved differently here than it
+    would on a fresh clone. Notably the versions a clean install then resolved
+    are **identical** to the residue's (`eslint@9.39.5`,
+    `eslint-config-expo@57.0.2`, `eslint-plugin-react-hooks@7.1.1`).
+  - **`example/`** — 20 files, 84K, untracked and ignored by `.gitignore:42`,
+    **zero tracked files** 🧪. It held the **only** references to the assets
+    below: eleven `require('@/assets/images/…')` call sites across
+    `explore.tsx`, `animated-icon.tsx`, `animated-icon.web.tsx`,
+    `web-badge.tsx` and `app-tabs.tsx` 🧪 — which is precisely why those assets
+    looked used.
+  - **Fourteen tracked assets deleted, totalling exactly 446,089 bytes** 🧪 —
+    the figure was summed from `stat`, not accepted. `logo-glow.png` alone is
+    331,624 of it. Each was confirmed to appear in **none** of the fifty-five
+    tracked non-asset files before deletion, re-run immediately prior as a
+    guard 🧪. Nine tracked assets remain: `assets/expo.icon/` (3),
+    `favicon.png`, and the five `app.json` references.
+
+  ### NOT ESTABLISHED
+
+  1. **THE WORKFLOW HAS NEVER RUN.** No GitHub Actions execution took place.
+     `.github/workflows/static-and-suites.yml` was parsed locally with the
+     `yaml@2.9.0` already in `node_modules` and its structure asserted:
+     it is valid YAML; the single job key is `static-and-suites` and the job
+     carries **no `name:` override**, so the required-check name is the job
+     key; `runs-on: ubuntu-latest`; triggers are `pull_request` (unfiltered)
+     and `push` to `[main]`; **no `paths`/`paths-ignore` key exists under any
+     trigger** — the only occurrence of the string in the file is the comment
+     forbidding it; `node-version: '26'` with `cache: npm`; eight steps in the
+     intended order ending with lint 🧪. **That establishes the file's shape
+     and NOTHING about whether GitHub accepts the schema, resolves Node 26 on
+     the runner, or renders the check name as expected.** It is unproven until
+     the first pull request runs it, and that run will be worth its own entry.
+  2. **Nothing here is behavioural evidence.** ESLint is static analysis. A
+     clean lint says nothing about the device coverage ARCHITECTURE.md §6
+     enumerates, and adding a second green command does not narrow that gap by
+     one line. Every 👁 limit recorded in AF32–AF43 stands untouched.
+  3. **No type-aware linting.** Level 2 uses no `parserOptions.project`, so
+     rules requiring type information never ran. What lint covers is a
+     syntactic and scope-level subset of what `tsc` covers, on `.ts`; on `.mjs`
+     it is the only coverage there is.
+  4. **`npm run check` is unchanged and lint is not part of it** — verified
+     still exit 0 at 13 suites and 310 checks after every edit in this change
+     🧪. A contributor who runs only `check` gets no lint, which is the
+     deliberate arrangement AD34 explains and ARCHITECTURE.md §6 now names.
+  5. **A latent editor hazard, recorded so it is discoverable from the repo
+     rather than only from a conversation.** `.vscode/settings.json` sets an
+     unqualified `"source.fixAll": "explicit"` on save. It does nothing today:
+     VS Code dispatches that code-action kind to installed **extensions**, and
+     `dbaeumer.vscode-eslint` is **not installed** — the extensions directory
+     holds seven entries, none of them ESLint 🧪 — so the npm devDependency
+     alone cannot autofix on save. If that extension is ever installed, ESLint
+     autofix becomes live on save for every file including the twenty-six
+     pinned in CORE-DIVERGENCE.md, and an autofix there would break
+     `check:baseline` with no accompanying row update. **The backstop is
+     `check:baseline`, which this change puts on every pull request.** No
+     mitigation was added, deliberately: the hazard is latent rather than live,
+     and `.vscode/extensions.json` was left recommending only
+     `expo.vscode-expo-tools`. Adjacent and pre-existing, noted rather than
+     acted on: `"source.organizeImports"` is **already** live through VS Code's
+     built-in TypeScript service, independent of ESLint.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -1688,3 +1926,66 @@
   build; and it says nothing about book length. The figures are cited by
   `src/reader/WordBox.tsx`'s docblock, which before this entry pointed at no
   finding.
+- 2026-09-04 — appended **AF44** on `feature/lint-and-ci`, recording ESLint's
+  first run on this repo. **Executed by me**, unlike almost every entry above;
+  no device, emulator or Gradle was involved. Resolved `eslint@9.39.5`,
+  `eslint-config-expo@57.0.2` and — transitively, via that config's `^7.0.0` —
+  `eslint-plugin-react-hooks@7.1.1`. **Three scoping premises measured false.**
+  (1) The repo had **eight** stock-config errors, not seven: the seven
+  `usePacer.ts` line numbers were all exact, but an eighth,
+  `types/hermes-globals.d.ts:19`'s `declare var console` (AD4), was missing
+  from the scoping. (2) The React Compiler rules do **not** fire because
+  `app.json` sets `experiments.reactCompiler` — `eslint-config-expo` contains
+  **no reference** to `app.json`, `reactCompiler` or `experiments` anywhere;
+  they come from `eslint-plugin-react-hooks@7.1.1`'s `configs.recommended`,
+  which sets all three to `"error"` unconditionally, spread wholesale at
+  `flat/utils/react.js:27`. The `app.json` opt-in is real but governs the
+  Metro/Babel build, with no path to ESLint. Recorded at length because
+  **AF37** names exactly this as the failure nothing here can catch.
+  (3) `no-console`'s subject is **not** `epubStructure.ts`, whose two
+  intentional warns `allow: ['warn']` silences so completely that **zero**
+  `no-console` hits exist in any `.ts`/`.tsx` — the real **61** are
+  `console.log`/`.error` in the fourteen `.mjs` files, their entire output
+  mechanism. Full pre-override Level 2 measurement: **82 problems** (61
+  `no-console`, 13 `import/order` — all `.mjs`, all the identical
+  `esbuild`-before-`node:path` idiom, **nine of the thirteen files
+  manifest-pinned** — plus the 7 + 1 above). A hard config constraint measured
+  rather than reasoned about: `eslint-config-expo` registers
+  `@typescript-eslint` only inside a TS-scoped block, so naming its rules
+  unscoped makes ESLint **refuse to start**; and stock sets its
+  `no-unused-vars` to `warn`, so escalating to `error` is a real change.
+  **Result: `npm run lint` exits 0, 0 errors, 0 warnings, across 39 files** —
+  39 rather than the 38 measured before the config existed, because
+  `eslint.config.js` lints itself. That config needed **no** CommonJS-scoped
+  block, and a **negative control** proved the clean pass is real rather than a
+  dormant rule (`no-undef` and `no-unused-vars` both fired on an injected
+  identifier); a **first, invalid control attempt is recorded rather than
+  discarded** — placed at top level it threw `ReferenceError` at load, because
+  ESLint *executes* a flat config, so it measured the loader not the linter.
+  **The `.mjs` gap is NARROWED, NOT CLOSED, and the entry refuses the
+  unqualified claim:** resolved via `calculateConfigForFile`, **67 rules stay
+  active** on a `.mjs` suite (46 error, 21 warn) — `no-undef`, `no-dupe-keys`,
+  `use-isnan`, `valid-typeof`, `eqeqeq`, `prefer-const`, `no-unreachable`,
+  `no-unused-vars` among them, enumerated in full — and exactly **two** are
+  off, `no-console` and `import/order`, **both stylistic**. `--max-warnings 0`
+  means the warn-level rules gate too. **Control that ESLint covers `.mjs`
+  where `tsc` cannot:** `tsc --noEmit --listFilesOnly` includes
+  `scripts/check-core-baseline.mjs` **zero** times, while ESLint reported three
+  injected violations there; reverted, and the file re-hashed identical.
+  Cleanups measured: `npm ci` took 229 top-level entries to **28** with **201**
+  extraneous cleared (and a clean install then resolved *identical* versions to
+  the residue); `example/` held the **only** references to the deleted assets,
+  eleven `require()` sites; the fourteen assets total **exactly 446,089** bytes,
+  summed rather than accepted, `logo-glow.png` alone 331,624 of it. **Not
+  established:** the workflow **has never run** — parsed locally with
+  `yaml@2.9.0` and its shape asserted (single job key `static-and-suites`, no
+  `name:` override, no `paths` key under any trigger, `node-version: '26'`,
+  eight steps ending in lint), which says **nothing** about whether Actions
+  accepts it; nothing here is behavioural evidence and every 👁 limit in
+  AF32–AF43 stands; no type-aware linting ran; `npm run check` is unchanged at
+  13 suites and 310 checks and deliberately excludes lint; and a **latent**
+  editor hazard is recorded — `.vscode/settings.json`'s unqualified
+  `source.fixAll` would activate ESLint autofix on save over the twenty-six
+  pinned files if `dbaeumer.vscode-eslint` is ever installed (it is not: seven
+  extensions, none ESLint), with `check:baseline` on every PR as the backstop.
+  Decisions are **AD34**.
