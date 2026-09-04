@@ -2670,6 +2670,275 @@
   **independent of this change**, which puts it in AD32's second category, so it
   is recorded here and left for its own edit rather than folded in.
 
+## Milestone: UAT variant
+
+- **AD37 · A root `app.config.ts` overlays `app.json` and, when
+  `READING_AID_UAT` is set, resolves a distinct UAT identity —
+  `BETA Reading Aid` / `com.arishh.readingaid.uat` / `readingaiduat` /
+  versionName `1.0.0-uat` / a monotonic `versionCode` / a yellow adaptive-icon
+  background. With that variable unset it returns its input UNCHANGED, and the
+  release identity in `app.json` is not edited at all. A fourteenth headless
+  suite ships in the same change and pins the unset path.** This begins the UAT
+  work AD36 deferred. It settles **none** of AD36's three open UAT questions —
+  which keystore signs a UAT build, and how one is distinguished on the phone
+  beyond its launcher label, are still open — and it touches no signing, no CI
+  behaviour and no workflow. Its immediate purpose is a **local** UAT build:
+  side-by-side install and the upgrade path working on evidence that can be
+  trusted **before** CI is added as a further variable.
+
+  **`app.json` is untouched, and that is the property the whole change is
+  arranged around.** `expo.name`, `expo.scheme`, `expo.version`,
+  `expo.android.package` and `expo.android.versionCode` are byte-identical to
+  what shipped. The overlay **adds a variant; it does not redefine the app.** A
+  silent change to release identity is the one failure this design could
+  plausibly cause, which is why the suite's load-bearing assertion is the
+  *inert* one rather than the UAT one.
+
+  **Why a dynamic config at all, rather than a product flavour or a second
+  static file.** AD36 already rejected a `uat` product flavour on a **measured**
+  regex collision — `Package.js:273`'s global `applicationId`/`namespace`
+  rewrite collapses a flavour's `applicationId` onto the release package on
+  every prebuild, `--no-clean` included (AF46). That rejection stands and is not
+  re-argued. What is new is that `app.config.*` is Expo's own first-class
+  mechanism for exactly this: `Config.js:291-296` passes the static config into
+  the dynamic one as `request.config`, so the two **compose** rather than
+  compete, and `Config.js:326`'s `DYNAMIC_CONFIG_EXTS` puts `.ts` first in
+  resolution order 📐. Nothing has to be duplicated and `app.json` stays the
+  single statement of release identity.
+
+  **Why `.ts` and not `.js` — and the reason is coverage, not taste.**
+  `tsconfig.json`'s `include` is `["**/*.ts", "**/*.tsx", …]` with no exclusion
+  that reaches the repo root, so a root `.ts` file is **in the main `tsc`
+  program**; a root `.js` file is in neither program, since `tsconfig.core.json`
+  sets no `allowJs` (AF14). Choosing `.js` for the file that computes the app's
+  **identity** would have put it in precisely the analysis hole AF14 names.
+  Verified by negative control rather than asserted: a deliberate type error in
+  a root `.ts` produced **TS2322 and exit 2**, and correcting it gave exit 0
+  (AF48).
+
+  **THE `typescript` DEPENDENCY IS NOW LOAD-BEARING FOR CONFIG LOADING, NOT ONLY
+  FOR `tsc` — but the sharper form of that claim was checked and is false, and
+  the correction is the useful part.** This change was scoped on the instruction
+  that a TypeScript 7 bump "would silently break" config loading. **Measured, it
+  would not.** `@expo/require-utils/build/load.js:76-79` carries Expo's own
+  comment — *"typescript v7 ships without the necessary compiler/public APIs"* —
+  and returns `null` in that case, but `:335-341` then **falls back to Node's
+  native `module.stripTypeScriptTypes`**, which is present on this repo's Node
+  v26.7.0 🧪. So there are **two couplings, not one**: `transpileModule` is the
+  primary loader, and a TS 7 bump silently switches to a *different* transpiler
+  whose availability is itself Node-version-dependent. The project owner
+  supplied the stronger claim and **corrected it on being shown the
+  measurement**; it is recorded here as theirs rather than quietly softened,
+  because AF37's lesson is that a log entry asserting a mechanism that does not
+  exist is caught by nothing. Measurements are AF48.
+
+  **The operative constraint that falls out of it: `app.config.ts` must be
+  ERASABLE TypeScript — no `enum`, no `namespace`, no parameter properties, no
+  value-position type imports.** Node's stripper accepts only erasable syntax,
+  and **`tsc` does not enforce erasability**, so nothing in the ordinary gates
+  would catch a violation and the failure would appear only on a machine that
+  took the fallback path. This is why the suite runs the real stripper over the
+  real source (below). It also **independently reinforces** the
+  structural-type instruction: an imported type would have to be `import type`
+  to stay erasable, and the file imports nothing at all.
+
+  **Why the types are structural and declared inline.** `ExpoConfig` from
+  `@expo/config-types` is deliberately **not** imported: it is a transitive,
+  unpinned dependency (AF47), so importing it would make this file's typecheck
+  hostage to a package nothing here controls — the AD2 / AF8 duplication-drift
+  hazard reappearing in a new place. The inline types name only the fields the
+  overlay reads or writes and carry an index signature for the rest, so an
+  unrelated Expo schema change cannot break the build.
+
+  **THE UNSET PATH RETURNS ITS INPUT BY REFERENCE, AND THIS IS BEHAVIOUR, NOT
+  STYLE.** `evalConfig.js:59-62` stamps a `Symbol('non-standard')` marker onto
+  the object handed to the config function and `:79-81` reports
+  `mayHaveUnusedStaticConfig` if the returned object has lost it — the signal
+  `expo-doctor` uses to warn that a static config went unused. `return config`
+  keeps the marker; `return { ...config }` would be a faithful copy that still
+  loses nothing *visible* while flipping that flag. Measured both ways through
+  the real loader: `mayHaveUnusedStaticConfig: false` on both the unset and UAT
+  paths (AF48). The suite pins the reference identity for this reason, and a
+  negative control confirmed that swapping in a spread fails **that check and no
+  other** — i.e. it is the only thing standing between a well-meaning refactor
+  and a silent regression.
+
+  **The five identity fields, and why the scheme is a DEFECT FIX rather than a
+  preference.**
+  - **`android.package` → `com.arishh.readingaid.uat`.** This is the only one
+    that side-by-side install actually depends on. Android keys an installed app
+    — and its `versionCode` sequence — by `applicationId`, so the release app
+    and a UAT app never compare version codes at all (AD36).
+  - **`name` → `BETA Reading Aid`**, the launcher label.
+  - **`scheme` → `readingaiduat`.** **AF47 recorded this as a defect a future
+    UAT overlay must avoid**, and it is fixed here rather than inherited: two
+    installed apps both claiming `readingaidandroid` leave Android resolving a
+    deep link with a disambiguation chooser. Nothing about a beta build should
+    make the release app's links ambiguous.
+  - **`android.version` → `1.0.0-uat`**, the versionName. It uses the
+    Android-specific override at `Version.js:63-65` rather than the root
+    `expo.version`, so no other platform's version is touched. AF46 recorded
+    that path as available and unexercised; this exercises it.
+  - **`android.versionCode`** — below.
+
+  ### Q1 · The yellow icon needs `backgroundImage` DROPPED, not a colour set
+
+  **Setting `adaptiveIcon.backgroundColor` alone would have been an invisible
+  no-op, and this was established by reading the plugin rather than assumed.**
+  `withAndroidIcons.js:239` is
+  `const background = backgroundImage ? '@mipmap/ic_launcher_background' :
+  '@color/iconBackground'` 📐 — so while a `backgroundImage` is present, the
+  adaptive icon's background layer is the **drawable**, and the colour is
+  written into `colors.xml` under `iconBackground` and **referenced by
+  nothing**. Expo states it in its own comment at `:288`,
+  `// backgroundImage overrides backgroundColor`.
+
+  **So the overlay OMITS `backgroundImage` and sets `backgroundColor:
+  '#FFEB3B'`**, which makes `createAdaptiveIconXmlString` emit
+  `@color/iconBackground` and gives a flat yellow layer behind the unchanged
+  foreground glyph. `isAdaptive` is `!!config.android?.adaptiveIcon`
+  (`:107`, `:114`), so the object's continued existence keeps the round icon and
+  the monochrome layer exactly as they are; prebuild deletes the now-unreferenced
+  `ic_launcher_background.webp` itself (`:309-312`).
+
+  **Alternative rejected: a committed solid-colour PNG** as a UAT
+  `backgroundImage`. It adds a binary asset to express one colour, immediately
+  after AD34 deleted fourteen unreferenced assets for being unreferenced, and it
+  would need regenerating for any future colour change.
+
+  **`#FFEB3B` was chosen against a measurement, not by eye.** The foreground
+  layer is 95% transparent with a blue glyph (dominant `#1884eb`), and
+  `#FFEB3B` holds a **3.10:1** contrast against it versus the release
+  background's **3.38:1** — essentially the shipped legibility, while being
+  unmistakably yellow (AF48). Paler yellows score marginally better and read
+  washed-out at launcher size; ambers cost far more contrast. The real
+  distinguishing channel is **hue**, not luminance; the contrast figure is a
+  proportionality check that the beta icon is not *worse* than the release one.
+
+  **The cost, stated because it is a real loss.** The release background PNG is
+  97.5% a flat `#e6f4fe` plus 2.5% faint decorative detail (AF48). The UAT icon
+  drops that 2.5%. For a beta build that is not worth a second asset.
+
+  ### Q2 · versionCode: `UAT_VERSION_CODE`, else whole minutes since the epoch
+
+  `GITHUB_RUN_NUMBER` does not exist for the local build this change enables, so
+  a fallback was required. **A constant fallback is rejected outright** — the
+  second local UAT build would refuse to install over the first, which is
+  exactly the upgrade failure AD36 exists to prevent. **An explicit override
+  alone is rejected as the sole mechanism** for a weaker but real version of the
+  same reason: it works only while someone remembers to bump it, and AD36's own
+  §7 trap records how easily that discipline is lost.
+
+  So: **`UAT_VERSION_CODE` when set, `Math.floor(Date.now() / 60000)`
+  otherwise.** Determinism when it is wanted, monotonicity when nobody is
+  thinking about it, no state file, no git dependency, no CI dependency.
+
+  **Minutes rather than seconds, on measured headroom.** Minutes since the epoch
+  is **29,809,147** today, leaving **~3,939 years** below the 2.1e9 Play ceiling
+  and growing 525,600 a year; seconds would leave **under a decade** 🧪 (AF48).
+  No epoch offset is applied — it would add a magic constant and a
+  negative-value risk on a skewed clock, and buy nothing at that headroom.
+
+  **THE KNOWN LIMIT, STATED PLAINLY RATHER THAN BURIED: two prebuilds inside the
+  same wall-clock minute produce the SAME versionCode, and the second APK will
+  not install over the first.** The window is bounded by the fact that two
+  installable ~110 MB APKs cannot realistically be produced a minute apart
+  (AF42), and `UAT_VERSION_CODE` is the escape hatch when it does happen. The
+  suite pins this collision deliberately, as a documented property rather than
+  an undiscovered one.
+
+  **An unusable override THROWS rather than falling back to the clock.**
+  Silently substituting a different number for the one that was explicitly asked
+  for is the silent-wrong-artifact class AD30 exists to prevent; a
+  configuration-time throw is loud and stops the prebuild. Non-integers, values
+  below 1 and values above 2.1e9 are all rejected.
+
+  ### Q3 · Why the suite exists, and what the fourteenth suite costs
+
+  **`tsc` proves the file's shape and says nothing about its values, and the
+  overlay's entire contract is that it does NOTHING unless one variable is
+  set.** A file that quietly began rewriting release identity would typecheck,
+  lint, and ship. That is the AF14 gap the `.ts` choice narrows but does not
+  close, and it is why `app.config-headless-test.mjs` (**47 checks**) ships in
+  the same change rather than being deferred — the same reasoning, and the same
+  project-owner direction, that put AD29's palette suite in the change that
+  created the defect it guards.
+
+  It lives at the **repo root, beside its subject**, which is where all thirteen
+  existing suites sit relative to theirs; `app.config.ts` cannot live anywhere
+  else, because Expo resolves it from the project root.
+
+  **It exercises BOTH loader paths**, which is what makes the erasability
+  constraint enforceable rather than merely documented: esbuild stands in for
+  `transpileModule`, Node's real `stripTypeScriptTypes` runs over the real
+  source, and the two resolved configs are compared against each other. **The
+  negative control is the one worth recording: adding an `enum` leaves `tsc` at
+  exit 0 and takes the suite to exit 1** 🧪 (AF48). Nothing else in the repo
+  would have caught it.
+
+  **The suite was validated against four negative controls before its green run
+  was believed**, following AF21's, AD29's and AD31's precedent — a spread
+  instead of the reference return, `backgroundImage` re-added to the UAT icon, a
+  non-erasable `enum`, and release identity rewritten on the unset path. Each
+  failed exactly the checks it should and no others, and `app.config.ts` was
+  confirmed byte-identical afterwards by hash and `diff` (AF48).
+
+  **THE COUNT RIPPLE, AND WHAT IT DOES NOT OVERTURN.** The tally becomes
+  **14 suites and 357 checks** (`test:core` 8 / 125 unchanged; `test:local` 6 /
+  232), and the tracked `.mjs` count becomes **15**. Fourteen strings in six
+  mutable files were updated, plus two workflow **comments**. **AD31's reporting
+  form is NOT overturned** — "N suites plus 1 baseline check, never N+1" is a
+  rule about not folding a static check into a behavioural tally, and only the
+  number it is applied to moved. The wording it produced in ARCHITECTURE.md §5
+  had to be **inverted rather than incremented**, since the string it forbade
+  ("14 suites") is now the correct one; it reads 14/never-15 and says so.
+  **Twenty-one further occurrences in `DECISIONS.md` and `FINDINGS.md` were
+  deliberately left untouched**: both are append-only, and every one of them was
+  true when written.
+
+  **Also incidentally spent: AD34's reason for not naming the ESLint config
+  `eslint.config.mjs`** was that "a fifteenth `.mjs` file would muddy AF14's
+  framing". The fifteenth has now arrived — as a behavioural suite, which is
+  what that accounting is *for* rather than a config file inflating it. AD34's
+  choice stands on its remaining grounds and `eslint.config.js` is not renamed.
+
+  ### `app.config.ts` is NOT baseline-pinned, and the residue is recorded
+
+  It is **not** added to [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md), by explicit
+  decision rather than omission. It is **Android-original with no
+  byte-relationship to any web file**, which is the exact ground on which AD31
+  excluded `src/storage/resumeTarget.ts` and `src/storage/fingerprint.ts` —
+  there is no baseline that would mean anything. AD31's signal-preservation
+  argument is decisive on top of that: this is a file **expected to change**
+  whenever the UAT identity is tuned, and "a row updated mechanically is a row
+  nobody read."
+
+  **The residue, stated so it is found rather than discovered.** The manifest's
+  completeness walk covers `src/core/` only, so neither `app.config.ts` nor its
+  suite is guarded by `check:baseline`, and an unreviewed edit to either would
+  trip no manifest check. That is **AD31's already-recorded opt-in residue
+  outside `src/core/`**, unchanged in kind and now one file larger in extent.
+  What does guard them is the suite itself plus `tsc` and ESLint on every pull
+  request — behavioural coverage, which the manifest never provides.
+
+  ### What is NOT done here, and one string left stale under instruction
+
+  **No prebuild, no Gradle, no `adb`, no install, and nothing under `android/`
+  or `src/core/` was touched.** This change alters **config inputs only**;
+  nothing in it is observable in an artifact until a prebuild runs. So the
+  yellow icon, the launcher label, the side-by-side install and the
+  `versionCode` upgrade path are all **unverified on hardware** and each is a
+  pending acceptance check, in the same shape AD21, AD22, AD28 and AD30 each
+  recorded. Q1's mechanism in particular is a **read of the plugin's source**,
+  not an observation of a rendered icon.
+
+  **`.github/workflows/static-and-suites.yml:64`'s step name still reads
+  `Headless suites — local (5 suites)` and now runs six.** The instruction for
+  this change was comments-only in that file — no keys, no steps, no triggers,
+  no job name — so it was left. It is a cosmetic string in a CI log, it affects
+  no behaviour and no required-check name, and it is flagged here rather than
+  silently corrected or silently ignored.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -3119,3 +3388,51 @@
   overlay is `.ts` or `.js` — none of which blocks this entry. Zero files under
   `src/` changed and no manifest row in CORE-DIVERGENCE.md changed.
   Measurements are **AF46**.
+- 2026-09-04 — appended **AD37** on `feature/uat-config-overlay`, opening a UAT
+  milestone and beginning the work AD36 deferred. A root **`app.config.ts`**
+  overlays `app.json`: with `READING_AID_UAT` unset it returns its input
+  **unchanged**, and when set it resolves a distinct identity — `BETA Reading
+  Aid`, `com.arishh.readingaid.uat`, scheme `readingaiduat`, versionName
+  `1.0.0-uat`, a monotonic `versionCode`, and a yellow adaptive-icon
+  background. **`app.json` is untouched**: the overlay adds a variant, it does
+  not redefine the app, which is why the fourteenth suite's load-bearing
+  assertion is the *inert* one. It settles none of AD36's three open UAT
+  questions and touches no signing, CI behaviour or workflow logic. **`.ts`
+  rather than `.js` is a coverage choice**: a root `.ts` is in the main `tsc`
+  program and a root `.js` is in neither, so `.js` would have put the file that
+  computes app **identity** into the exact hole AF14 names — proven by negative
+  control (TS2322, exit 2). **A premise this change was scoped under was
+  measured false and the project owner corrected it**: a TypeScript 7 bump would
+  not "silently break" config loading, because `require-utils/load.js:335-341`
+  falls back to Node's native `stripTypeScriptTypes` — so there are **two
+  couplings**, and the real failure is a silent *substitution* of transpiler.
+  The operative constraint that falls out is that `app.config.ts` must stay
+  **erasable** TypeScript, which `tsc` does not enforce and only the suite does.
+  **Q1 is resolved against the plugin's source, not by assumption**:
+  `withAndroidIcons.js:239` makes a `backgroundImage` win outright over
+  `backgroundColor`, so the overlay **omits** the image rather than setting a
+  colour beside it; `#FFEB3B` was chosen on a measured 3.10:1 glyph contrast
+  against the release background's 3.38:1, and a committed solid-colour PNG was
+  rejected. **Q2 is `UAT_VERSION_CODE` else `Math.floor(Date.now()/60000)`** —
+  a constant fallback would reproduce AD36's upgrade failure and an override
+  alone relies on memory; minutes rather than seconds on measured headroom
+  (~3,939 years versus ~9.9). **The same-minute collision window is stated
+  plainly rather than buried**, and pinned by the suite; an unusable override
+  **throws** rather than silently substituting a clock value. The
+  **fourteenth suite** (47 checks, repo root, beside its subject) exercises
+  **both loader paths** and was validated against **four negative controls**
+  before its green run was believed — the `enum` control leaves `tsc` at exit 0
+  and takes the suite to exit 1, which is the whole reason it exists.
+  **`app.config.ts` is deliberately NOT baseline-pinned** — Android-original
+  with no web byte-relationship, the same ground AD31 used to exclude
+  `resumeTarget.ts` and `fingerprint.ts`, plus AD31's signal-preservation
+  argument for a file expected to change; the resulting residue is recorded.
+  **The count ripple is 14 suites / 357 checks and 15 tracked `.mjs`**, updated
+  across fourteen strings in six mutable files plus two workflow **comments**;
+  ARCHITECTURE.md §5's wording had to be **inverted rather than incremented**,
+  since the string it forbade is now the correct one. **AD31's reporting form is
+  not overturned** — only the number it applies to moved — and **twenty-one
+  occurrences in DECISIONS.md and FINDINGS.md were left untouched**, both being
+  append-only and every one true when written. One string is left stale under
+  instruction and flagged: the workflow's step *name* at `:64` still reads
+  "(5 suites)". Measurements are **AF48**.

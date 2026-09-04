@@ -3,9 +3,12 @@
  * FINDINGS.md AF44 for the measurements; nothing is restated here (AD18).
  *
  * CommonJS on purpose: package.json declares no `"type": "module"`, so a `.js`
- * config is CJS. It is deliberately NOT named `eslint.config.mjs` — a fifteenth
- * `.mjs` file would muddy AF14's "14 tracked .mjs" framing and the "13 suites
- * plus 1 baseline check" accounting AD31 protects.
+ * config is CJS. It is deliberately NOT named `eslint.config.mjs` — that would
+ * fold a config file into AF14's tracked-`.mjs` framing and the "14 suites plus
+ * 1 baseline check" accounting AD31 protects. Those counts have since moved (15
+ * tracked `.mjs`, 14 suites): the fifteenth arrived as a behavioural suite,
+ * `app.config-headless-test.mjs` (AD37), which is what that accounting is for.
+ * This file stays `.js` for the same reason it always was.
  *
  * Three `files` overrides below are load-bearing rather than cosmetic. Each
  * exists because the alternative is editing a file pinned in
@@ -57,9 +60,9 @@ module.exports = [
     },
   },
 
-  // The 14 tracked .mjs files are Node CLI programs whose output IS their
+  // The 15 tracked .mjs files are Node CLI programs whose output IS their
   // result: `console.log` prints every PASS/FAIL line and every tally that
-  // `npm run check` reports. Nine of the fourteen are manifest-pinned (rows
+  // `npm run check` reports. Nine of the fifteen are manifest-pinned (rows
   // 13-20 and 25), so a style rule they cannot satisfy is one that would be
   // suppressed forever or would force an edit the manifest forbids.
   {

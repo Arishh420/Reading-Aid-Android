@@ -1,11 +1,11 @@
 /**
  * The core-fork baseline check (AD31).
  *
- * NOT a test suite. The thirteen `*-headless-test.mjs` suites esbuild-bundle
+ * NOT a test suite. The fourteen `*-headless-test.mjs` suites esbuild-bundle
  * real source and assert what it computes; this executes nothing and asserts
  * nothing about behaviour. It is a static check of the same kind as `tsc`, and
- * it is reported separately for that reason — "13 suites plus 1 baseline
- * check", never "14 suites".
+ * it is reported separately for that reason — "14 suites plus 1 baseline
+ * check", never "15 suites".
  *
  * WHAT IT IS FOR. AD31 settles `D-D` by forking `src/core/`: byte-identity to
  * the web repo is abandoned, and byte-identity to a RECORDED BASELINE is

@@ -133,11 +133,11 @@ npm run check
 
 That runs, in order: `tsc --noEmit` over the app; `tsc -p tsconfig.core.json`,
 the portability guard that typechecks `src/core/` in isolation with no DOM;
-`scripts/check-core-baseline.mjs`, the fork baseline check; and then **13
-headless suites — 310 checks** 🧪. Every suite esbuild-bundles real source and
+`scripts/check-core-baseline.mjs`, the fork baseline check; and then **14
+headless suites — 357 checks** 🧪. Every suite esbuild-bundles real source and
 asserts what it computes. Individual pieces: `npm run build`,
 `npm run check:baseline`, `npm run test:core` (8 suites, 125 checks),
-`npm run test:local` (5 suites, 185 checks).
+`npm run test:local` (6 suites, 232 checks).
 
 **If you changed a file listed in [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md), the
 baseline check will fail until you update its row — in the same pull request.**
@@ -176,8 +176,8 @@ alarms — it is documented here as such.
 |---|---|---|
 | [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | **Scope.** What the app is, what was deliberately cut and what gates each return, the open spikes, known defects, and the decision index | mutable |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structure.** Directory layout and what enforces each boundary, the end-to-end data flow, the two invariants and their blast radius, the per-tick hot path, the fork, and what has no test coverage | mutable |
-| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD32` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
-| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF43` | **APPEND-ONLY** |
+| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD37` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
+| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF48` | **APPEND-ONLY** |
 | [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) | The fork manifest — 26 baseline-pinned files, enforced by `npm run check` | mutable |
 | [RELEASE-SIGNING.md](RELEASE-SIGNING.md) | The signing configuration's recovery record: the Gradle blocks verbatim, the properties template, and the restore procedure | mutable |
 | [CLAUDE.md](CLAUDE.md) | The working agreement — branch discipline, docs-are-part-of-done, honest verification, and the two invariants that must never break | mutable |
@@ -194,7 +194,7 @@ dependency on it**, and **it is not required to build, test or ship this repo**
 
 ## If you know the Expo template
 
-This started as `create-expo-app` and has diverged. Four things the template
+This started as `create-expo-app` and has diverged. Five things the template
 teaches that are wrong here:
 
 - **There is no `app/` directory.** Routes are at **`src/app/`** 🧪 — two files,
@@ -203,8 +203,13 @@ teaches that are wrong here:
   `android`, `ios`, `web`, `build`, `build:core`, `test:core`, `test:local`,
   `test:all`, `check:baseline`, `check`, `lint` 🧪. Running it would have wiped
   the app.
-- **Do not set up Jest.** There are already 13 suites and 310 checks behind
+- **Do not set up Jest.** There are already 14 suites and 357 checks behind
   `npm run check` 🧪; they are plain `.mjs` files run by Node.
+- **`app.json` is not the whole config.** A root **`app.config.ts`** overlays
+  it, and Expo resolves the dynamic one first 🧪. It returns `app.json`
+  untouched unless `READING_AID_UAT` is set, in which case it rewrites the app's
+  identity for a side-by-side UAT build (AD37). Read both before concluding what
+  the app is called or which `applicationId` it builds.
 - **`npx expo start` alone is not enough**, and Expo Go is not an option — see
   above. Use `npx expo run:android`.
 

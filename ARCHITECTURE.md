@@ -141,6 +141,14 @@ Only five external packages are imported anywhere in `src/` 🧪:
 `typedRoutes` 📐. React Compiler cannot affect the hot path, because that path
 does not go through React at all (§4).
 
+`app.json` is no longer the whole config. A root **`app.config.ts`** sits in
+front of it as a dynamic overlay: Expo resolves `./app.config` first and passes
+the static config in as its base, so `app.json` remains the release identity and
+the overlay rewrites five fields — launcher name, `scheme`, `android.package`,
+`android.version` and `android.versionCode` — **only** when `READING_AID_UAT` is
+set, returning its input untouched otherwise. Nothing under `src/` reads either
+file. See AD37; its inert path is pinned by `app.config-headless-test.mjs`.
+
 ---
 
 ## 2. Data flow, end to end
@@ -391,10 +399,11 @@ Two consequences of the fork that are easy to trip over:
   `PORT-PLAN.md`/`PORT-AUDIT.md` reference are **back-references for someone
   who has that repo, not live pointers**. Local identifiers are `AD#` and
   `AF#`.
-- **The count is "13 suites plus 1 baseline check", never "14 suites."** The
+- **The count is "14 suites plus 1 baseline check", never "15 suites."** The
   baseline check executes nothing and asserts nothing about behaviour; folding
   it into the suite tally would change what that number means. AD31 records why
-  the distinction is kept.
+  the distinction is kept — the *number* moved when AD37 added the fourteenth
+  suite, the *rule* did not.
 
 `ARCHITECTURE.md` — this file — is **not** manifest-listed. It is
 Android-original, so there is no baseline that would mean anything, and the
@@ -405,12 +414,12 @@ completeness walk covers `src/core/` only.
 ## 6. What has no automated coverage — read this before you trust a green check
 
 `npm run check` runs `tsc --noEmit`, then the core portability guard, then the
-baseline check, then **13 headless suites totalling 310 checks** 🧪:
+baseline check, then **14 headless suites totalling 357 checks** 🧪:
 
 | | Suites | Checks |
 |---|---|---|
 | `test:core` — `src/core/` | 8 | 125 (17 + 18 + 14 + 9 + 15 + 14 + 12 + 26) |
-| `test:local` — everything else | 5 | 185 (20 + 73 + 27 + 35 + 30) |
+| `test:local` — everything else | 6 | 232 (47 + 20 + 73 + 27 + 35 + 30) |
 
 Every suite esbuild-bundles **real source** and asserts what it computes, which
 is what makes them worth having. But they are **Node-only by construction**:
@@ -424,7 +433,7 @@ errors, 0 warnings across 39 files 🧪. So **the local pre-push sequence is two
 commands, not one**:
 
 ```
-npm run check     # tsc, core guard, baseline, 13 suites / 310 checks
+npm run check     # tsc, core guard, baseline, 14 suites / 357 checks
 npm run lint      # eslint, 0 errors 0 warnings
 ```
 
@@ -436,13 +445,13 @@ read as the device coverage below. **That workflow has run, once, green** —
 PR #23's run, whose measurements are AF45 (AF44 records the file as parsed
 locally and nothing more, which was true when written).
 
-**ESLint is the only static analysis that sees the 14 tracked `.mjs` files.**
+**ESLint is the only static analysis that sees the 15 tracked `.mjs` files.**
 `tsc` covers `.ts`/`.tsx` only — the main `tsconfig.json` includes just those
-two globs and `tsconfig.core.json` sets no `allowJs` 📐 — so the 13 suites and
+two globs and `tsconfig.core.json` sets no `allowJs` 📐 — so the 14 suites and
 `scripts/check-core-baseline.mjs` were covered by nothing at all (AF14). That
 gap is **narrowed, not closed**: AD34's `**/*.mjs` override turns off
 `no-console` and `import/order` there, because printing is those programs'
-output mechanism and 9 of the 14 are pinned in
+output mechanism and 9 of the 15 are pinned in
 [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md). **67 rules stay active** on a `.mjs`
 file — 46 at error including `no-undef`, `eqeqeq`, `prefer-const`,
 `no-dupe-keys` and `valid-typeof`, and 21 at warn including `no-unused-vars`
@@ -577,7 +586,7 @@ them as abandoned:
 | `ui/theme.ts` | **AD19** ships one theme; all four ids are already declared here | **none** — no suite bundles it 🧪 |
 | `model/blocks.ts` | **Nothing gates it** — see below | **none**, and no importer either 🧪 |
 
-Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 310 checks) bundle modules
+Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 357 checks) bundle modules
 the app never reaches, `spine-integrity` spanning both categories.
 
 **`model/blocks.ts` is the exception and is worth calling out honestly.** It is

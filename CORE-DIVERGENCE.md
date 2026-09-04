@@ -158,10 +158,10 @@ expected. The fix is almost always "write the row", not "revert the edit".
 
 ```
 npm run check:baseline     # this check alone
-npm run check              # build, then this check, then all 13 suites
+npm run check              # build, then this check, then all 14 suites
 ```
 
 It is pure Node — `node:crypto`, `node:fs/promises`, `node:path`, `node:url` —
 with no network, no web checkout, no esbuild and no dependencies. It is **not**
-a test suite and is not counted as one: the repo's tally is **13 suites plus 1
+a test suite and is not counted as one: the repo's tally is **14 suites plus 1
 baseline check**. See AD31 for why that distinction is kept.
