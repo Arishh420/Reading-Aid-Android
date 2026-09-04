@@ -2101,6 +2101,278 @@
   "virtualization-window boundaries" prose, which is invariant text and stays
   reserved. AD32's boundary applies to this change too.
 
+## Milestone: lint + CI
+
+- **AD34 · ESLint is added at "Level 2" strictness and a GitHub Actions
+  workflow runs it alongside the existing gates on every pull request. Three
+  `files` overrides keep the config off files pinned in
+  [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md). `lint` is deliberately NOT chained
+  into `npm run check`.** This is tooling only: no file under `src/` changed,
+  and no file listed in the manifest's twenty-six rows changed.
+
+  **Two gaps motivate it, and the second is the one with no prior mitigation
+  at all.**
+  1. `npm run check` runs locally and only when someone remembers. AD5 and
+     AD10 both record the principle — "a guard that only runs when someone
+     remembers to invoke it is a guard that will eventually stop running" —
+     and until now nothing enforced it on a pull request.
+  2. **`tsc` sees only `.ts`/`.tsx`, so the fourteen tracked `.mjs` files had
+     no static analysis of any kind.** AF14 recorded this in 2026-08-31 as a
+     consequence "worth naming" and nothing has addressed it since: the main
+     `tsconfig.json` includes `**/*.ts` and `**/*.tsx` only, and
+     `tsconfig.core.json` sets no `allowJs` 📐. Those fourteen files are the
+     thirteen headless suites **and `scripts/check-core-baseline.mjs`** — the
+     script that enforces the fork manifest. ESLint is the only tool in this
+     toolchain that can see them.
+
+  **Level 2 = stock `eslint-config-expo` plus six rules:** unused-vars as
+  **error** (stock has it at `warn`), `no-explicit-any`, `import/order`,
+  `no-console`, `prefer-const`, `eqeqeq`. Level 1 (stock alone) was rejected
+  as leaving unused variables advisory; a Level 3 with type-aware linting was
+  rejected because it requires a `project` service pass over a tree whose
+  `tsconfig.core.json` deliberately excludes ambient types (AD3, AD4), and
+  buying that interaction is a separate decision from turning linting on.
+
+  **The `@typescript-eslint` rules had to be scoped to a TS-file block, and
+  this is a hard constraint rather than a stylistic choice.**
+  `eslint-config-expo` registers that plugin only inside
+  `files: ['**/*.ts', '**/*.tsx', '**/*.d.ts']` 📐, so naming
+  `@typescript-eslint/no-unused-vars` in an unscoped block fails ESLint
+  outright with *"could not find plugin"* 🧪 — measured, not reasoned about.
+
+### The three overrides
+
+  Each exists because the alternative is editing a manifest-pinned file, which
+  CORE-DIVERGENCE.md §3 makes a same-PR row update plus an `AD` entry — a
+  different decision than this one.
+
+  **(a) `src/pacer/usePacer.ts` — the React Compiler rules, this path only.**
+  Measured on the real tree: **7 errors**, all in this file — `react-hooks/refs`
+  ×5 at lines 78, 80, 82, 84, 86; `react-hooks/immutability` at 164;
+  `react-hooks/set-state-in-effect` at 183 🧪. Every one objects to the design
+  **CLAUDE.md §4 invariant 2 mandates** and that **AF32** proved on physical
+  hardware (zero spontaneous React renders across 1339 frames and 66 word
+  advances) and **AF34** measured the clock for. The file is manifest **row
+  21**.
+
+  *Alternatives rejected.* **Inline `eslint-disable` comments** — they change
+  the file's bytes, so they would cost a row-21 `Current sha256` update, a
+  `Diverged?` flip and a `Record` entry to buy exactly what a config rule buys
+  for free. **Refactoring to satisfy the rules** — it would spend device
+  evidence that is a property of *this* implementation; AD25 already records
+  that the port is a four-line diff from web, and AF34 measured *this* clock,
+  not a rewritten one.
+
+  **WHY THOSE RULES FIRE — and a correction to the premise this change was
+  requested under.** The change was scoped on the claim that the React
+  Compiler rules fire because `app.json` sets
+  `"experiments": { "reactCompiler": true }`. **They do not, and the claim was
+  checked rather than inherited.** `eslint-config-expo` contains no reference
+  to `app.json`, `reactCompiler` or `experiments` anywhere 🧪. The rules come
+  from **`eslint-plugin-react-hooks@7.1.1`'s `configs.recommended`**, which
+  sets all three to `"error"` unconditionally — verified by loading the preset
+  and reading the sixteen rules out of it 🧪 — and `eslint-config-expo`
+  spreads that preset in wholesale (`flat/utils/react.js:27` 📐). Nothing
+  carries `app.json` to ESLint.
+
+  **The two facts are independent, and both are true.** `app.json` really does
+  opt into React Compiler, and that opt-in governs the **Metro/Babel build**
+  📐. So the rules are not describing a constraint this project ignores — the
+  build honours React Compiler, and the rules encode real hazards. They are
+  simply **wrong about this one file**, for the reasons CLAUDE.md §4 and
+  AF32/AF34 give: the ref writes, the self-referencing rAF and the terminal
+  `setPlaying(false)` are the mechanism by which the document tree does *not*
+  re-render on a pacer tick. The override is therefore a scoped exemption from
+  a stock plugin preset, not from a project opt-in. Recorded at this length
+  because a log entry asserting a causal chain that does not exist is
+  **AF37's** recorded failure class, and it is caught by nothing.
+
+  **(b) `**/*.mjs` — `no-console` and `import/order` off.** The premise this
+  was scoped under was that `no-console`'s only problem is the two intentional
+  `console.warn` calls in `src/core/parsers/epubStructure.ts` (manifest row 7),
+  solved by `allow: ['warn']`. Measured, that is wrong in both directions 🧪:
+  `allow: ['warn']` silences those two so they never appear — **zero
+  `no-console` hits in any `.ts`/`.tsx`** — while the actual **61** hits are
+  `console.log`/`console.error` in the fourteen `.mjs` files, which
+  `allow: ['warn']` does nothing for. Those calls are not debris: they print
+  every `PASS`/`FAIL` line and every tally `npm run check` reports. Printing is
+  what those programs are for.
+
+  `import/order` produced **13** hits, all in `.mjs`, all the identical idiom —
+  `esbuild` imported before `node:path` 🧪. **Nine of those files are
+  manifest-pinned** (rows 13–20 and row 25). Fixing them edits pinned files;
+  fixing only the four unpinned ones would split byte-identical idiom on
+  manifest membership, leaving the seeded suites and the Android-written ones
+  gratuitously inconsistent. A style rule that a pinned file can never satisfy
+  is a rule that gets suppressed forever or forces an edit the manifest
+  forbids, so it is scoped off where that is true and left on everywhere else.
+
+  **`no-console`'s `allow: ['warn']` is repo-wide on the TS side, not scoped to
+  `epubStructure.ts`.** `console.warn` is the deliberate channel for a
+  degradation warning anywhere in the app, and **AF27** confirms warns reach
+  the Metro terminal on-device. The cost is zero either way (0 violations
+  under both scopings 🧪), and file-scoping it would mean the next legitimate
+  `warn` elsewhere raises a spurious error that someone "fixes" by editing a
+  pinned file — manufacturing the hazard the override exists to prevent.
+
+  **(c) `**/*.d.ts` — `no-var` off.** An **eighth** error, absent from this
+  change's scoping and found by measuring: `types/hermes-globals.d.ts:19`,
+  `declare var console` — AD4's five-method ambient declaration 🧪. That file
+  is **not** in the manifest, so editing it is permitted; it is exempted
+  anyway, because `declare var` is the canonical ambient-global form —
+  `lib.dom.d.ts` declares `console` with exactly it — and `declare const` would
+  not be a fix. This extends an exemption `eslint-config-expo` itself
+  established: its core config already carries a `files: ['**/*.d.ts']` block
+  turning `import/order` off 📐, and simply leaves `no-var` on.
+
+### What the `.mjs` override does and does not cost
+
+  **The `.mjs` static-analysis gap is NARROWED, not closed, and the difference
+  is stated because the unqualified claim would be an overclaim.** After the
+  override, **67 rules remain active** on a `.mjs` suite — 46 at error, 21 at
+  warn — resolved from the real config with `calculateConfigForFile` rather
+  than assumed 🧪. Live at **error**: `no-undef`, `no-dupe-args`,
+  `no-dupe-keys`, `no-duplicate-case`, `use-isnan`, `valid-typeof`, `no-var`,
+  `prefer-const`, `eqeqeq`, `import/no-unresolved`, `import/export`,
+  `import/namespace`. Live at **warn**: `no-unused-vars`, `no-unreachable`,
+  `no-unsafe-negation`, `no-unused-expressions`, `no-redeclare`,
+  `import/no-duplicates`, `import/first`, among others — and because the script
+  carries `--max-warnings 0` (below), warn-level rules fail the run too.
+
+  Exactly **two** of the six Level 2 rules are off there, and both are
+  stylistic: `no-console` and `import/order`. `prefer-const` and `eqeqeq` stay
+  at error; `no-unused-vars` stays live at warn via the base rule, since the
+  TS-plugin block does not apply to `.mjs`. **So: correctness rules cover these
+  files where nothing covered them before; formatting rules do not.** That is a
+  narrower claim than "the gap is closed", and it is the true one.
+
+### `lint` is not chained into `npm run check`
+
+  AD5 and AD10's argument points the other way and is not dismissed: a check
+  nobody remembers to run stops running. It is answered by the workflow rather
+  than by the chain. Three reasons against chaining. `npm run check` is
+  `build && check:baseline && test:all`, so adding lint puts a **style** gate
+  in an `&&` chain with **behavioural** ones — the masking **AF17** recorded
+  and that `test:core` was deliberately written non-fail-fast to avoid. It
+  would change what `check` reports, which AD31 fixed as "13 suites plus 1
+  baseline check". And `check` stays runnable on a clone whose install
+  scripts were never approved, which AD10 and **AF13** both name as the
+  reason `build` was kept cheap and unconditional. **The local pre-push
+  sequence is therefore two commands, `npm run check` then `npm run lint`**,
+  and ARCHITECTURE.md §6 names it so the separation is discoverable rather
+  than surfacing as a red pull request.
+
+### `lint` invokes `eslint` directly, not `expo lint`
+
+  `package.json` carried `"lint": "expo lint"` from the template. It becomes
+  **`"lint": "eslint . --max-warnings 0"`**. Read out of this repo's own
+  installed CLI 📐 (`@expo/cli/build/src/lint/`):
+
+  - **`expo lint` would not lint the files this change exists for.**
+    `lintAsync.js` defines `DEFAULT_INPUTS = ['src', 'app', 'components']` and
+    keeps only those that exist. Here that is `src` alone — README already
+    records that routes live at `src/app/` and there is no top-level `app/` —
+    so `expo lint` never sees **`scripts/check-core-baseline.mjs`**, one of the
+    fourteen `.mjs` files and the one that enforces the manifest, nor
+    `types/hermes-globals.d.ts`. That defeats gap 2 above.
+  - **It mutates the repo when its prerequisite fails.**
+    `if (!await prerequisite.assertAsync()) await prerequisite.bootstrapAsync()`,
+    and `ESlintPrerequisite.js:72` writes `eslint.config.js` from a template
+    and installs packages 📐. A CI step that may install and scaffold is not a
+    deterministic gate.
+  - It adds layers with nothing to buy: `setNodeEnv('development')`, env-file
+    loading, a package-manager bin resolution, and a cache under
+    `.expo/cache/eslint/` 📐.
+
+  **`--max-warnings 0` is included deliberately.** Stock `eslint-config-expo`
+  sets many rules to `warn`; without the flag the "0 errors, 0 warnings" target
+  is advisory and would decay silently as warnings accumulated.
+
+  **README's script inventory needed no edit**, and this was checked rather
+  than assumed: it lists script *names*, `lint` is still one of them, and the
+  count is still twelve 🧪.
+
+  **The config is `eslint.config.js`, CommonJS, and is NOT named
+  `eslint.config.mjs`.** `package.json` declares no `"type": "module"`, so a
+  `.js` config is CJS. `.mjs` was rejected for a bookkeeping reason rather than
+  a technical one: a fifteenth `.mjs` file would muddy AF14's "fourteen tracked
+  `.mjs`" framing and the "13 suites plus 1 baseline check" accounting AD31
+  protects. It needs no CommonJS-scoped block — `eslint-config-expo`'s core
+  config already declares `module`, `require`, `exports`, `global` and
+  `console` as globals 📐 — and that this is a real pass rather than a disabled
+  rule was confirmed against a negative control (AF44).
+
+### The workflow: one job, separate steps, named `static-and-suites`
+
+  `.github/workflows/static-and-suites.yml`. Triggers are `pull_request` with
+  **no branch filter** — a `dev` branch is expected later and an unfiltered
+  trigger needs no edit when it arrives — and `push` to `main`.
+
+  **No `paths:` filter, ever.** A required check carrying one never reports on
+  a pull request that touches nothing it matches, and GitHub then holds that
+  pull request unmergeable forever waiting for a check that will never run.
+
+  **Steps are separate rather than one `npm run check`,** for AF17's reason
+  again: the `&&` chain hides everything after the first failure, and in CI
+  separating them is free. **`check:baseline` gets its own step** so AD31's
+  reporting form survives in the run log — "13 suites plus 1 baseline check",
+  never "14 suites"; that step executes nothing and asserts nothing
+  behavioural. **Lint runs last** so a lint failure never masks a behavioural
+  one.
+
+  **Separate *jobs* were rejected.** Each would pay a fresh `npm ci` to
+  parallelise a few seconds of compute, and would multiply the install without
+  making any failure clearer than a named step already does.
+
+  **Node is pinned to major `26`** via `actions/setup-node`, with npm caching
+  on. There is no `engines` field to inherit from, so the pin is a choice: it
+  reproduces the evidence base, since every recorded measurement was taken on
+  **v26.7.0** (**AF10**'s suite run; AD27 ran the web fingerprint oracle under
+  Node v26). The suites are pure Node with no native dependency and no network,
+  so a CI/local split would introduce a variable with nothing to buy for it.
+  *No claim is made here about Node 26's release-line status; it was not
+  verified.*
+
+  **THE NAME IS LOAD-BEARING AND MUST NOT BECOME `tests` OR `build`.** The
+  required check is the job key, `static-and-suites`. A green tick means `tsc`
+  passed, the fork baseline matched, thirteen suites passed and lint was
+  clean — and **nothing whatsoever** about the device behaviour this project
+  actually rests on. ARCHITECTURE.md §6 lists what has no automated coverage
+  and README states it as *"a developer who changes the highlight mechanism,
+  sees a green check, and ships has re-proven nothing."* A check named `tests`
+  would invite exactly the reading those two documents exist to prevent. The
+  job key is also the identifier any branch-protection rule binds to, so
+  renaming it silently detaches that rule.
+
+  **NOT VERIFIED, and stated plainly: the workflow has never run.** No
+  GitHub Actions execution happened for this entry. The file was parsed
+  locally and its structure asserted (**AF44**), which establishes that it is
+  valid YAML with the intended keys and **nothing** about whether Actions
+  accepts the schema, resolves Node 26 on the runner, or renders the check
+  name as expected. It is unproven until the first pull request runs it.
+
+### Cleanups carried in the same change
+
+  Three, all removals, none behavioural. **`npm ci`** cleared **201
+  extraneous** top-level packages — residue of a reverted `expo lint` run,
+  including a full `eslint` tree — which is why `expo lint` behaved differently
+  here than on a fresh clone; 229 top-level entries became 28 🧪. **The
+  untracked, gitignored `example/`** (20 files) was deleted: it is the Expo
+  template sample and its eleven `require()` calls were the *only* thing
+  referencing the assets below. **Fourteen tracked, unreferenced assets**
+  (446,089 bytes, measured exactly 🧪) were deleted, each confirmed absent from
+  all fifty-five tracked non-asset files first. `assets/expo.icon/` and
+  `assets/images/favicon.png` were deliberately left — they belong to a
+  deferred iOS/web scope call — as were the five assets `app.json` references.
+
+  **One flagged, not fixed:** `tsconfig.json`'s `exclude` still lists
+  `${configDir}/example`, now naming a directory that does not exist. Harmless
+  — a TypeScript exclude pattern matching nothing is inert — and left alone
+  deliberately, since `example/` is gitignored and a future `create-expo-app`
+  comparison could recreate it. **AF8** already records that this `exclude`
+  list is a hand-maintained copy that no mechanism keeps in sync; this is one
+  more entry in it.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -2403,3 +2675,52 @@
   CORE-DIVERGENCE.md §2's own definition of `Record` as accounting for the row's
   current state, not chosen; a reverting edit needs no new rule. Residue item 3
   (invariant 2's virtualization-window prose) stays reserved as invariant text.
+- 2026-09-04 — appended **AD34** on `feature/lint-and-ci`, opening a lint + CI
+  milestone. ESLint arrives at **Level 2** (stock `eslint-config-expo` plus
+  unused-vars-as-error, `no-explicit-any`, `import/order`, `no-console`,
+  `prefer-const`, `eqeqeq`) with **three `files` overrides**, each existing
+  because the alternative is editing a manifest-pinned file:
+  `src/pacer/usePacer.ts` (row 21) for the seven React Compiler errors, which
+  object to the design CLAUDE.md §4 invariant 2 mandates and **AF32**/**AF34**
+  proved on hardware — inline `eslint-disable` rejected because it changes the
+  file's bytes and would cost a row-21 update to buy what a config rule buys
+  free, refactoring rejected because it would spend device evidence that is a
+  property of that exact implementation; `**/*.mjs` for `no-console` and
+  `import/order`; and `**/*.d.ts` for `no-var`. **Three of this change's stated
+  premises were measured false and are corrected in the entry.** The React
+  Compiler rules do **not** fire because `app.json` sets
+  `experiments.reactCompiler` — `eslint-config-expo` never reads `app.json` —
+  they come from `eslint-plugin-react-hooks@7.1.1`'s `configs.recommended`,
+  which sets all three to error unconditionally; the two facts are recorded as
+  independent, at length, because a log entry asserting a causal chain that
+  does not exist is **AF37's** class and is caught by nothing. `no-console`'s
+  problem is **not** `epubStructure.ts`, whose two `console.warn` calls
+  `allow: ['warn']` silences outright — it is **61** `console.log`/`.error`
+  calls in the fourteen `.mjs` files, which are those programs' entire output
+  mechanism. And the error count is **8**, not 7: an eighth,
+  `types/hermes-globals.d.ts:19`'s `declare var console` (AD4), was absent from
+  the scoping. **The `.mjs` gap is narrowed, not closed** — 67 rules stay
+  active there (46 error, 21 warn), only the two stylistic ones are off, and
+  the entry enumerates them rather than claiming closure. `lint` is
+  deliberately **not** chained into `npm run check`: it would put a style gate
+  in an `&&` chain with behavioural ones (**AF17**), change what `check`
+  reports (AD31's "13 suites plus 1 baseline check"), and cost `check` its
+  fresh-clone cheapness (AD10, **AF13**) — so the local pre-push sequence is
+  two commands and ARCHITECTURE.md §6 now names it. `"lint": "expo lint"`
+  becomes **`"lint": "eslint . --max-warnings 0"`**, because `expo lint`'s
+  `DEFAULT_INPUTS = ['src','app','components']` would never lint
+  `scripts/check-core-baseline.mjs` — the manifest's own enforcer — and its
+  prerequisite **writes `eslint.config.js` and installs packages** when it
+  fails 📐. The workflow is **one job, separate steps**, named
+  **`static-and-suites`** so a green tick cannot be read as the device coverage
+  this repo does not have; **no `paths:` filter**, ever, since a required check
+  carrying one leaves unrelated pull requests permanently unmergeable; Node
+  pinned to major **26** to reproduce the evidence base (**AF10**, AD27), with
+  no claim made about its release-line status. **The workflow has never run** —
+  it was parsed locally and nothing more. Three cleanups ride along: `npm ci`
+  cleared **201 extraneous** packages (229 top-level entries → 28), the
+  untracked gitignored `example/` was deleted, and **fourteen** unreferenced
+  tracked assets (**446,089** bytes, measured) were removed. Flagged not fixed:
+  `tsconfig.json`'s `exclude` still names the now-absent `example`, one more
+  entry in the hand-maintained list **AF8** records. Measurements are
+  **AF44**.

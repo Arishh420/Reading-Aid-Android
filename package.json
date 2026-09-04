@@ -32,6 +32,8 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "^57.0.2",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -46,7 +48,7 @@
     "test:all": "fail=0; npm run test:core || fail=1; npm run test:local || fail=1; exit $fail",
     "check:baseline": "node scripts/check-core-baseline.mjs",
     "check": "npm run build && npm run check:baseline && npm run test:all",
-    "lint": "expo lint"
+    "lint": "eslint . --max-warnings 0"
   },
   "private": true
 }

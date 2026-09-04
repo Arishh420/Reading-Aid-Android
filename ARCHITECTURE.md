@@ -418,6 +418,36 @@ they `import node:assert/strict`, `node:path`, `node:url` and use `esbuild` as a
 library, so they cannot run on a device (AD24 `D-N`). That boundary decides what
 they can and cannot see.
 
+**Lint is a SEPARATE command and is deliberately not part of `npm run check`**
+(AD34). `npm run lint` is `eslint . --max-warnings 0`, and it is clean — 0
+errors, 0 warnings across 39 files 🧪. So **the local pre-push sequence is two
+commands, not one**:
+
+```
+npm run check     # tsc, core guard, baseline, 13 suites / 310 checks
+npm run lint      # eslint, 0 errors 0 warnings
+```
+
+Running only the first is a green result that has not been linted. Both run as
+separate steps on every pull request via
+`.github/workflows/static-and-suites.yml`, whose required check is named
+**`static-and-suites`** rather than `tests` precisely so a green tick cannot be
+read as the device coverage below. **That workflow has never executed** — it
+was parsed locally and nothing more (AF44).
+
+**ESLint is the only static analysis that sees the 14 tracked `.mjs` files.**
+`tsc` covers `.ts`/`.tsx` only — the main `tsconfig.json` includes just those
+two globs and `tsconfig.core.json` sets no `allowJs` 📐 — so the 13 suites and
+`scripts/check-core-baseline.mjs` were covered by nothing at all (AF14). That
+gap is **narrowed, not closed**: AD34's `**/*.mjs` override turns off
+`no-console` and `import/order` there, because printing is those programs'
+output mechanism and 9 of the 14 are pinned in
+[CORE-DIVERGENCE.md](CORE-DIVERGENCE.md). **67 rules stay active** on a `.mjs`
+file — 46 at error including `no-undef`, `eqeqeq`, `prefer-const`,
+`no-dupe-keys` and `valid-typeof`, and 21 at warn including `no-unused-vars`
+and `no-unreachable`, which `--max-warnings 0` makes fail too 🧪. Correctness
+rules cover those files now; formatting rules do not.
+
 **A green `npm run check` says nothing whatsoever about any of the following.**
 Each was established by a person holding a phone, and **none of it is
 reproducible from a clone**:
@@ -460,6 +490,12 @@ has re-proven nothing.** The suites cannot execute a worklet, a shared value, a
 `ScrollView` or a native view. Re-run the device probes.
 
 ### 6.2 Files with no automated coverage at all
+
+**"Coverage" here means BEHAVIOURAL coverage — something that executes the code
+and asserts what it does.** Since AD34 every file below is *linted*, and the
+`.mjs` files went from no static analysis whatsoever to 67 active rules. Lint
+executes nothing and asserts nothing about behaviour, so it changes not one
+line of this list.
 
 - **`src/reader/ReaderSurface.tsx`** and **`src/reader/WordBox.tsx`** — no suite
   bundles either; they import `react-native` and `react-native-reanimated`,
