@@ -2497,6 +2497,185 @@
      shortened by one line. A fourteenth suite is still static, Node-only
      evidence.
 
+## UAT hardware acceptance — the phone, and a corrected claim about where it was proven
+
+> Scope note that governs this whole section: **the project owner (Delta) built
+> the UAT variant, ran it on their own physical Android phone alongside an
+> emulator, and reported every observation and adb/build-output reading
+> below. I ran no Gradle build, no adb command, and no device or emulator
+> install at any point — recorded the same way AF27/AF32-AF43/AF48 record
+> owner-witnessed evidence.** 👁 marks something Delta observed directly on a
+> running surface; 🧪 marks something measured via adb or read from build
+> output, relayed rather than re-run by me; a combined 👁🧪 tag means both.
+> Nothing here was independently re-verified in this session, and nothing here
+> is claimed as 📐 — that would require reading the generated files myself,
+> which this task's constraints (no prebuild, no build, no Gradle, no adb, no
+> installs) forbid.
+
+- **AF49** 👁🧪 — **CORRECTION FIRST: a claim made earlier in this workstream —
+  that the UAT `versionCode` upgrade path had been proven by a second build
+  installing over a first — was WRONG ABOUT THE SURFACE. It was proven on the
+  emulator, not the phone, and this entry supplies the missing phone
+  evidence.** The false version was never committed to this file, so there is
+  no prior `AF` entry to leave standing and correct by cross-reference; it is
+  corrected here, before it could become one, for the same reason **AF37**
+  names — an uncorrected claim about what happened is caught by nothing.
+
+  **The mechanism.** Gradle's Android `install*` tasks (`installDebug`,
+  `installRelease`, …) fan out to **every connected `adb` device with no
+  picker** — there is no per-device prompt, and no way to tell from the
+  command alone which device received the APK. The install that was read as
+  confirming the upgrade path reached the **emulator** (`Pixel_9_API36`, the
+  same AVD used throughout AF27–AF43), not the phone. At that moment the
+  phone had `com.arishh.readingaid` installed and **`com.arishh.readingaid.uat`
+  was absent from it entirely** — the UAT app had never reached the phone at
+  all, so the "upgrade succeeded" reading was **emulator evidence
+  mislabelled as device evidence**, and the earlier red-screen report (see
+  below) was the emulator's screen, not the phone's.
+
+  **This is a distinct hazard from AF35's, worth naming as its own thing
+  rather than folded into it.** AF35 established that this project's emulator
+  and physical-device surfaces are **not interchangeable for frame timing**.
+  This is a different way the two surfaces get conflated — **which device
+  an install actually reached** — but it argues for the identical discipline
+  AF35 already prescribes: attribute every observation to the specific
+  surface it happened on, and never assume a command targeted the surface you
+  meant.
+
+  **The remedy, and how it was confirmed rather than merely inferred.**
+  `ANDROID_SERIAL=<serial>` (or `adb -s <serial> install <apk>` directly, one
+  device at a time) targets a specific device. The fan-out mechanism itself
+  was confirmed directly, not reasoned about: with **both** the emulator and
+  the phone attached, re-running the install reported installing the APK on
+  **two** devices — the emulator and the phone by serial, one after another —
+  which is the diagnostic that exposed the original mistake.
+
+  ### Hardware acceptance, once the install was correctly targeted
+
+  - **Both apps now coexist on the phone.** `com.arishh.readingaid` at
+    versionCode **1** / versionName **1.0.0**, signed with the project
+    owner's release key (the same key AF42 confirmed); `com.arishh.readingaid.uat`
+    at versionName **1.0.0-uat** with a minutes-since-epoch `versionCode`
+    (AD37 §Q2). 👁🧪
+  - **The two are distinguishable at a glance WITHOUT reading either label —
+    the icon hue is doing the work.** `#FFEB3B` reads as unambiguously yellow
+    on the phone's launcher, and the blue foreground glyph still reads clearly
+    against it. **AF48's contrast arithmetic (3.10:1 against the release
+    app's 3.38:1) held** — this is the first time that number has been
+    checked against an actual rendered icon rather than computed from decoded
+    PNG bytes. 👁
+  - **The launcher truncates `BETA Reading Aid` to `BETA Readin…`.** This
+    vindicates AD37's prefix choice over a suffix form: a suffix
+    (`Reading Aid BETA` or similar) would have truncated to `Reading Aid…`,
+    differing from the release app's own truncated or full label by an
+    ellipsis alone — exactly the ambiguity a beta label exists to prevent.
+    **AF41 flagged that the launcher label had never been observed at all**
+    ("it has not been seen under a launcher icon"); this closes that gap **for
+    the UAT label only** — plain `Reading Aid`'s launcher rendering was not
+    separately characterised in this run, so AF41's gap is **partly**, not
+    fully, closed. 👁
+  - **A second UAT build installed over the first on the phone with no
+    uninstall prompt.** This is the corrected version of the claim above:
+    **AD36's `versionCode` scheme is now verified on hardware**, not only on
+    the emulator, because the two UAT builds carried two different
+    minutes-since-epoch values and the second was accepted as an upgrade. 👁🧪
+
+  ### What the generated project confirmed — upgrading three source-reads to generated-output evidence
+
+  - **`ic_launcher.xml`'s background layer resolves to `@color/iconBackground`,
+    not `@mipmap/ic_launcher_background`.** This is **AF48's Q1 finding** —
+    that `backgroundImage` wins over `backgroundColor` in
+    `withAndroidIcons.js:239`, so the overlay had to omit the image rather
+    than set a colour beside it — tested here against **real generated
+    output** for the first time rather than a read of the plugin's source. 🧪
+  - **`colors.xml` carries `#FFEB3B`; `strings.xml` carries `BETA Reading
+    Aid`; `build.gradle` carries the `.uat` `applicationId` and
+    `1.0.0-uat`.** All four identity fields AD37 designed resolve correctly in
+    a real prebuilt tree. 🧪
+  - **`AndroidManifest.xml` carries `readingaiduat` with no occurrence of
+    `readingaidandroid`.** The deep-link scheme collision AD37 named as a
+    defect to fix (AF47 recorded it as a gap a future overlay must avoid) is
+    **genuinely avoided** — confirmed in the generated manifest, not merely
+    argued from the overlay's source. 🧪
+  - **AF47's fail-open finding was reproduced in practice, not only read from
+    a template.** Running `installRelease` against the stock scratch tree —
+    the unmodified `expo-template-bare-minimum`-derived `android/`, carrying
+    none of AD30's hand edits — **succeeded** and produced an installable APK
+    whose certificate is `CN=Android Debug`, with **no guard and no error of
+    any kind**. AF47's own text calls this a read of the plugin's source, not
+    a device observation; it is now an **observed build**, and it is the
+    strongest evidence yet for why **AD36's still-open UAT signing question**
+    (which keystore signs a UAT build) cannot be answered by "just build it" —
+    a UAT `android/` tree generated without AD30's hand-applied guard signs
+    with the fixed, public debug key by default. **This does not describe the
+    UAT app actually installed on Delta's phone above** — that was a separate
+    build, and this entry does not establish what certificate signed it; see
+    "not established" below.
+  - **The debug APK's contents confirm why the earlier red screen was expected
+    behaviour, never a defect — and that an earlier instruction in this
+    workstream was itself wrong.** The debug APK contains `assets/app.config`
+    and **no** `assets/index.android.bundle`; the release-shaped build carried
+    a **2.98 MB** JS bundle. `installDebug` genuinely does not bundle JS —
+    confirmed by inspection, not assumed — so a debug build with no Metro
+    attached has nothing to run and a red error screen is the **correct**
+    outcome. A prompt earlier in this workstream asked Delta to open a debug
+    build and confirm it reads a document; that instruction did not account
+    for Metro, and it was wrong to give. 🧪
+  - **Build shape.** The UAT build is **arm64-v8a only, 45 MB**, against
+    **237 MB** for the earlier all-ABI debug build. Relevant to the
+    still-open question of which ABIs a future CI/UAT pipeline should target —
+    a single-ABI UAT build is dramatically cheaper to produce and transfer
+    than the universal release APK AF42 measured at 110,763,372 bytes. 🧪
+
+  ### Warnings triage — conclusion only
+
+  A build log of roughly 930 lines contained **no errors and nothing
+  concerning**. The bulk is noise from dependencies, not from this project's
+  own code: **~104** Kotlin deprecation warnings from libraries under
+  `node_modules`, **two** manifest-merger "tagged to replace" notices, **one**
+  C++ deprecation warning inside `expo-modules-core`, and ordinary `javac` and
+  Metro boilerplate. **One item is worth remembering rather than dismissing**:
+  a Gradle deprecation notice stating incompatibility with Gradle 10. **Unlike
+  the Node 20 runner-removal date AD35 recorded, this notice carries no
+  date** — and nothing in this repo's CI runs Gradle at all yet (AF46 already
+  established this by grepping the workflow for `gradlew`), so there is
+  **no clock on it** the way AD35's finding had one. Recorded so it is not
+  rediscovered as a surprise once a Gradle step is ever added to CI. 🧪
+
+  ### NOT ESTABLISHED
+
+  1. **What certificate signed the UAT app actually installed on the phone is
+     NOT stated by this entry.** The fail-open reproduction above ran against
+     a **separate stock scratch tree**, deliberately, to demonstrate AF47's
+     finding on a real build; it is not a claim about the signing of the
+     `com.arishh.readingaid.uat` build described in "hardware acceptance"
+     above. Which keystore signs a real UAT build remains one of **AD36's
+     three explicitly deferred UAT questions**, unresolved by this entry.
+  2. **Only one physical device was exercised**, as in every prior device
+     entry in this file. Nothing here says anything about a different phone,
+     Android version, or OEM launcher's truncation behaviour.
+  3. **No CI Gradle run exists, and AF47's CI fail-open blocker is untouched.**
+     This entry demonstrates the fail-open behaviour locally, on demand; it
+     does not close the gap AF47 named for an eventual CI/UAT pipeline.
+  4. **R8/Proguard and the release APK's other three ABIs remain exactly as
+     AF42 left them** — `minifyEnabled` is still `false`, and this entry adds
+     no ABI coverage to the **release** artifact; the 45 MB figure above
+     describes a separate, single-ABI **UAT** build.
+  5. **Plain `Reading Aid`'s launcher rendering was not separately observed in
+     this run** — only `BETA Reading Aid`'s truncation was — so AF41's gap
+     ("it has not been seen under a launcher icon") is narrowed for the UAT
+     label and left open for the release label.
+  6. **ARCHITECTURE.md §6 is not stale as a result of this entry.** §6 and
+     §6.2 enumerate coverage gaps scoped to `src/` files, R8/Proguard, and the
+     release APK's untested ABIs; nothing in this entry — `app.config.ts`, the
+     UAT overlay's generated output, or install-targeting mechanics — is named
+     anywhere in that list, so nothing there is negated and no edit is made.
+  7. **Every 👁 limit recorded in AF27–AF43 stands**, and every limit AF48
+     recorded stands except the one this entry closes (AF48's own item 1,
+     "nothing here was built, prebuilt, installed or run on a device") — closed
+     **for the fields AD37 designed**, not for the signing question named in
+     item 1 above.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -2958,3 +3137,43 @@
   hardware** — the icon, label, side-by-side install and upgrade path are all
   pending acceptance checks; the suite tests the overlay, not Expo's resolution;
   and every 👁 limit in AF27–AF43 stands. Decisions are **AD37**.
+- 2026-09-04 — appended **AF49** on `docs/uat-hardware-acceptance`, closing
+  AF48's pending on-device UAT acceptance check with the project owner's
+  physical-phone run, and leading with a **correction, made before it was ever
+  committed**: an earlier claim in this workstream that the UAT `versionCode`
+  upgrade path had been proven was proven on the **emulator**, not the phone —
+  Gradle's `install*` tasks fan out to every connected `adb` device with no
+  picker, so the install reached `Pixel_9_API36` while the phone still had no
+  `.uat` app installed at all, and the earlier red screen was the emulator's.
+  Confirmed by a diagnostic run reporting installation onto two devices at
+  once with both attached; the remedy is `ANDROID_SERIAL` or `adb -s`. Records
+  that this is a distinct hazard from **AF35**'s, though the same discipline —
+  attribute every observation to its actual surface — applies to both.
+  **Hardware acceptance, once correctly targeted**: both apps coexist on the
+  phone at their designed identities; the yellow icon is distinguishable from
+  the release app's at a glance, vindicating AF48's contrast arithmetic against
+  a real rendered icon; the launcher truncates `BETA Reading Aid` to
+  `BETA Readin…`, vindicating AD37's prefix-over-suffix choice and **partly**
+  closing AF41's never-observed-launcher-label gap; and a second UAT build
+  installed over the first with no uninstall prompt, verifying **AD36's**
+  `versionCode` scheme on hardware rather than only the emulator. **Three
+  source-reads are upgraded to generated-output evidence**: AF48's Q1 icon
+  finding, all four AD37 identity fields, and the `readingaiduat` scheme with
+  no `readingaidandroid` collision. **AF47's fail-open finding is reproduced as
+  an executed build**, not only reasoned from a template — `installRelease`
+  against a stock scratch tree produced a `CN=Android Debug`-signed "release"
+  APK with no guard — explicitly **not** describing the phone's own UAT
+  build's signing, which stays one of AD36's deferred questions. Records why
+  the debug build's red screen was expected (no JS bundle in a debug APK,
+  confirmed by inspection against a 2.98 MB release-shaped bundle) and flags
+  that an earlier instruction in this workstream asking to verify document
+  reading on a debug build was itself wrong, given that build cannot run
+  without Metro. Build-shape figures (45 MB arm64-only UAT vs. 237 MB
+  all-ABI debug) are recorded against the still-open CI ABI-scope question.
+  Warnings triage concludes clean — no errors, ~104 dependency Kotlin
+  deprecations, 2 manifest-merger notices, 1 C++ deprecation — with one
+  undated Gradle-10 incompatibility notice flagged as currently inert since no
+  CI step runs Gradle yet. Assesses ARCHITECTURE.md §6 as **not** stale: its
+  coverage gaps are scoped to `src/`, R8/Proguard and the release APK's ABIs,
+  none of which this entry touches, so no edit is made. No `DECISIONS.md`
+  entry: nothing here is a decision. AF35, AF41, AF47 and AF48 are not edited.
