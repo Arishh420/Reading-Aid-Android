@@ -3186,6 +3186,382 @@
   shape of pending check AD21, AD22, AD28, AD30 and AD37 each recorded, and it
   will produce its own `AF` entry — the one that also retires §3.
 
+## Milestone: UAT build workflow
+
+- **AD39 · A `workflow_dispatch`-only GitHub Actions workflow,
+  `.github/workflows/uat-build.yml`, builds the UAT variant, materialises the
+  signing credentials from repository secrets, ASSERTS THE BUILT APK'S
+  CERTIFICATE against a known fingerprint, and publishes the APK to a single
+  `uat` release tag that is overwritten in place so the download URL never
+  changes. It is a separate workflow from `static-and-suites` and adds no
+  required status check.** This is the last piece of the UAT pipeline AD36
+  deferred and AD37 began. It settles the first of AD36's three open UAT
+  questions — **which keystore signs a UAT build** — and leaves the other two
+  where they were.
+
+  **What it does NOT touch.** No file under `src/` or `android/`. No row in
+  [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) changed.
+  `.github/workflows/static-and-suites.yml`, `app.config.ts`,
+  `plugins/withReleaseSigning.ts` and `app.json` are all unmodified.
+
+  ### Q1 · How the keystore reaches Gradle — the path resolution is exact, not approximate
+
+  **`rootProject` for this Gradle build is `<repo>/android`**, because the
+  settings file is `android/settings.gradle` 📐. So the plugin's two path
+  expressions resolve to the **repo root**, not to `android/`:
+
+  | Generated line | Resolves to |
+  |---|---|
+  | `build.gradle:97` — `rootProject.file('../keystore.properties')` | `<repo>/keystore.properties` |
+  | `build.gradle:111`, `:160` — `rootProject.file('../' + storeFile.trim())` | `<repo>/<storeFile>` |
+
+  In CI `<repo>` is `$GITHUB_WORKSPACE`, so the workflow writes
+  `$GITHUB_WORKSPACE/keystore.properties` and
+  `$GITHUB_WORKSPACE/reading-aid-uat.keystore`, with
+  `storeFile=reading-aid-uat.keystore`.
+
+  **`storeFile` MUST be a bare repo-root-relative filename, and this is a trap
+  rather than a style preference.** The plugin **concatenates** `'../'` with the
+  property value, so an absolute `/tmp/k.keystore` becomes `..//tmp/k.keystore`
+  resolved from `android/` — i.e. `<repo>/tmp/k.keystore`, which does not exist.
+  The failure would at least be loud (`build.gradle:113`'s "keystore file not
+  found at …"), but it is avoidable by construction and a future reader
+  parameterising this should not rediscover it.
+
+  Both files are already gitignored — `.gitignore:47` `*.keystore` and `:48`
+  `keystore.properties` 📐 — so materialising them cannot alter git state, and
+  prebuild's git check is inert regardless (AF41).
+
+  **Secret hygiene is three specific properties, not a general intention.**
+  (1) Secrets reach the step through a step-level **`env:`** block, never through
+  `${{ }}` interpolated into the script body — interpolation bakes the value into
+  the script text that the run log echoes. (2) `keystore.properties` is written
+  by **heredoc redirect**, and the `keytool` pre-flight takes its password on
+  **stdin**, so the password is never an argv token in any process. (3) There is
+  no `set -x` anywhere in the file. The only three consumers of the password are
+  a redirect, a pipe into `base64 -d`, and a pipe into `keytool` whose stdout
+  goes to `/dev/null` because it would otherwise print the certificate.
+
+  **A `keytool -list` pre-flight runs before the build**, which is not required
+  and is worth the step: a malformed base64 secret or a wrong `keyAlias` fails
+  there in seconds with "password was incorrect" or "Alias does not exist",
+  rather than surfacing three minutes later as an opaque Gradle signing error.
+
+  ### Q2 · The certificate assertion is POSITIVE, and checks the artifact rather than the config
+
+  **AF49 established, as an executed build, that a tree lacking the signing
+  configuration produces a release APK that SUCCEEDS and carries
+  `CN=Android Debug`.** So inspecting the generated `build.gradle` proves
+  nothing about what was actually signed, and only the **artifact** does. The
+  workflow therefore runs `apksigner verify --print-certs` on the built APK and
+  fails the job on any mismatch, before publishing anything.
+
+  **Asserted positively against the known UAT fingerprint, and the distinction
+  is decisive rather than fussy.** A negative check — "the certificate is not
+  `CN=Android Debug`" — passes a build signed with the **real release key**, or
+  with any other key that happens to be present. A positive equality check
+  against one expected value passes exactly one thing.
+
+  **Output format, measured on this machine rather than recalled** 🧪 (captured
+  with all long hex redacted, so no certificate value was recorded):
+  `apksigner` prints `Signer #1 certificate SHA-256 digest: ` followed by
+  exactly 64 **lowercase, colon-free** hex characters. `keytool`, which is where
+  the UAT fingerprint came from, prints **uppercase with colons**. So the
+  comparison normalises with `tr -d ':[:space:]' | tr 'A-Z' 'a-z'` — robust to
+  case, separators and stray whitespace at once — rather than assuming either
+  tool's form.
+
+  **Three assertions, not one**, because one covers less than it appears to:
+  1. `apksigner verify` exits 0 at all, which under `bash -e` is enforced by the
+     command substitution that captures its output.
+  2. **`Signer #2` is absent.** A multi-signer APK could carry the expected
+     certificate *alongside* an unexpected one and satisfy a naive equality
+     check on signer 1.
+  3. The normalised signer-1 digest **equals** the expected value, with an
+     explicit non-empty guard so that an `awk` miss cannot pass as a comparison
+     that found no mismatch.
+
+  **The expected fingerprint is a workflow LITERAL, not a secret**, and that is
+  a deliberate inversion of the obvious instinct. A certificate fingerprint is
+  public by nature; as a literal it is reviewable in a diff, whereas as a secret
+  it could be changed by anyone with settings access and no reviewer would ever
+  see it. A silently-editable expected value is not an assertion.
+
+  ### Q2b · The identity check is a SECOND, DIFFERENT assertion — not belt-and-braces
+
+  Recorded at length because it is the piece most likely to be deleted later as
+  redundant. A step between prebuild and build asserts that
+  `android/app/build.gradle` carries `applicationId 'com.arishh.readingaid.uat'`
+  and `versionName "1.0.0-uat"`.
+
+  **It closes a wrong-artifact hole the certificate assertion cannot see.** If
+  `READING_AID_UAT` failed to reach the overlay — a typo, an `env:` at the wrong
+  scope, a future refactor of `isUatBuild()` — the build would proceed with
+  **release identity** and sign it with the **UAT key**. The certificate
+  assertion would **pass**, because the key is right. The result is an APK
+  claiming `com.arishh.readingaid` signed by a key the installed release app does
+  not use, which cannot upgrade the real app and would be confusing precisely
+  because it looks correct.
+
+  **The two steps catch mirror-image failures and neither subsumes the other:**
+
+  | Step | Catches |
+  |---|---|
+  | Identity check | **wrong identity, right key** |
+  | Certificate assertion | **right identity, wrong key** |
+
+  The same step captures the **resolved** `versionCode` into `$GITHUB_ENV`, so
+  the release notes report what was actually built rather than what was
+  intended. Reading it back out of the generated file is the only way to know:
+  the overlay computes it at prebuild time and nothing else records it.
+
+  ### Q3 · One tag, overwritten in place, never deleted
+
+  **A Release rather than a workflow artifact**, because AF47 measured Release
+  assets anonymously downloadable (HTTP 206 on a range request, no auth) while
+  artifacts return **401** without a repo-scoped token, and an artifact's
+  download URL expires one minute after issue. Downloading on a phone with no
+  login is the entire requirement, so the artifact route does not satisfy it.
+
+  **`permissions: { contents: write }` is declared explicitly** because this
+  repository's `default_workflow_permissions` is **`read`** 🧪 (AF47, re-measured
+  for AF51). Without the declaration `gh release create` fails with 403. Nothing
+  beyond `contents` is granted.
+
+  **Create-if-absent, then `upload --clobber`, then `edit --notes`. The release
+  is NEVER deleted.** `gh release delete --cleanup-tag` followed by a fresh
+  create would keep the tag pointing at the current commit, and was rejected:
+  it opens a window in which the bookmark 404s, and if the create fails after
+  the delete the bookmark stays broken. For an artifact whose entire value is
+  being a permanent bookmark, that is the wrong trade.
+
+  **`--clobber`'s documented risk is accepted and mitigated by ORDERING.** Its
+  own help text says *"If the upload fails, the original assets will be lost."*
+  The upload therefore runs **only after** the certificate assertion has passed,
+  so a good asset is never replaced on behalf of a bad build, and a failed
+  upload turns the job red rather than leaving a stale APK behind a fresh set of
+  notes.
+
+  **The accepted cost, stated rather than discovered: the `uat` TAG goes
+  stale.** It stays pinned at whichever commit first created the release, so it
+  will not describe later builds. The **notes** are authoritative instead, and
+  are rewritten every run with the commit SHA, run number, resolved
+  `versionCode`, `versionName`, `applicationId`, ABI and a UTC timestamp. The
+  notes say so in their own last paragraph, so a reader of the release page is
+  told which field to trust.
+
+  **The asset filename is `reading-aid-uat.apk`, deliberately unversioned.**
+  Gradle emits `app-release.apk`, so a copy precedes the upload. Putting the
+  `versionCode` into the filename would change the download URL on every build
+  and destroy the one property the whole design exists for. The URL is therefore
+  permanent:
+
+  ```
+  https://github.com/Arishh420/Reading-Aid-Android/releases/download/uat/reading-aid-uat.apk
+  ```
+
+  `--latest=false` is passed on creation so this beta never displaces a future
+  real release as "Latest".
+
+  **THE REPOSITORY IS PUBLIC, SO THE APK IS WORLD-DOWNLOADABLE. That is
+  ACCEPTED KNOWINGLY, and is not a side effect of choosing a Release.** It was
+  put to the project owner explicitly and confirmed: this is their own reading
+  app with nothing sensitive in it, and the alternative gives up the
+  download-on-a-phone-without-logging-in property that is the only reason a
+  Release was chosen over an artifact in the first place. Recorded here so a
+  future reader does not "fix" it by making the release private and silently
+  breaking the phone download.
+
+  ### Q4 · versionCode comes from the CLOCK, and `github.run_number` is rejected on a measurement
+
+  **`UAT_VERSION_CODE` is left UNSET in CI**, so `app.config.ts`'s fallback —
+  whole minutes since the Unix epoch (`app.config.ts:138`) — resolves it.
+
+  **`github.run_number` is not merely inferior, it would not install.** It
+  begins at 1, and the UAT app already on the project owner's phone carries a
+  minutes-since-epoch code near **29,809,000** (AF48, AF49). A CI build
+  numbering 1, 2, 3 … is **far below** what is installed, and Android refuses an
+  update whose `versionCode` is not strictly greater for the same
+  `applicationId` — reintroducing the exact upgrade failure AD36 exists to
+  prevent. This corrects a premise this work was scoped under; the project owner
+  supplied that premise and corrected it on being shown the measurement, and it
+  is recorded as theirs in **AF51** rather than only as rationale here.
+
+  Two further reasons the clock is the right sequence rather than the merely
+  adequate one. `run_number` **knows nothing about local builds** — the project
+  owner builds UAT APKs by hand (AF49), so a run-number counter and a clock
+  counter would be two independent sequences writing to one `applicationId`, and
+  a local build after a CI build could regress. And the clock is the mechanism
+  AD37 designed and **AF49 verified on hardware**, where a second UAT build
+  installed over the first with no uninstall prompt.
+
+  **AD37's same-minute collision is the one real hazard, and it is mitigated
+  twice.** `concurrency: { group: uat-build, cancel-in-progress: false }`
+  serialises runs, so two dispatches queue rather than race — which also removes
+  the separate risk of two jobs clobbering the same release asset
+  simultaneously. And a `workflow_dispatch` **input**, `version_code`, is mapped
+  to `UAT_VERSION_CODE` as the documented escape hatch; it validates itself,
+  since `app.config.ts:128-137` throws on a non-integer, a value below 1, or one
+  above 2.1e9 rather than silently substituting the clock.
+
+  An empty input is passed through as an empty string, which
+  `app.config.ts:129`'s `raw.trim() !== ''` treats as unset — so the ordinary
+  case needs no special handling.
+
+  *Not measured: runner clock discipline.* GitHub runners are NTP-synced, so a
+  backwards jump large enough to regress a minute counter is not a realistic
+  failure — but that is a judgement, not something this repo can instrument ❓.
+
+  ### Q5 · The NDK and CMake are installed explicitly — PROVISIONALLY, and not proven necessary
+
+  **Native code genuinely is compiled from source, so an NDK is genuinely
+  required.** Six installed modules carry a `CMakeLists.txt` and an
+  `externalNativeBuild` — `expo-modules-core`, `react-native-reanimated`,
+  `react-native-worklets`, `react-native-mmkv`, `react-native-nitro-modules`,
+  `react-native-screens` 🧪. The app module itself has no `externalNativeBuild`,
+  only `ndkVersion` at `android/app/build.gradle:132`, but its dependencies build
+  in the same Gradle invocation.
+
+  **Only the NDK is actually pinned by this project. CMake is not — that is a
+  correction to AF47**, which recorded both as project pins. `ndkVersion`
+  defaults to `27.1.12297006` at
+  `ExpoRootProjectPlugin.kt:56` and is consumed unconditionally at
+  `android/app/build.gradle:132`, whereas **no `cmake { version … }` declaration
+  exists anywhere** in the project or in any of the six modules, whose
+  `cmake_minimum_required` values are 3.9.0–3.16; **3.22.1 is AGP 8.12.0's
+  default** 🧪. Details and the measurement are **AF51**; AF47 is append-only and
+  is superseded rather than edited.
+
+  **THE STEP IS NOT PROVEN NECESSARY, AND A FUTURE READER MAY DELETE IT.**
+  `android.builder.sdkDownload` is **absent** from `android/gradle.properties`
+  and therefore defaults to **`true`** 📐, which permits AGP to fetch a missing
+  NDK and CMake itself. Whether that auto-download actually succeeds on
+  `ubuntu-latest`, and what the current runner image already ships, **cannot be
+  determined without running a build** ❓ — nothing on the development machine
+  can execute a runner.
+
+  It is included anyway, on a reasoning that does not depend on it being
+  required: it converts a **slow, opaque mid-build failure into a fast explicit
+  one**, and it removes reliance on an AGP default that could change under us.
+  `sdkmanager` is idempotent, so it is a no-op when the image already carries
+  both. **If the first CI run shows the image already has them, this step can
+  simply be deleted** — it is provisional scaffolding, not load-bearing
+  configuration, and this paragraph exists so that whoever removes it knows they
+  are not dismantling a guard.
+
+  **Cost, so the trade is legible:** NDK 27 is roughly 2–4 GB unpacked against
+  AF47's measured ~14 GB free, and an estimated 1–3 minutes ❓.
+
+  **Relaxing the pins was not available.** `ndkVersion` reaches the build from
+  `ExpoRootProjectPlugin` inside `node_modules`, so overriding it means either
+  editing the generated `android/build.gradle` — destroyed by the next prebuild,
+  which is AD36's argument against a direct edit reappearing — or writing a
+  second config plugin, which is a different change.
+
+  **`PINNED_` prefixes on the two version variables are load-bearing.**
+  `react-native/ReactAndroid/build.gradle.kts:52` reads **`CMAKE_VERSION` from
+  the environment** 🧪, so a workflow-level `env: CMAKE_VERSION` would be visible
+  to Gradle. This project does not build ReactAndroid from source, so it would
+  probably never fire — but a near-miss that costs six characters to avoid is
+  worth avoiding, and the workflow comment plus **AF51** record why, so a future
+  reader renaming them for tidiness does not reintroduce it.
+
+  ### The rest of the shape, and why each piece is what it is
+
+  **`workflow_dispatch` is the only trigger.** No `push`, no `pull_request`, no
+  schedule. **Never `pull_request_target` or `workflow_run`**: AF47 records both
+  as the triggers that run with the base repository's secrets against
+  fork-authored code, and this job holds signing credentials. That is a
+  standing prohibition for any workflow in this repo that touches a secret, not
+  a preference about this one.
+
+  **The job key is `uat-build` and must never become `static-and-suites`.** Both
+  `main` and `dev` are protected with `static-and-suites` as their **sole**
+  required status check and `enforce_admins` **enabled** 🧪. The job key is the
+  identifier branch protection binds to (AD34), so a distinct key is what keeps
+  this workflow from adding a required check, and keeps a UAT build failure from
+  making either protected branch unmergeable.
+
+  **`npm run check` runs first; `npm run lint` does not.** `workflow_dispatch`
+  can target **any** branch, so without the gate a UAT APK could be built from a
+  tree that never passed a pull request — and a red baseline check means a core
+  file moved unrecorded, which is something to learn *before* an APK reaches a
+  phone. The cost is negligible: AF45 measured the behavioural steps at roughly
+  four seconds against an install already being paid for. Lint is excluded
+  because AD34 deliberately keeps it out of `check`, `static-and-suites` already
+  gates it on every pull request, and a style violation must not stand between
+  the project owner and a UAT build.
+
+  **arm64-v8a only, via `-P` rather than a file edit.**
+  `android/gradle.properties:30` documents this exact override in the generated
+  file itself — `./gradlew <task> -PreactNativeArchitectures=x86_64` 📐 — so
+  `-PreactNativeArchitectures=arm64-v8a` is the sanctioned mechanism and touches
+  nothing on disk. AF49 measured **45 MB and about three minutes** arm64-only
+  against **237 MB** all-ABI, and UAT targets exactly one arm64 phone. Note the
+  consequence: this artifact covers **one** ABI by design, which is a narrowing
+  relative to the release APK's four (AF42) and not a gap to be closed.
+
+  **`--no-install`, and `--no-clean` is MOOT here.** `--no-install` follows
+  AF41's precedent and stops prebuild rewriting `package.json` after `npm ci`.
+  Clean-versus-no-clean does not arise: `android/` is gitignored, so a CI
+  checkout has none and there is nothing to preserve. **That is not a departure
+  from AD36 §7**, whose `--no-clean` exists to protect Gradle caches and hand
+  edits on a developer machine; neither exists on a runner.
+
+  **`actions/setup-java` pins the JVM to Temurin 17.** AF47 measured the
+  runner's JDK 17.0.20 an exact match for this project's toolchain, but a runner
+  image is a moving target and pinning costs one cached step. Node is major
+  `26`, matching AD35 and every recorded measurement (AF10, AD27).
+
+  ### RELEASE-SIGNING.md §3 and §4 are NOT retired, and their exit-condition text is NOT edited
+
+  **AD38's exit condition is now satisfied** — a real
+  `npx expo prebuild --platform android --no-clean` in this repo produced an
+  `android/app/build.gradle` hashing to the pinned
+  `0b322188…9bdefcb9` (**AF51**). §3 nonetheless stays, by explicit ruling.
+
+  **The reason is that the plugin has run exactly once, against a tree that
+  already carried the signing block.** That is the *easy* case — the transform's
+  already-applied branch. **This workflow's first run is the from-scratch
+  case**: no `android/` at all, generation from the stock template, which is
+  precisely the case §3 exists to protect and the one AF47 and AF49 established
+  a prose recovery record can never reach. Retiring the fallback on the strength
+  of the easier case, in the same change that first exercises the harder one,
+  would be backwards. **Retirement waits until a CI build has succeeded.**
+
+  **A second, independent reason it is not a doc-only edit anyway:**
+  `plugins/withReleaseSigning-headless-test.mjs` §7 asserts §3's four fenced
+  `gradle` blocks byte for byte against the plugin's own constants, and asserts
+  two prose properties of the demotion — that §3 names the plugin as the live
+  mechanism, and that it pins the retiring hash 📐. So editing §3 is a **suite**
+  change, not a documentation change, and AF51 records what happens when that is
+  forgotten.
+
+  ### PENDING ACCEPTANCE CHECK — this workflow has never executed
+
+  **No CI run, no prebuild, no Gradle build, no `adb`, no install.** Nothing
+  under `android/` or `src/` was touched, no secret was read, decoded or
+  printed, and the two secrets exist only as `${{ secrets.* }}` references. The
+  workflow was **parsed locally** and its structure asserted, and every `run:`
+  script was extracted and syntax-checked with `bash -n` — which establishes
+  shape and **nothing** about whether Actions accepts the schema, whether the
+  build succeeds, or whether the signing applies.
+
+  This differs in kind from AD34's pending check. `static-and-suites`'s first
+  run was a read-only check on an unprotected repository; **this one builds and
+  publishes a signed artifact.** It is the same shape of pending check AD21,
+  AD22, AD28, AD30, AD37 and AD38 each recorded, and it will produce its own
+  `AF` entry — the one that also retires RELEASE-SIGNING.md §3 and settles Q5's
+  provisional install step.
+
+  **One operational consequence, recorded because it affects sequencing.**
+  AF47 records ❓ that `workflow_dispatch` requires the workflow file to exist on
+  the repository's **default branch**. So this cannot be dispatched from
+  `feature/uat-build-workflow`: it must merge to `main` first, through a pull
+  request with `static-and-suites` green, under `enforce_admins`. **The first
+  dispatch is therefore also the first test**, with no opportunity to rehearse
+  it on the branch that introduces it.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -3742,3 +4118,92 @@
   `name:` stays flagged. **Nothing was prebuilt, built or installed**; the
   pending acceptance check is the project owner running AD36 §7. Measurements
   are **AF50**.
+- 2026-09-08 — appended **AD39** on `feature/uat-build-workflow`, opening a
+  UAT-build-workflow milestone and closing the UAT pipeline AD36 deferred and
+  AD37 began. A **`workflow_dispatch`-only** workflow,
+  `.github/workflows/uat-build.yml`, builds the UAT variant, materialises signing
+  credentials from repository secrets, **asserts the built APK's certificate**,
+  and publishes to a single `uat` release tag overwritten in place so the
+  download URL never changes. It settles the first of AD36's three open UAT
+  questions — which keystore signs a UAT build — and leaves the other two.
+  **Q1**: `rootProject` is `<repo>/android`, so the plugin's
+  `rootProject.file('../keystore.properties')` and its `'../' + storeFile` both
+  resolve to the **repo root**; `storeFile` must therefore be a **bare
+  repo-root-relative filename**, since the plugin *concatenates* and an absolute
+  path would resolve to `<repo>/<that path>`. Secret hygiene is three specific
+  properties rather than an intention — secrets via step-level **`env:`** not
+  `${{ }}` in the script body, the properties file written by **heredoc
+  redirect** and the `keytool` pre-flight taking its password on **stdin** so it
+  is never an argv token, and no `set -x`. **Q2**: the assertion is
+  **positive**, against a known fingerprint, because AF49 established as an
+  executed build that a tree lacking the signing configuration emits a release
+  APK that *succeeds* carrying `CN=Android Debug` — so only the **artifact**
+  proves anything, and a "not debug" check would pass a build signed with the
+  real release key. Three assertions, not one: `apksigner verify` exiting 0,
+  **`Signer #2` absent** (a multi-signer APK could carry the right certificate
+  beside a wrong one), and normalised equality with a non-empty guard. Output
+  format measured here 🧪 — 64 **lowercase colon-free** hex, against keytool's
+  uppercase-with-colons — hence `tr -d ':[:space:]' | tr 'A-Z' 'a-z'`. **The
+  expected fingerprint is a workflow LITERAL, not a secret**, deliberately: a
+  fingerprint is public, and as a literal it is reviewable in a diff where a
+  secret could be changed unseen. **Q2b**: the post-prebuild **identity check**
+  is a second, *different* assertion and not belt-and-braces — the two catch
+  mirror-image failures and neither subsumes the other, identity catching
+  **wrong identity with the right key** (which the certificate step would pass)
+  and the certificate step catching **right identity with the wrong key**; it
+  also captures the **resolved** `versionCode` into `$GITHUB_ENV` so the notes
+  report what was built rather than what was intended. **Q3**: a Release rather
+  than an artifact because AF47 measured Release assets anonymously downloadable
+  while artifacts return 401 with a one-minute URL expiry;
+  `permissions: { contents: write }` declared explicitly because the repo default
+  is **`read`**; **create-if-absent + `upload --clobber` + `edit --notes`, never
+  delete**, since delete-and-recreate opens a window where the bookmark 404s;
+  `--clobber`'s documented "original assets will be lost" risk mitigated by
+  **ordering** the upload after the certificate assertion. Accepted costs written
+  down: the `uat` **tag goes stale** with the notes authoritative instead, and
+  the asset filename `reading-aid-uat.apk` stays **unversioned** because
+  versioning it would change the URL every build. **The repo is public so the
+  APK is world-downloadable — accepted knowingly**, put to the project owner and
+  confirmed, since the alternative gives up the download-on-a-phone-without-login
+  property that is the only reason a Release was chosen. **Q4**: `UAT_VERSION_CODE`
+  is left **unset** so the clock fallback resolves it, and `github.run_number` is
+  rejected on a **measurement** — it starts at 1 while the installed UAT app
+  carries a minutes-since-epoch code near **29,809,000**, so Android would refuse
+  the install, reintroducing exactly AD36's failure; the premise was the project
+  owner's and is recorded as theirs in AF51. Also: `run_number` knows nothing
+  about local builds, so it would be a second sequence writing one
+  `applicationId`. AD37's same-minute collision is mitigated twice, by
+  `concurrency: uat-build, cancel-in-progress: false` and by an optional
+  `version_code` dispatch input that validates itself. **Q5**: native code
+  genuinely compiles from source (six modules with `CMakeLists.txt` 🧪), so an
+  NDK is required — but **only the NDK is project-pinned**, and that **corrects
+  AF47**, which recorded CMake 3.22.1 as a pin when **no `cmake { version }`
+  declaration exists anywhere** and 3.22.1 is AGP 8.12.0's default. The explicit
+  `sdkmanager` install is **PROVISIONAL and NOT PROVEN NECESSARY**:
+  `android.builder.sdkDownload` is absent and so defaults to **true**, meaning
+  AGP may fetch both unaided, and this **cannot be settled without a build** ❓ —
+  it is included to turn a slow opaque mid-build failure into a fast explicit
+  one, and the entry says in as many words that a future reader may delete it if
+  the first run shows the image already carries them. **`PINNED_` prefixes are
+  load-bearing**: `ReactAndroid/build.gradle.kts:52` reads `CMAKE_VERSION` from
+  the **environment** 🧪, so a bare name would be visible to Gradle. Also
+  recorded: `workflow_dispatch` only and **never** `pull_request_target` or
+  `workflow_run` (AF47's secret-exfiltration vectors) as a standing prohibition;
+  the job key `uat-build` never becoming `static-and-suites`, since that key is
+  the **sole** required check on both protected branches under `enforce_admins`;
+  `npm run check` **yes** and `npm run lint` **no**, with reasons; arm64-v8a only
+  via **`-P`** rather than a file edit, per `android/gradle.properties:30`'s own
+  documented override; and `--no-install` with `--no-clean` **moot** in CI, which
+  is not a departure from AD36 §7. **RELEASE-SIGNING.md §3 and §4 stay, and their
+  exit-condition text is unedited**, despite AD38's condition now being satisfied
+  (AF51): the plugin has run exactly **once**, against a tree that already
+  carried the block — the transform's *easy* branch — whereas this workflow's
+  first run is the **from-scratch** case §3 exists to protect. Independently, §3
+  is asserted byte for byte by the plugin's suite, so editing it is a **suite**
+  change rather than a doc change. **PENDING: this workflow has never
+  executed** — parsed locally, every `run:` script extracted and `bash -n`
+  checked, which establishes shape and nothing else; and because
+  `workflow_dispatch` needs the file on the **default branch** (AF47 ❓), the
+  first dispatch is also the first test, unrehearsable from this branch. Zero
+  files under `src/` or `android/` changed and no CORE-DIVERGENCE.md row changed.
+  Measurements are **AF51**.
