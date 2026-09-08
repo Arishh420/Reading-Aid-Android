@@ -130,6 +130,78 @@ or copy the APK to the phone and open it there.
 > sequence, the verbatim Gradle fallback, and what to do when the block is
 > missing.
 
+## Getting a UAT build on your phone
+
+A **UAT build** is a test copy of this app that installs **alongside** the real
+one. It has its own app id (`com.arishh.readingaid.uat`), a **yellow** icon and
+the launcher label **`BETA Reading Aid`**, so the two can sit on the phone at
+once and neither can overwrite the other. See **AD37** for the identity and
+**AD39** for the build.
+
+**You do not build this yourself. You press a button and download it.**
+
+**1 · Press the button.** On GitHub: **Actions** → **uat-build** in the
+left-hand list → **Run workflow** → **Run workflow**.
+
+Leave the **version code** box **empty**. It exists for one rare case, below.
+
+**2 · Wait.** Expect roughly five to ten minutes. It installs an Android NDK,
+runs the repo's own `npm run check`, generates the native project, builds
+arm64-only, checks the signature, and publishes. If it goes red, nothing is
+published — see the table below.
+
+**3 · Download it on the phone.** Open this link on the phone:
+
+```
+https://github.com/Arishh420/Reading-Aid-Android/releases/download/uat/reading-aid-uat.apk
+```
+
+**This URL never changes.** Bookmark it once and every future UAT build appears
+at the same address — that is the whole point of the design, and it is why the
+filename has no version number in it. No login is needed, because the repository
+is public. (That does mean the APK is **world-downloadable**; AD39 records that
+as a deliberate choice, not an oversight.)
+
+**4 · Install it.** Tap the downloaded file. Android will ask permission to
+install from the browser the first time. A newer UAT build installs straight
+over an older one with no uninstall prompt.
+
+### The one rare case for the version code box
+
+Android refuses to install a build whose version code is not **higher** than the
+one already on the phone. The workflow normally derives it from the clock — whole
+minutes since 1970 — so it always goes up on its own.
+
+The only way that fails is **two builds finishing in the same minute**, which
+gives them the same number and makes the second refuse to install. If that
+happens, run the workflow again and put any number **larger than the one on the
+release page** into the version code box.
+
+### If the run goes red
+
+Nothing is published on a failure, and the old APK at the bookmark is left
+alone. The step that failed tells you which of these it is:
+
+| Step that failed | What it means |
+|---|---|
+| **Repo gate — npm run check** | The code on that branch does not pass the repo's own checks. Fix that first; this is not a build problem. |
+| **Install the pinned NDK and CMake** | A toolchain download failed. Usually transient — run it again. |
+| **Materialise UAT signing credentials** | The `UAT_KEYSTORE_BASE64` or `UAT_KEYSTORE_PASSWORD` secret is wrong or the key alias does not match. Nothing was built. |
+| **Confirm the UAT identity resolved** | The build came out with **release** identity instead of UAT. Something broke `app.config.ts`'s overlay. |
+| **Assert the APK carries the UAT certificate** | The APK got built but is signed with **the wrong key**. This is the guard doing its job — do not bypass it. |
+| **Publish to the `uat` release** | The build and signature are fine; only the upload failed. Run it again. |
+
+### Two things worth knowing
+
+**The release notes are the truth, not the tag.** The `uat` tag stays pinned to
+whichever commit first created the release, so ignore it. The notes on the
+release page are rewritten every run with the commit, run number, version code
+and build time.
+
+**It only appears in Actions once it is on `main`.** GitHub only offers
+*Run workflow* for files on the default branch, so a change to the workflow
+itself has to be merged before it can be run.
+
 ## Verifying a change
 
 ```sh
@@ -181,8 +253,8 @@ alarms — it is documented here as such.
 |---|---|---|
 | [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | **Scope.** What the app is, what was deliberately cut and what gates each return, the open spikes, known defects, and the decision index | mutable |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structure.** Directory layout and what enforces each boundary, the end-to-end data flow, the two invariants and their blast radius, the per-tick hot path, the fork, and what has no test coverage | mutable |
-| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD38` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
-| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF50` | **APPEND-ONLY** |
+| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD39` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
+| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF51` | **APPEND-ONLY** |
 | [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) | The fork manifest — 26 baseline-pinned files, enforced by `npm run check` | mutable |
 | [RELEASE-SIGNING.md](RELEASE-SIGNING.md) | The release build procedure: the credentials template, the config plugin that generates signing, the verbatim Gradle fallback, and how to verify an APK is not debug-signed | mutable |
 | [CLAUDE.md](CLAUDE.md) | The working agreement — branch discipline, docs-are-part-of-done, honest verification, and the two invariants that must never break | mutable |
