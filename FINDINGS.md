@@ -2676,6 +2676,231 @@
      **for the fields AD37 designed**, not for the signing question named in
      item 1 above.
 
+## The signing config plugin — a second loader with the same erasability trap
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, in this tree, against the installed
+> `@expo/config-plugins@57.0.9` / `@expo/require-utils@57.0.5` packages, the
+> published `expo-template-bare-minimum` tarballs pulled read-only with
+> `npm pack`, and the existing generated `android/` directory. **No prebuild,
+> Gradle build, emulator, device or install was run**, and none is claimed. This
+> section therefore carries **no 👁 at all**, like AF45, AF47 and AF48, and
+> nothing in it is behavioural evidence about the app on hardware. The decisions
+> taken in response are **AD38**; nothing from that entry is restated here
+> (AD18).
+
+- **AF50** 🧪📐 — **The `.ts` config-plugin loader is the SAME two-transpiler
+  path AF48 measured for `app.config.ts`, so the erasability trap applies to a
+  second file — and is invisible to `tsc` in both.**
+
+  Expo's plugin resolver accepts TypeScript directly:
+  `plugin-resolver.js:39` is
+  `pluginExtensions = ['.js', '.cjs', '.mjs', '.ts', '.cts', '.mts']`, and
+  `:136` loads the resolved file with `@expo/require-utils`' `loadModuleSync`
+  📐. That function routes a `.ts` file to `evalModule`
+  (`load.js:399-425` → `:296`), which is **the identical code AF48 traced**:
+  `typescript`'s `transpileModule` at `:316` when the API exists, falling back
+  to Node's `module.stripTypeScriptTypes` at `:335-341` when it does not, with
+  Expo's own comment at `:77-79` anticipating that TypeScript 7 removes
+  `transpileModule`.
+
+  **Measured on a plugin-shaped probe pair in the scratchpad** 🧪:
+
+  | probe | `loadModuleSync` | `stripTypeScriptTypes` |
+  |---|---|---|
+  | erasable `.ts` (types + `as const`) | **loads**, default is a function | **accepts** |
+  | identical file plus `enum Bad { A, B }` | **loads**, default is a function | **rejects** — *"TypeScript enum is not supported in strip-only mode"* |
+
+  **That top-right/bottom-left asymmetry is the whole finding.** A non-erasable
+  construct in a config plugin typechecks, lints, and **loads perfectly well on
+  the machine that added it**, because `transpileModule` handles it. It breaks
+  only on a machine that takes the fallback — one whose `typescript` is v7 or
+  absent. Nothing in the ordinary gates would catch it. This is why
+  `plugins/withReleaseSigning-headless-test.mjs` runs the real stripper over the
+  real source, exactly as `app.config-headless-test.mjs` does.
+
+  **`@expo/config-plugins` is transitive and unpinned**, confirmed rather than
+  assumed 🧪: `npm ls` reports `57.0.9` reached only through `expo@57.0.18`,
+  `expo-splash-screen@57.0.8`, `@expo/cli`, `@expo/prebuild-config`,
+  `@expo/config` and `@expo/inline-modules` — **no direct dependency of this
+  repo declares it**, and `package.json` names it in neither `dependencies` nor
+  `devDependencies`. Also measured: `expo/tsconfig.base` sets
+  `skipLibCheck: true` 📐, so the package's own `.d.ts` errors cannot leak into
+  this repo's typecheck — which bounds, without eliminating, the exposure from
+  importing its one runtime value.
+
+  ### The appBuildGradle field is still uncontested — re-verified at 57.0.9
+
+  AF47 recorded that nothing in the default plugin chain touches
+  `signingConfigs`. Re-swept for this entry 🧪, and the first sweep was **wrong
+  and is recorded as such**: grepping for `withAppBuildGradle(` returned
+  **nothing**, because the compiled call form is
+  `(0, _androidPlugins().withAppBuildGradle)(config, …)`. Corrected, the sweep
+  finds **exactly three** consumers — `Package.js:78`, `Version.js:25`,
+  `GoogleServices.js:63` — and **none touches `signingConfigs` or
+  `buildTypes`**. The only `signingConfig` strings anywhere in
+  `@expo/config-plugins` or `@expo/prebuild-config` are in
+  `EasBuildGradleScript.js`, referenced solely by `EasBuild.js` and re-exported
+  by `android/index.js`, with no caller in prebuild or the CLI 🧪.
+
+  **Mod ordering, read from source rather than inferred.** `withMod`'s wrapper
+  runs the user action and *then* calls `nextMod(results)`
+  (`withMod.js:189-203`), and the provider base mod — which must be registered
+  last (`withMod.js:90-92` throws `INVALID_MOD_ORDER` otherwise) — reads the
+  file, calls `nextMod`, and writes (`createBaseMod.js:44-66`) 📐. So
+  **last-registered runs first**, which is what Expo's own
+  `// Added last to ensure this plugin runs first` comment records.
+  `getPrebuildConfig.js:26-78` resolves user plugins via `getConfig` **before**
+  registering the built-ins 📐, so a user plugin runs **last** among
+  `appBuildGradle` mods. A throw from it is not swallowed: `mod-compiler.js:203`
+  has no `try`/`catch` around `await mod(...)` 📐.
+
+  ### The stock template, and a dist-tag that has already moved
+
+  `expo-template-bare-minimum@sdk-57` resolved to **57.0.23** on 2026-09-08,
+  against **57.0.22** when AF47 pulled it on 2026-09-04 🧪 — a **moving tag**,
+  which is why the suite's fixture is committed rather than fetched (AD38).
+
+  **NULL RESULT, recorded per AF30's and AF41's precedent: the stock
+  `android/app/build.gradle` is BYTE-IDENTICAL across 57.0.20, 57.0.21, 57.0.22
+  and 57.0.23**, all four hashing
+  `c5056fedcc8225aae86d3432ca48aa1711130987bac10427e68f4e0d6938bd40` 🧪. So the
+  tag moving did **not** move this file, the committed fixture is stable across
+  the whole patch range, and AF41's zero-drift observation extends by four
+  releases. Had it drifted, the plugin's anchors would have been written against
+  stale text on their first day.
+
+  ### Byte-identity, and what it does and does not prove
+
+  The plugin's transform, applied to the committed stock fixture and then
+  through Expo's own three identity substitutions, reproduces the hand-edited
+  `android/app/build.gradle` **exactly** 🧪:
+
+  ```
+  stock template                   c5056fedcc8225aae86d3432ca48aa1711130987bac10427e68f4e0d6938bd40
+  transform(stock)                 06fe1eef76396bf17d73819bda1d57f44e6f4e4e38065dce98ca1bb259172b55
+  + Expo identity mods             0b322188fa0661d91389c80c86a65c3d10dbd5996e8dc44d24031f539bdefcb9
+  android/app/build.gradle         0b322188fa0661d91389c80c86a65c3d10dbd5996e8dc44d24031f539bdefcb9
+  ```
+
+  Also measured: the transform is **idempotent** — `transform(transform(x))`
+  equals `transform(x)` — and the **only** lines differing between the plugin's
+  own output and the real file are the three Expo owns (`namespace`,
+  `applicationId`, `versionName`) 🧪.
+
+  **What that is NOT.** It is a string transform over a published tarball. **No
+  prebuild generated this file**, so it is not evidence that Expo invokes the
+  plugin, writes the result, or produces this on disk. The closest thing to
+  end-to-end evidence obtained here is one step short of that, and it is real:
+  Expo's own `resolveConfigPluginFunctionWithInfo(projectRoot, './plugins/withReleaseSigning')`
+  resolves to `plugins/withReleaseSigning.ts`, loads it through the production
+  loader, and calling the resolved function registers a mod at
+  `mods.android.appBuildGradle` 🧪.
+
+  ### The hand-edit surface under `android/` — AF41's method, reapplied
+
+  **The method is the point, and it is AF41's**: a machine-generated tree writes
+  every file inside a narrow window, so a hand edit shows up as an **isolated,
+  later mtime**. A clean sweep is therefore positive evidence of absence, not
+  merely a failure to find something.
+
+  ```
+  $ find android -type f -not -path '*/build/*' -not -path '*/.gradle/*' \
+      -not -path '*/.cxx/*' -exec stat -f "%Sm %N" -t "%Y-%m-%d %H:%M" {} \;
+  53 files   2026-09-02 15:31      <- prebuild's generation window
+   1 file    2026-09-02 15:35      <- android/app/build.gradle
+  ```
+
+  **54 non-build files; 53 in one generation-minute; exactly one later, and it
+  is the signing edit** 🧪. So the signing block is the **only** hand edit under
+  `android/`.
+
+  **This is what makes AD38's Q4 recommendation checkable rather than asserted —
+  and it is also why that recommendation is conservative.** The measurement
+  supports "a clean prebuild would today destroy nothing the plugin cannot
+  regenerate". It does **not** support "clean prebuilds are safe": it is a
+  statement about this tree at this moment, it says nothing about the Gradle
+  caches a clean run discards, and nothing about a hand edit someone makes
+  tomorrow. AD36 §7's `--no-clean` is therefore kept, with only its stated
+  reason changed.
+
+  ### A FOURTH self-caught invalid instrument, and it is the same shape as the other three
+
+  While refactoring the plugin to remove a latent `String.replace` substitution
+  hazard, **the editing script hit that exact hazard**. Its replacement text
+  contained the literal `'$'` — and `` $` `` and `$'` are substitution patterns
+  in a `String.replace` replacement string, so `$'` spliced *everything after
+  the match* back into the file, producing a 414-line file with a mangled
+  comment and a duplicated block. It was caught immediately because esbuild
+  refused to parse the result 🧪; the file was rewritten from scratch and
+  re-verified byte-identical.
+
+  With AF44's two (the flat-config probe that threw `ReferenceError` at load and
+  so measured ESLint's *loader* rather than its linter; the `paths:` sweep whose
+  only hit was the comment forbidding the key) and AF48's one (`.probe-env.ts`,
+  a dotfile TypeScript's `include` globs never match, which measured its own
+  filename), the pattern is now four for four: **the invalid instrument produced
+  a confident, plausible, wrong result, and what exposed it was a check whose
+  outcome was known in advance.** The plugin now builds its anchor and its
+  replacement by **concatenation from one shared constant** rather than by
+  `String.replace`, so no dollar sequence in the Gradle text can ever be read as
+  a pattern.
+
+  ### One assertion that was wrong before it was right
+
+  A check written as *"exactly one `signingConfig signingConfigs.debug` remains,
+  down from two"* **failed at 2** 🧪 — correctly. The preamble the plugin
+  *inserts* quotes the template default inside a comment, so the naive substring
+  count is 2 even though only one executable statement remains. The check now
+  counts the **statement form** — twelve-space indent, whole line — and pins
+  both ends: stock has 2, output has 1, and `buildTypes.debug` still carries
+  its own. Recorded because the naive count looks like a defect in the plugin
+  and is a defect in the test.
+
+  ### A negative control found a real weakness IN THE SUITE, not in the subject
+
+  The fourth negative control — rewriting the plugin to anchor on the bare
+  `signingConfig signingConfigs.debug` statement, so that `String.replace` takes
+  the **first** match and mutilates `buildTypes.debug` — did fail the suite, but
+  it failed it by **crashing**: the broken transform threw from inside an
+  argument position, the exception escaped `check()`, and the run aborted at the
+  idempotence section with **no tally printed and later sections never
+  reached** 🧪. That is precisely the fail-fast masking **AF17** records, which
+  this repo deliberately designed out of `test:core` at the runner level,
+  reappearing one level down *inside* a suite.
+
+  Fixed by evaluating every transform through a helper that converts an
+  unexpected throw into a marker string, so a broken subject produces clean
+  FAIL lines instead of a stack trace. Re-run afterwards, the same control
+  reports **7 failures and a tally** 🧪, among them the two that matter — *"the
+  template's release signingConfig default is GONE"* and *"buildTypes.debug
+  STILL signs with signingConfigs.debug"* — which is the duplicate-string trap
+  caught in both directions at once.
+
+  **The lesson generalises past this suite:** a negative control validates the
+  instrument, and an instrument that *crashes* on a broken subject is reporting
+  less than one that *fails* on it. The control's value here was not confirming
+  that the check caught the defect; it was revealing that the harness would have
+  hidden six other checks while doing so.
+
+  ### NOT ESTABLISHED
+
+  1. **Nothing was prebuilt, built, installed or run.** The signing block has
+     never been produced by an actual `expo prebuild` in this repo. Every hash
+     above comes from a string transform. AD38's pending acceptance check is
+     open, and it is the same check that retires RELEASE-SIGNING.md §3.
+  2. **Nothing here is behavioural evidence about the app**, and no 👁 limit
+     recorded in AF27-AF43 or AF49 is narrowed by one line. ARCHITECTURE.md §6's
+     list of what has no automated coverage is not shortened.
+  3. **AF47's CI fail-open blocker is not closed.** This entry supplies the
+     mechanism that would close it, but no CI job runs Gradle, and none is added
+     here.
+  4. **AF42's R8/Proguard half and its untested ABIs are untouched.**
+     `minifyEnabled` is still `false` and this entry adds no ABI coverage.
+  5. **The raw-`.ts`-evaluation path is still unexercised** — a Node lacking
+     `stripTypeScriptTypes` combined with a TypeScript lacking `transpileModule`
+     was not simulated, exactly as AF48 left it ❓.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -3177,3 +3402,52 @@
   coverage gaps are scoped to `src/`, R8/Proguard and the release APK's ABIs,
   none of which this entry touches, so no edit is made. No `DECISIONS.md`
   entry: nothing here is a decision. AF35, AF41, AF47 and AF48 are not edited.
+- 2026-09-08 — appended **AF50** on `feature/signing-config-plugin`. **Measured
+  by me**, in this tree; no prebuild, Gradle, emulator or device was involved,
+  so the section carries **no 👁**. Records that **Expo's `.ts` config-plugin
+  loader is the SAME two-transpiler path AF48 measured for `app.config.ts`** —
+  `plugin-resolver.js:39` accepts `.ts` and `:136` loads via
+  `@expo/require-utils`' `loadModuleSync`, reaching `transpileModule` at
+  `load.js:316` with Node's `stripTypeScriptTypes` as the `:335-341` fallback —
+  **so the erasability trap now applies to a second file and is invisible to
+  `tsc` in both.** Demonstrated on a probe pair: an `enum` in a plugin-shaped
+  `.ts` **loads perfectly well today** and the native stripper **rejects** it,
+  so the failure appears only on a machine that takes the fallback. Confirms
+  `@expo/config-plugins@57.0.9` is **transitive and unpinned** (declared by no
+  direct dependency) and that `skipLibCheck: true` bounds the type exposure.
+  **AF47's uncontested-field finding is re-verified at 57.0.9** — exactly three
+  `appBuildGradle` consumers, none touching `signingConfigs`/`buildTypes` — and
+  **a wrong first sweep is recorded as wrong**: grepping `withAppBuildGradle(`
+  returned nothing because the compiled call form is
+  `(0, _androidPlugins().withAppBuildGradle)(…)`. Mod ordering is read from
+  source (`withMod.js:189-203`, `createBaseMod.js:44-66`,
+  `getPrebuildConfig.js:26-78`): **last-registered runs first**, so a user
+  plugin runs last, and `mod-compiler.js:203` has no `try`/`catch`, so its throw
+  stops the prebuild. **NULL RESULT** per AF30/AF41: the stock
+  `android/app/build.gradle` is **byte-identical across template 57.0.20-57.0.23**
+  even though the `sdk-57` dist-tag moved 57.0.22 → **57.0.23** since AF47 — so
+  the committed fixture is stable and AF41's zero-drift observation extends by
+  four releases. Byte-identity is reported with all four hashes, together with
+  idempotence and the fact that the **only** lines differing from the real file
+  are the three Expo owns; and it is bounded honestly — a string transform over
+  a tarball, **not** evidence that prebuild generates anything, with the closest
+  end-to-end result being that Expo's own resolver loads the plugin and
+  registers a mod at `mods.android.appBuildGradle`. **AF41's mtime method is
+  reapplied and the method recorded, not just the result:** 54 non-build files
+  under `android/`, **53 in one generation-minute and exactly one later** — the
+  signing edit is the only hand edit there — which is what makes AD38's Q4
+  recommendation checkable, and also why it stays conservative, since that is a
+  statement about this tree now and not about clean prebuilds in general. A
+  **FOURTH self-caught invalid instrument** is recorded: an editing script hit
+  the very `String.replace` substitution hazard it was removing — a literal
+  `$'` in its replacement spliced the rest of the file back in — caught because
+  esbuild refused to parse the result. With AF44's two and AF48's one the
+  pattern is four for four: **a confident, plausible, wrong result exposed by a
+  check whose outcome was known in advance.** Also recorded: an assertion that
+  was **wrong before it was right** — a naive count of `signingConfig
+  signingConfigs.debug` reads 2 in the output because the plugin's own inserted
+  comment quotes the template default, so the check now counts the executable
+  statement form. Not established: nothing was prebuilt, built or installed;
+  no 👁 limit in AF27-AF43 or AF49 is narrowed; AF47's CI fail-open blocker is
+  not closed; AF42's R8 half and untested ABIs are untouched; and the
+  raw-`.ts`-evaluation path stays unexercised. Decisions are **AD38**.

@@ -53,8 +53,8 @@ jobs:
       - name: Typecheck and core portability guard
         run: npm run build
 
-      # Its own step to preserve AD31's reporting form: "14 suites plus 1
-      # baseline check", never "15 suites". This asserts nothing behavioural.
+      # Its own step to preserve AD31's reporting form: "15 suites plus 1
+      # baseline check", never "16 suites". This asserts nothing behavioural.
       - name: Core fork baseline
         run: npm run check:baseline
 

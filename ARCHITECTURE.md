@@ -149,6 +149,23 @@ the overlay rewrites five fields — launcher name, `scheme`, `android.package`,
 set, returning its input untouched otherwise. Nothing under `src/` reads either
 file. See AD37; its inert path is pinned by `app.config-headless-test.mjs`.
 
+`app.json` also registers one **config plugin**,
+`plugins/withReleaseSigning.ts`, which is where release signing now lives. It
+runs at prebuild time, not at runtime: it rewrites the generated
+`android/app/build.gradle` so that release builds sign from `keystore.properties`
+and can never fall back to debug signing. Nothing under `src/` imports it, and
+it is not part of the app bundle — Metro's graph starts at `expo-router/entry`
+and never reaches the repo root. It reproduces the previously hand-edited file
+**byte for byte**, which is what keeps AF42's release-mode device evidence
+valid, and it **throws** rather than no-ops when an anchor stops matching. See
+AD38; its output is pinned by `plugins/withReleaseSigning-headless-test.mjs`.
+
+Both of those files are root-level TypeScript on purpose: a root `.ts` is inside
+`tsconfig.json`'s program and is linted, whereas a root `.js` would be in
+neither (AF14). Both are loaded by Expo through `@expo/require-utils`, so both
+must stay **erasable** TypeScript — no `enum`, no `namespace`, no parameter
+properties. `tsc` does not enforce that; their two suites do (AF48, AF50).
+
 ---
 
 ## 2. Data flow, end to end
@@ -399,11 +416,11 @@ Two consequences of the fork that are easy to trip over:
   `PORT-PLAN.md`/`PORT-AUDIT.md` reference are **back-references for someone
   who has that repo, not live pointers**. Local identifiers are `AD#` and
   `AF#`.
-- **The count is "14 suites plus 1 baseline check", never "15 suites."** The
+- **The count is "15 suites plus 1 baseline check", never "16 suites."** The
   baseline check executes nothing and asserts nothing about behaviour; folding
   it into the suite tally would change what that number means. AD31 records why
-  the distinction is kept — the *number* moved when AD37 added the fourteenth
-  suite, the *rule* did not.
+  the distinction is kept — the *number* moved again when AD38 added the
+  fifteenth suite, the *rule* did not.
 
 `ARCHITECTURE.md` — this file — is **not** manifest-listed. It is
 Android-original, so there is no baseline that would mean anything, and the
@@ -414,12 +431,12 @@ completeness walk covers `src/core/` only.
 ## 6. What has no automated coverage — read this before you trust a green check
 
 `npm run check` runs `tsc --noEmit`, then the core portability guard, then the
-baseline check, then **14 headless suites totalling 357 checks** 🧪:
+baseline check, then **15 headless suites totalling 396 checks** 🧪:
 
 | | Suites | Checks |
 |---|---|---|
 | `test:core` — `src/core/` | 8 | 125 (17 + 18 + 14 + 9 + 15 + 14 + 12 + 26) |
-| `test:local` — everything else | 6 | 232 (47 + 20 + 73 + 27 + 35 + 30) |
+| `test:local` — everything else | 7 | 271 (47 + 39 + 20 + 73 + 27 + 35 + 30) |
 
 Every suite esbuild-bundles **real source** and asserts what it computes, which
 is what makes them worth having. But they are **Node-only by construction**:
@@ -433,7 +450,7 @@ errors, 0 warnings across 39 files 🧪. So **the local pre-push sequence is two
 commands, not one**:
 
 ```
-npm run check     # tsc, core guard, baseline, 14 suites / 357 checks
+npm run check     # tsc, core guard, baseline, 15 suites / 396 checks
 npm run lint      # eslint, 0 errors 0 warnings
 ```
 
@@ -445,9 +462,9 @@ read as the device coverage below. **That workflow has run, once, green** —
 PR #23's run, whose measurements are AF45 (AF44 records the file as parsed
 locally and nothing more, which was true when written).
 
-**ESLint is the only static analysis that sees the 15 tracked `.mjs` files.**
+**ESLint is the only static analysis that sees the 16 tracked `.mjs` files.**
 `tsc` covers `.ts`/`.tsx` only — the main `tsconfig.json` includes just those
-two globs and `tsconfig.core.json` sets no `allowJs` 📐 — so the 14 suites and
+two globs and `tsconfig.core.json` sets no `allowJs` 📐 — so the 15 suites and
 `scripts/check-core-baseline.mjs` were covered by nothing at all (AF14). That
 gap is **narrowed, not closed**: AD34's `**/*.mjs` override turns off
 `no-console` and `import/order` there, because printing is those programs'
@@ -586,7 +603,7 @@ them as abandoned:
 | `ui/theme.ts` | **AD19** ships one theme; all four ids are already declared here | **none** — no suite bundles it 🧪 |
 | `model/blocks.ts` | **Nothing gates it** — see below | **none**, and no importer either 🧪 |
 
-Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 357 checks) bundle modules
+Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 396 checks) bundle modules
 the app never reaches, `spine-integrity` spanning both categories.
 
 **`model/blocks.ts` is the exception and is worth calling out honestly.** It is

@@ -113,17 +113,22 @@ apksigner verify --print-certs android/app/build/outputs/apk/release/app-release
 ```
 
 `CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US` means
-the config was lost and the build fell back to the template default —
-restore it from RELEASE-SIGNING.md §3 and rebuild.
+the signing config never reached the generated project and the build fell back
+to the template default — work through RELEASE-SIGNING.md §4 and rebuild.
 
 **5 · Install it** — `adb install -r android/app/build/outputs/apk/release/app-release.apk`,
 or copy the APK to the phone and open it there.
 
-> **Read [RELEASE-SIGNING.md](RELEASE-SIGNING.md) before you run
-> `npx expo prebuild`.** A bare `prebuild` is **clean by default** in SDK 57 and
-> **destroys the signing configuration silently** — `android/` is gitignored, so
-> nothing shows as dirty and there is no diff to restore from. That document
-> exists to put it back, and it holds the three Gradle blocks verbatim.
+> **The signing configuration is GENERATED, not hand-applied.** Since **AD38**
+> it comes from the config plugin at
+> [`plugins/withReleaseSigning.ts`](plugins/withReleaseSigning.ts), which
+> `app.json` registers, so a bare `npx expo prebuild` — **clean by default** in
+> SDK 57 — regenerates it rather than destroying it, and a fresh clone gets it
+> too. If the Expo template ever changes shape the plugin **throws and stops the
+> prebuild**, because the quiet alternative is an installable debug-signed
+> "release" APK. Read [RELEASE-SIGNING.md](RELEASE-SIGNING.md) for the release
+> sequence, the verbatim Gradle fallback, and what to do when the block is
+> missing.
 
 ## Verifying a change
 
@@ -133,11 +138,11 @@ npm run check
 
 That runs, in order: `tsc --noEmit` over the app; `tsc -p tsconfig.core.json`,
 the portability guard that typechecks `src/core/` in isolation with no DOM;
-`scripts/check-core-baseline.mjs`, the fork baseline check; and then **14
-headless suites — 357 checks** 🧪. Every suite esbuild-bundles real source and
+`scripts/check-core-baseline.mjs`, the fork baseline check; and then **15
+headless suites — 396 checks** 🧪. Every suite esbuild-bundles real source and
 asserts what it computes. Individual pieces: `npm run build`,
 `npm run check:baseline`, `npm run test:core` (8 suites, 125 checks),
-`npm run test:local` (6 suites, 232 checks).
+`npm run test:local` (7 suites, 271 checks).
 
 **If you changed a file listed in [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md), the
 baseline check will fail until you update its row — in the same pull request.**
@@ -176,10 +181,10 @@ alarms — it is documented here as such.
 |---|---|---|
 | [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | **Scope.** What the app is, what was deliberately cut and what gates each return, the open spikes, known defects, and the decision index | mutable |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structure.** Directory layout and what enforces each boundary, the end-to-end data flow, the two invariants and their blast radius, the per-tick hot path, the fork, and what has no test coverage | mutable |
-| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD37` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
-| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF48` | **APPEND-ONLY** |
+| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD38` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
+| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF50` | **APPEND-ONLY** |
 | [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) | The fork manifest — 26 baseline-pinned files, enforced by `npm run check` | mutable |
-| [RELEASE-SIGNING.md](RELEASE-SIGNING.md) | The signing configuration's recovery record: the Gradle blocks verbatim, the properties template, and the restore procedure | mutable |
+| [RELEASE-SIGNING.md](RELEASE-SIGNING.md) | The release build procedure: the credentials template, the config plugin that generates signing, the verbatim Gradle fallback, and how to verify an APK is not debug-signed | mutable |
 | [CLAUDE.md](CLAUDE.md) | The working agreement — branch discipline, docs-are-part-of-done, honest verification, and the two invariants that must never break | mutable |
 
 Start with `PROJECT_CONTEXT.md` if you want to know **what** this is, and
@@ -203,7 +208,7 @@ teaches that are wrong here:
   `android`, `ios`, `web`, `build`, `build:core`, `test:core`, `test:local`,
   `test:all`, `check:baseline`, `check`, `lint` 🧪. Running it would have wiped
   the app.
-- **Do not set up Jest.** There are already 14 suites and 357 checks behind
+- **Do not set up Jest.** There are already 15 suites and 396 checks behind
   `npm run check` 🧪; they are plain `.mjs` files run by Node.
 - **`app.json` is not the whole config.** A root **`app.config.ts`** overlays
   it, and Expo resolves the dynamic one first 🧪. It returns `app.json`
