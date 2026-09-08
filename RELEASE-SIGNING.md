@@ -1,49 +1,63 @@
-# Release build procedure and signing recovery record
+# Release build procedure and signing configuration
 
-> **Purpose: this file covers the release build end to end, and the signing
-> half is the reason it exists.** `android/` is gitignored (`.gitignore:46`),
-> so the release signing configuration in `android/app/build.gradle` exists
-> nowhere in git and has no history to restore from — a bare `npx expo
-> prebuild` deletes it with no diff left behind. §§2–6 are that recovery
-> record: everything needed to put the signing block back, verbatim. §7 is
-> broader — the full sequence a release build actually requires, of which
-> restoring the signing block (when a prebuild has destroyed it) is one step
-> among several. It belongs in this file rather than a separate one because
-> the other step that matters, bumping `versionCode`, drives the **same**
-> prebuild that can destroy signing (AD36), so the two share one
-> "prebuild-destroys-things" narrative rather than needing to cross-reference
-> two documents on every release.
+> **Purpose: this file covers the release build end to end.** `android/` is
+> gitignored (`.gitignore:46`), so the release signing configuration in
+> `android/app/build.gradle` exists nowhere in git — but **it is no longer a
+> hand edit that has to be restored.** Since **AD38** it is GENERATED, on every
+> prebuild, by the config plugin at
+> [`plugins/withReleaseSigning.ts`](plugins/withReleaseSigning.ts), which
+> `app.json` registers. That file is the single source of the signing block,
+> and it is tracked, typechecked, linted and tested.
+>
+> §2 is the credentials template. **§3 is now a FALLBACK, not the mechanism** —
+> a verbatim copy of what the plugin generates, kept only until the plugin has
+> been proven by a real prebuild; §3 names the exact condition that retires it.
+> §4 is what to do when the signing block is missing. §5 verifies a build. §7
+> is the full release sequence, which belongs here rather than in a separate
+> document because bumping `versionCode` drives the **same** prebuild that
+> regenerates signing (AD36).
 >
 > This document is **mutable** — it must always describe the configuration and
 > procedure that are live right now. If either changes, change it here in the
-> same edit.
+> same edit. **§3's blocks are checked, not merely written:**
+> `plugins/withReleaseSigning-headless-test.mjs` asserts them against the
+> plugin's own constants byte for byte inside `npm run check`, so the fallback
+> cannot silently stop describing what is generated.
 >
-> **Why the signing approach was chosen** — over an Expo config plugin, and why
-> the conventional `exists()`-fallback pattern was rejected — is **not**
-> restated here. It is **AD30** in [DECISIONS.md](DECISIONS.md). The evidence
-> from the prebuild that preceded it is **AF41** in [FINDINGS.md](FINDINGS.md).
-> **Why `versionCode` is set in `app.json` rather than edited directly in
-> `android/app/build.gradle`, and why a product flavour and a config plugin
-> were both rejected**, is likewise not restated here — it is **AD36**.
+> **Why signing is a config plugin, and what that supersedes in AD30**, is
+> **AD38**; the measurements are **AF50**. **Why the hand edit was chosen
+> originally**, and why the conventional `exists()`-fallback pattern was
+> rejected, is **AD30** — still the source of the Gradle design itself, which
+> AD38 preserves byte for byte. The prebuild that preceded it is **AF41**, and
+> the release-mode device evidence is **AF42**. **Why `versionCode` is set in
+> `app.json`** is **AD36**. None of it is restated here (AD18).
 >
 > **No credential appears in this file, and none ever may.** Passwords and the
 > key alias live only in `keystore.properties`, which is gitignored.
 
 ---
 
-## 1. When you need this
+## 1. What happens to the signing config
 
-Run the restore in §4 after **any** of these:
+**Nothing destroys it any more.** The plugin regenerates it, so every row below
+that used to read DESTROYED now ends in a correctly signed project:
 
 | Action | Effect on the signing config |
 |---|---|
-| `npx expo run:android` | **Safe** — skips prebuild entirely when `android/` exists |
-| `npx expo prebuild --no-clean` | **Safe** — reuses the existing `android/` |
-| `npx expo prebuild` | **DESTROYED** — `clean` is the default in SDK 57 |
-| deleting `android/` by hand | **DESTROYED** |
+| `npx expo run:android` | **Untouched** — skips prebuild entirely when `android/` exists |
+| `npx expo prebuild --no-clean` | **Preserved** — the file is reused, and the plugin detects its own previous output and returns it unchanged |
+| `npx expo prebuild` | **Regenerated** — `clean` is the default in SDK 57, so `android/` is rebuilt from the stock template and the plugin re-applies |
+| deleting `android/` by hand | **Regenerated** on the next prebuild |
+| a **fresh clone**, or CI | **Generated** — the case the hand edit could never cover (AF47, AF49) |
 
-There is no warning when it is destroyed. The dirty-git guard cannot fire,
-because `android/` is gitignored and so never shows as dirty.
+**The plugin never fails quietly.** If the Expo template changes shape so that
+an anchor no longer matches exactly once, it **throws** and the prebuild stops.
+That is deliberate: a config plugin that gave up silently would leave the
+template's own `release { signingConfig signingConfigs.debug }` in place, and
+that build *succeeds* and emits an installable **debug-signed** "release" APK.
+If you see `withReleaseSigning: anchor "…" matched 0 time(s)`, the template
+moved — fix the plugin, and do not work around it by hand-editing the generated
+file.
 
 ## 2. `keystore.properties` (repo root, gitignored by `.gitignore:48`)
 
@@ -67,7 +81,39 @@ The keystore itself (`reading-aid-release.keystore`) is gitignored by
 future build is a different app identity that cannot upgrade an installed one.
 Back it up outside this repo.
 
-## 3. The three edits to `android/app/build.gradle`
+## 3. FALLBACK — the three edits, verbatim
+
+> **THIS IS NO LONGER THE MECHANISM.** These three blocks are what
+> [`plugins/withReleaseSigning.ts`](plugins/withReleaseSigning.ts) generates on
+> every prebuild. They are kept here as a fallback for one reason only: at the
+> time of writing, **the plugin has never run in a real prebuild in this repo**
+> — its output is proven by a string transform over a committed copy of the
+> stock template, not by generation on disk. Until that changes, a human needs
+> a way to put the block back by hand.
+>
+> **THE EXIT CONDITION, stated so that "fallback only until proven" cannot
+> quietly become permanent.** §3 is deleted, and §4 with it, once **a real
+> `npx expo prebuild --platform android` has run in this repo and the
+> `android/app/build.gradle` it generates hashes to**
+>
+> ```
+> 0b322188fa0661d91389c80c86a65c3d10dbd5996e8dc44d24031f539bdefcb9
+> ```
+>
+> (`shasum -a 256 android/app/build.gradle`, with `versionCode` still `1` — a
+> bump per §7 changes this hash by design, so record the comparison against the
+> value in the plugin's suite rather than against a stale number). That single
+> run is the whole condition. When it happens, record it as an `AF` entry,
+> delete §3 and §4, and repoint §5 at the plugin.
+>
+> **These blocks are CHECKED against the plugin, not merely written beside it.**
+> `plugins/withReleaseSigning-headless-test.mjs` parses the four fenced `gradle`
+> blocks below and asserts each byte for byte against the plugin's own
+> constants, inside `npm run check`. Two copies of the same text with no
+> mechanism keeping them in step is precisely the unguarded duplication this
+> repo has watched drift three times (AD2, AF8, AD26); that assertion is what
+> makes keeping them affordable. **If you edit a block below, the suite fails
+> until the plugin agrees — and the plugin is the one that is right.**
 
 Verbatim. Anchors are given as the surrounding template text so they can be
 relocated if line numbers shift.
@@ -174,17 +220,30 @@ Nothing else in `buildTypes.release` changes — `shrinkResources`,
 `minifyEnabled`, `proguardFiles` and `crunchPngs` keep their template values,
 and `buildTypes.debug` is not touched at all.
 
-## 4. Restore procedure
+## 4. If the signing block is missing
+
+**Reach for the plugin first. The hand edit is the last resort, not the first.**
 
 1. `git status --porcelain` — confirm the keystore and `keystore.properties`
    do **not** appear. If either does, stop and fix `.gitignore` first.
 2. Confirm `keystore.properties` exists at the repo root and is filled in (§2).
-3. Open `android/app/build.gradle` and apply §3a, §3b, §3c at their anchors.
-4. Verify with §5.
+3. Confirm `app.json`'s `plugins` array still ends with
+   `"./plugins/withReleaseSigning"`. If it does not, that is the whole bug.
+4. Run `npx expo prebuild --platform android --no-clean` (§7 step 2) and
+   verify with §5. The plugin regenerates the block.
+5. **Only if the plugin itself is broken or absent** — and it should be fixed
+   rather than bypassed — open `android/app/build.gradle` and apply §3a, §3b,
+   §3c at their anchors, then verify with §5. A hand edit made here is invisible
+   to `npm run check` and will be overwritten by the next prebuild that runs
+   with a working plugin.
+
+If the prebuild fails with `withReleaseSigning: anchor "…" matched 0 time(s)`,
+the Expo template has changed shape. **Fix the plugin's anchors** — do not
+hand-edit around it, because the next fresh checkout gets no hand edit.
 
 ## 5. Verifying the result
 
-Confirm the three edits are present:
+Confirm the plugin's three blocks are present in the generated file:
 
 ```sh
 grep -n "signingConfigs.release\|releaseSigningError" android/app/build.gradle
@@ -198,8 +257,9 @@ apksigner verify --print-certs android/app/build/outputs/apk/release/app-release
 
 A debug-signed artifact reports
 `CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US`. Seeing
-that means the signing config was lost and the build fell back to the
-template default — restore from §3 and rebuild.
+that means the signing config never reached the generated project and the build
+fell back to the template default. Work through §4 — the usual cause is the
+plugin missing from `app.json`'s `plugins` array, not a lost hand edit.
 
 ## 6. What a successful release build does and does not establish
 
@@ -240,17 +300,26 @@ alternatives rejected, is **AD36** — not restated here.
    independently; there is no shared counter to reconcile (AD36).
 
 2. **`npx expo prebuild --platform android --no-clean`.**
-   **`--no-clean` is not optional.** A bare `npx expo prebuild` is **clean by
-   default** in SDK 57 (`prebuild/index.js:112`, `clean: !args['--no-clean']`)
-   and **deletes and regenerates `android/` outright**, taking the §§2–6
-   signing block with it. `--no-clean` reuses the existing directory and lets
-   config-plugin mods — including the one that writes `versionCode` into
-   `android/app/build.gradle` — transform the existing files in place.
+   **`--no-clean` is still not optional, but the reason has changed.** It is no
+   longer protecting the signing block — AD38's plugin regenerates that either
+   way. Keep it because a bare `npx expo prebuild` is **clean by default** in
+   SDK 57 (`prebuild/index.js:112`, `clean: !args['--no-clean']`) and **deletes
+   and regenerates `android/` outright**, which discards the Gradle build caches
+   and anything else under `android/` that is not reproduced by a config plugin.
+   Today the signing block is the only thing that was ever hand-edited there —
+   measured for AF50, 53 of 54 non-build files in one generation-minute and
+   exactly one later — but *no other hand edits exist today* is not the same
+   claim as *a clean prebuild is safe*, and this step is not the place to find
+   out. `--no-clean` reuses the existing directory and lets config-plugin mods
+   — including the one that writes `versionCode`, and this repo's own signing
+   plugin — transform the existing files in place.
 
-3. **Check whether the signing block survived.** `--no-clean` reuses
-   `build.gradle` rather than regenerating it from the template, so the
-   signing block is **not** touched by this step in the ordinary case. Verify
-   with §5's `grep`; if it is gone, restore it with §4 before continuing.
+3. **Verify the signing block is present.** This is a verification, not a
+   restore. `--no-clean` reuses `build.gradle`, and the plugin recognises its
+   own previous output and returns it unchanged, so nothing should have moved.
+   Confirm with §5's `grep`. If it is missing, work through §4 — and treat it
+   as a plugin bug rather than something to patch by hand, because the next
+   fresh checkout gets no patch.
 
 4. **Build.** `cd android && ./gradlew assembleRelease`, then verify with §5
    that the output is signed with the release key, not the debug one.
