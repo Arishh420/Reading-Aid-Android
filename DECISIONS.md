@@ -3962,6 +3962,131 @@
   measured for the highlight, not yet for this), how it looks above the button,
   and how it announces to TalkBack. The next UAT build is what closes it.
 
+## Milestone: deferral discipline
+
+- **AD43 · A deferral must carry a NAMED, CHECKABLE revisit trigger, or it is
+  not a deferral — it is drift with a note attached.** Prompted by
+  `scripts/check-core-baseline.mjs`'s header comment surviving in an actively
+  wrong state across every milestone since AD38, and by a workflow step name
+  being flagged as wrong in three separate entries (AD37, AD38, AF51) without
+  ever being fixed. The measurements are **AF54**; this entry states the rule
+  the drift exposes and does not restate AF54's count-by-count evidence (AD18).
+
+  **The rule, stated plainly.** When a change leaves something known-wrong in
+  place because fixing it now is out of scope, the entry doing the deferring
+  must name two things: **(a)** the condition under which leaving it any longer
+  stops being acceptable, and **(b)** how a future reader checks whether that
+  condition already holds. "Flagged, not fixed" or "left for its own edit" is
+  not a deferral under this rule — it is a statement that something is wrong,
+  with no way for anyone, including the author, to know when it has stopped
+  being tolerable to leave that way.
+
+  **This repo already has the correct pattern, twice, and did not name it as a
+  pattern until now.** AD24 `D-G` settles "no virtualization for the MVP" with
+  "an explicit revisit trigger: **the first document that visibly stutters on
+  scroll, or takes more than a moment to mount**" — a condition with no date,
+  checkable by anyone who opens a large document. AD39 Q5 leaves an NDK/CMake
+  install step in a UAT workflow as "PROVISIONAL and NOT PROVEN NECESSARY,"
+  reasoning that "**if the first CI run shows the image already has them, this
+  step can simply be deleted**" — again no date, checkable against the very
+  next run's log. Neither says "later" or "when convenient." Both name a fact
+  about the world that, once observed, resolves the deferral one way or the
+  other.
+
+  **AD35's flag-and-leave is the contrasting case, and it is not a one-off.**
+  Its own text: `README.md`'s document table "is flagged, NOT fixed... That
+  falsity is **independent of this change**, which puts it in AD32's second
+  category, so it is recorded here and **left for its own edit** rather than
+  folded in." No condition is named under which that edit becomes due — only
+  that it is someone else's, someday. It stayed wrong through AD37, AD38,
+  AD39, AD40, AD41 and AD42 — six further milestones — not because anyone
+  disagreed it needed fixing, but because nothing was ever due to trigger the
+  fix. The same shape recurs independently: AD37 flags
+  `.github/workflows/static-and-suites.yml:64`'s step name as still reading
+  `(5 suites)` while the step ran six, and explicitly declines to fix it
+  because "the instruction for this change was comments-only... so it was
+  left." AD38 flags the **same line** again — now reading `(5 suites)` while
+  the step runs seven — and again defers it, this time with a reason that
+  sounds like a trigger but is not one: "it stays flagged to ride along with a
+  real workflow change." That is not checkable — almost every change to this
+  repo touches *some* workflow-adjacent file eventually, so "ride along with a
+  real workflow change" never actually fires on its own; it takes a third
+  entry, AF51, to flag it yet again (and to find a fresh, previously
+  unrecorded instance of the same drift at line 6 in the same file) before
+  anyone actually opens the file and fixes it — which is this PR.
+
+  **AD42 came the closest to naming the general problem and stopped short of
+  the rule.** Explaining why a sixteenth suite was avoided in that change, it
+  observes that the suite-count string in `static-and-suites.yml` "is now a
+  recurring STRUCTURAL COST of that comment living in a file that changes are
+  routinely fenced off from... a CI comment is now exerting pressure on
+  repository structure... The right fix is to stop encoding a live count in
+  that file at all — but that is a change to `static-and-suites.yml` and
+  therefore its own decision, not this one." That diagnosis is correct and is
+  itself a well-formed deferral by this entry's own rule — it names the
+  condition (the count changing again) and the fix (stop encoding a live
+  count) — but it deferred the **general** policy question of what a deferral
+  must contain, which is the gap this entry closes.
+
+  **`scripts/check-core-baseline.mjs`'s comment is the sharpest instance in the
+  set, and it is not the same failure as the other four.** The workflow
+  step-name and the README ranges are ordinary drift: a true fact grew stale.
+  This comment was never merely stale — it read "never '15 suites'" while
+  fifteen has been the correct count since AD38, which is not a gap in the
+  record but an **instruction to a future reader to say the wrong thing**. It
+  survived in that state through AD38 itself (which updated
+  `ARCHITECTURE.md`'s equivalent wording in the same change but did not touch
+  this file), and through AD39, AD40, AD41 and AD42 after it, none of which
+  had reason to open a script whose only job is hashing files. AF54 is where
+  the measurement lives; the point for this entry is that stale is a gap, and
+  this was an instruction to be wrong, and no revisit trigger would have
+  caught it either — nothing was ever going to make `npm run check` fail on a
+  correct comment. The only thing that catches this class of error is someone
+  actually reading the file against the current count, which is what closing
+  this entry's named follow-up (below) automates.
+
+  **The named follow-up, with its own trigger, so this entry obeys its own
+  rule.** A suite that reads the highest `AD\d+` in `DECISIONS.md` and the
+  highest `AF\d+` in `FINDINGS.md` and asserts they match the range
+  `README.md`'s document table states, in the same style as
+  `scripts/check-core-baseline.mjs` — pure `node:fs`, no dependency, no
+  network. **Not built in this PR.** The project owner agreed with the
+  recommendation to defer it, on the condition that the deferral itself name a
+  trigger rather than repeat AD35's shape: **the trigger is the next time
+  `README.md`'s `AD`/`AF` range needs a hand bump.** If that happens again, the
+  hand bump does not go in alone — the suite goes in with it, and the range is
+  never corrected by hand a second time after this PR.
+
+  **The recursion is worth naming rather than rediscovering later, the way
+  AD37 and AD38 each rediscovered the same workflow-comment problem
+  independently.** Adding that suite makes **sixteen** tracked suites, which is
+  exactly the count `scripts/check-core-baseline.mjs`'s comment — freshly
+  correct as of this entry, "never '16 suites'" — will have to invert for a
+  second time, in the same shape AD37 and AD38 each hit for
+  `ARCHITECTURE.md`'s equivalent wording. Whoever builds the follow-up should
+  expect that flip as part of the same change, not discover it afterward as a
+  fresh red baseline check.
+
+  **Alternatives rejected.** *(a) Build the range-check suite in this PR.*
+  Rejected — this PR is a correction to existing drift, not a place to add a
+  sixteenth suite; and doing so here would spend the trigger this entry
+  defines before it has had a chance to fire even once, which is not a
+  meaningful test of the rule. *(b) Treat repeated flagging as an acceptable
+  substitute for a trigger, on the grounds that at least the drift is visible
+  in the log.* Rejected on the evidence in this entry: the workflow step name
+  was flagged three separate times (AD37, AD38, AF51) and visibility alone
+  did not fix it once. A flag without a checkable condition is a comment that
+  makes everyone feel the problem is tracked while guaranteeing it is not
+  resolved.
+
+  **What this does NOT do.** It does not retroactively audit every other
+  "flagged and left" item in either log for a missing trigger — that is a
+  larger sweep and its own task. It does not mandate a specific mechanical
+  form (a comment, a GitHub issue, an `AD` ladder rung of the kind AD23 already
+  uses for post-MVP scope, each of which names what gates it rather than a
+  date) — only that whichever form is used, the condition must be one a
+  future reader can check against the world, not merely a promise to revisit.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -4723,3 +4848,32 @@
   carry pending acceptance checks closed by the next UAT build. Zero files under
   `src/core/` or `android/` changed and no CORE-DIVERGENCE.md row changed.
   Measurements are **AF53**.
+- 2026-09-09 — appended **AD43** on `docs/count-and-range-drift`, opening a
+  deferral-discipline milestone prompted by five known-wrong strings that had
+  each been deferred at the time for a defensible reason and had compounded
+  since: `scripts/check-core-baseline.mjs`'s header comment (wrong since AD38),
+  a workflow step name flagged three separate times (AD37, AD38, AF51) without
+  being fixed, README's stale `AD`/`AF` range (flagged once by AD35 with no
+  trigger and left for six further milestones), and a "workflow has run, once"
+  claim in ARCHITECTURE.md that was true when written and goes stale with every
+  subsequent run. **States the rule directly: a deferral must name a checkable
+  condition under which leaving the thing any longer stops being acceptable,
+  and how a future reader checks whether that condition already holds** — not
+  merely "flagged, not fixed." Cites AD24 `D-G` ("the first document that
+  visibly stutters on scroll, or takes more than a moment to mount") and AD39
+  Q5 ("if the first CI run shows the image already has them, this step can
+  simply be deleted") as the pattern already in use, and contrasts AD35's
+  flag-and-leave, which named no condition and so never actually came due.
+  Records that AD42 came closest to the general point — calling the same
+  workflow comment "a recurring STRUCTURAL COST... exerting pressure on
+  repository structure" — without generalizing it into a rule, which is the
+  gap this entry closes. Argues `check-core-baseline.mjs`'s comment is a
+  sharper failure than the other four: not stale drift but an **instruction to
+  say the wrong thing**, since it forbade the string that had been correct
+  since AD38. Authorizes a named follow-up — a suite asserting README's stated
+  `AD`/`AF` range against the true highest entry in each log — explicitly NOT
+  built in this PR, with its own trigger (the next time that range needs a
+  hand bump) so the deferral obeys the rule it states, and flags in advance
+  that building it will re-trip the exact "sixteenth suite" inversion AD37 and
+  AD38 each hit independently, so it is not rediscovered as a surprise a third
+  time. Measurements are **AF54**.

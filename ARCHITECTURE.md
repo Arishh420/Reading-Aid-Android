@@ -278,7 +278,7 @@ different indexing schemes wearing the same name.
   (`index.tsx:143`). They are equal only under this invariant, and a mismatch
   corrupts either scrolling or the resume percentage.
 
-**What guards it:** `src/reader/prepareDocument-headless-test.mjs` (35 checks)
+**What guards it:** `src/reader/prepareDocument-headless-test.mjs` (45 checks)
 exists for exactly this, and says so in its own docblock — it pins the
 conversion because a regression there "would render a plausible-looking document
 that paces or spaces wrongly, with nothing throwing". That is the only automated
@@ -469,9 +469,10 @@ Running only the first is a green result that has not been linted. Both run as
 separate steps on every pull request via
 `.github/workflows/static-and-suites.yml`, whose required check is named
 **`static-and-suites`** rather than `tests` precisely so a green tick cannot be
-read as the device coverage below. **That workflow has run, once, green** —
-PR #23's run, whose measurements are AF45 (AF44 records the file as parsed
-locally and nothing more, which was true when written).
+read as the device coverage below. **That workflow runs on every pull request
+and has been green since it first ran** — PR #23's run, whose measurements are
+AF45 (AF44 records the file as parsed locally and nothing more, which was true
+when written).
 
 **ESLint is the only static analysis that sees the 16 tracked `.mjs` files.**
 `tsc` covers `.ts`/`.tsx` only — the main `tsconfig.json` includes just those
