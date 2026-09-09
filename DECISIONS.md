@@ -3562,6 +3562,127 @@
   dispatch is therefore also the first test**, with no opportunity to rehearse
   it on the branch that introduces it.
 
+- **AD40 · The certificate-verification step's `apksigner` SELECTION is pinned
+  to the build-tools version AGP actually used for the build, read from the
+  same source AGP itself reads — not globbed for the highest version present
+  on the runner. The SHA-256 extraction and the multi-signer check are both
+  re-anchored on structurally stable substrings instead of exact wording.**
+  This is the fix for AD39's first-dispatch failure (run 34275986703), measured
+  in full as **AF52**; that entry is not restated here (AD18).
+
+  **Why the glob was wrong, stated as the finding that drove this entry.**
+  AF52 measured that the certificate step's `` sort -V | tail -1 `` glob and
+  the build step's own AGP resolution **disagree by default**: the `Assemble
+  the release APK` step's own log shows AGP resolved build-tools **36.0.0**
+  for the build, while the runner ships several further versions up to
+  **37.0.0** (GitHub's own `ubuntu-24.04` runner-images documentation), which
+  the glob — reaching for "whatever is highest" — actually selected. Neither
+  this repo nor I have ever exercised 37.0.0's `apksigner`. The workflow
+  therefore had two independent, never-reconciled opinions about which copy of
+  the same tool to trust, and the one it acted on was the untested one.
+
+  **The fix is not a hardcoded literal, and the reason is a genuine judgment
+  call with a rejected alternative — flagged as such per the project owner's
+  standing instruction, rather than folded silently into a bugfix.** Two
+  candidates were weighed:
+
+  1. **Read the effective build-tools version at CI time from
+     `node_modules/react-native/gradle/libs.versions.toml`**, which is the
+     exact file `ExpoRootProjectPlugin.kt:52` consults via
+     `versionCatalogs.getVersionOrDefault("buildTools", "35.0.0")` — the
+     identical resolution mechanism AD39 already uses to pin `ndkVersion` and
+     `cmake`, two lines away in that same file (`:56`). Reading it returned
+     **36.0.0** against this repo's `node_modules`, matching the CI run's own
+     printed value exactly (AF52). **Chosen.**
+  2. **A literal, in the `PINNED_NDK_VERSION`/`PINNED_CMAKE_VERSION` style
+     already in this workflow.** Rejected — and rejected on a different
+     ground than "inconsistent style," because the two cases are not actually
+     analogous. NDK and CMake must be **named before the build runs**, so
+     `sdkmanager` can install them: a real chicken-and-egg constraint that
+     forces a literal decided in advance. Build-tools selection for
+     *verification* has no such constraint — the build has already run and
+     already resolved its own version by the time this step executes, so
+     nothing needs deciding ahead of time; there is only a question of which
+     already-resolved value to read. A literal here would need a human to
+     notice and update it every time `react-native`'s bundled catalog value
+     changes (a bump this project does not control the timing of), and its
+     failure modes are **both worse** than a live read's: stale-and-absent
+     produces a misleading error naming the wrong culprit (blaming the
+     runner image for what is actually a stale pin); stale-and-present
+     produces a **silent** wrong-version check — reintroducing exactly this
+     bug, just pointed at a different untested version instead of the
+     runner's highest. A live read of the one source AGP itself consults
+     cannot diverge from what AGP used, by construction, so neither failure
+     mode is reachable.
+
+  **A third candidate — capture and parse the `Assemble the release APK`
+  step's own `- buildTools:` diagnostic line — was considered and rejected
+  outright.** That line is a decorative, ANSI-coloured console banner printed
+  by a third-party Gradle plugin (`expo-modules-autolinking`). Anchoring the
+  verification step's tool selection on *another* unversioned, free-text
+  console format is the identical hazard this whole fix removes from
+  `apksigner`, merely relocated to a second tool.
+
+  **Fail-closed, verified by local negative control (AF52).** With
+  `ANDROID_HOME` pointed at a path lacking the pinned version, the step now
+  fails immediately with `` ::error::apksigner not found for build-tools
+  <version> (the version this build used) at <path> -- the runner image does
+  not have it. `` and exits 1 before invoking `apksigner` at all — an
+  attributable failure naming the exact version expected, never a silent
+  substitution of whatever else happens to be present.
+
+  **The parsing hardening is independent of the version question and stands
+  on its own evidence.** AF52's adversarial variants — a colon immediately
+  after the signer ordinal, and a two-signer block using the same colon form
+  — are cases the **original** `^Signer #1 certificate SHA-256 digest:` /
+  `^Signer #2 ` anchors provably fail on (re-tested and confirmed empty on
+  both), independent of which build-tools version ever produced them. The
+  replacement keys on the `Signer #<N>` ordinal (tolerant of a following
+  colon or other punctuation, not only a space), the word "certificate" (so a
+  hypothetical future `Signer #1 public key SHA-256 digest:` line — a
+  **different** value — is never mistaken for the certificate digest), and a
+  bare 64-hex-character token, which is what actually distinguishes a
+  SHA-256 digest from the 40-char SHA-1 and 32-char MD5 lines on the
+  surrounding lines, independent of the English wording. **The empty-`ACTUAL`
+  guard, the positive equality check against `EXPECTED_UAT_CERT_SHA256`, and
+  that literal itself are all untouched** — re-verified after the edit.
+
+  **A permanent, unconditional diagnostic ships alongside the fix, on the
+  reasoning stated in AF52 and not restated here**: the raw `apksigner`
+  output has never once been visible in a run log, and a decorative
+  third-party console format — apksigner's included, per Google's own
+  build-tools release notes, which record exactly one change to it in this
+  tool's entire history — is not a surface anyone should have to
+  re-diagnose blind a second time.
+
+  **Classification, per the project owner's explicit ruling rather than my
+  own initial lean**: this is **not** filed as a seventh instance of the
+  self-inflicted, locally-reproducible instrument family FINDINGS.md already
+  tracks (AF44's two, AF48's one, AF50's one) — in every one of those, the
+  identical logic, re-run locally, revealed the bug outright. Here the
+  extraction is correct against every `apksigner` build available on this
+  machine; the defect is an **unpinned, never-exercised third-party
+  version** reached for by default. That is the same shape as two hazards
+  already on record: **AD35**'s reasoning for staying on ESLint 9 rather than
+  a transitive plugin set "never exercised at ESLint 10 in this repo," and
+  **AD38**'s standing concern that an anchor-based transform "fails silently
+  if a future template restructures" absent an explicit guard. Filing this as
+  the sixth family's seventh member would have attached the wrong lesson to
+  it.
+
+  **What this does NOT settle.** Whether build-tools 37.0.0's `apksigner`
+  output actually differs from 36.0.0's remains genuinely unconfirmed — AF52
+  states this plainly rather than resolving it by assumption from AOSP's
+  source or the release notes. The permanent diagnostic this entry adds is
+  what settles it, on whichever runner next selects a version this repo has
+  not already pinned to a known-good one.
+
+  **PENDING ACCEPTANCE CHECK.** Nothing here has run in CI. No
+  `workflow_dispatch` has exercised the pinned selection, the hardened
+  extraction, or the relaxed multi-signer check against a real runner. Same
+  shape as AD21's, AD22's, AD28's, AD30's, AD37's, AD38's and AD39's pending
+  checks, and it will produce its own `AF` entry.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -4207,3 +4328,35 @@
   first dispatch is also the first test, unrehearsable from this branch. Zero
   files under `src/` or `android/` changed and no CORE-DIVERGENCE.md row changed.
   Measurements are **AF51**.
+- 2026-09-09 — appended **AD40** on `fix/apksigner-cert-parse`, fixing AD39's
+  first-dispatch failure (run 34275986703, measured in full as **AF52**). The
+  certificate step's `apksigner` **selection** is pinned to the build-tools
+  version AGP actually used for the build — read from
+  `node_modules/react-native/gradle/libs.versions.toml`, the exact file
+  `ExpoRootProjectPlugin.kt` itself consults, the same mechanism AD39 already
+  uses for `ndkVersion`/`cmake` — rather than globbed for the runner's
+  highest available version, which AF52 measured disagreeing with AGP's own
+  36.0.0 by reaching for 37.0.0, a version never exercised anywhere in this
+  repo. A hardcoded literal in the `PINNED_NDK_VERSION` style was considered
+  and rejected: unlike NDK/CMake, which must be named before the build for
+  `sdkmanager` to install them, build-tools selection for verification has no
+  such constraint, so a literal would only add a second, human-maintained
+  copy of a value that already has one true source — with both of its
+  failure modes (stale-and-absent, stale-and-present) strictly worse than a
+  live read's. A third candidate, parsing Gradle's own decorative
+  `- buildTools:` diagnostic banner, was rejected outright for coupling to
+  another unversioned third-party console format. Fail-closed behaviour is
+  verified by local negative control. Independently, the SHA-256 extraction
+  and the multi-signer check are both re-anchored on structurally stable
+  substrings (an ordinal tolerant of trailing punctuation, the word
+  "certificate", a bare 64-hex-character token) rather than exact wording,
+  proven against real apksigner output plus adversarial variants the
+  original anchors provably failed; a permanent, unconditional diagnostic now
+  prints the raw certificate block on every run. The empty-`ACTUAL` guard,
+  the positive fingerprint comparison, and `EXPECTED_UAT_CERT_SHA256` are
+  untouched. Classified, per the project owner's ruling, as the **unpinned,
+  never-exercised third-party version** pattern (siblings: AD35's ESLint-9
+  reasoning, AD38's template-anchor concern) rather than a seventh instance
+  of the self-inflicted instrument family FINDINGS.md already tracks. Nothing
+  under `src/` or `android/` changed and no CORE-DIVERGENCE.md row changed.
+  The fix has not run in CI; that is this entry's pending acceptance check.
