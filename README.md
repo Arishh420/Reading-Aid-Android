@@ -211,7 +211,7 @@ npm run check
 That runs, in order: `tsc --noEmit` over the app; `tsc -p tsconfig.core.json`,
 the portability guard that typechecks `src/core/` in isolation with no DOM;
 `scripts/check-core-baseline.mjs`, the fork baseline check; and then **15
-headless suites — 396 checks** 🧪. Every suite esbuild-bundles real source and
+headless suites — 411 checks** 🧪. Every suite esbuild-bundles real source and
 asserts what it computes. Individual pieces: `npm run build`,
 `npm run check:baseline`, `npm run test:core` (8 suites, 125 checks),
 `npm run test:local` (7 suites, 271 checks).
@@ -280,7 +280,7 @@ teaches that are wrong here:
   `android`, `ios`, `web`, `build`, `build:core`, `test:core`, `test:local`,
   `test:all`, `check:baseline`, `check`, `lint` 🧪. Running it would have wiped
   the app.
-- **Do not set up Jest.** There are already 15 suites and 396 checks behind
+- **Do not set up Jest.** There are already 15 suites and 411 checks behind
   `npm run check` 🧪; they are plain `.mjs` files run by Node.
 - **`app.json` is not the whole config.** A root **`app.config.ts`** overlays
   it, and Expo resolves the dynamic one first 🧪. It returns `app.json`

@@ -104,3 +104,35 @@ export function countWords(blocks: PreparedBlock[]): number {
   }
   return max + 1;
 }
+
+/**
+ * The label for the reader's live word-index readout (AD42).
+ *
+ * Pure, and deliberately in this module rather than beside the component: it is
+ * the ONLY part of the readout a Node suite can execute, because the component
+ * itself needs React Native and a Reanimated worklet. Keeping the string
+ * formatting here means the branch that matters is tested and the untestable
+ * part is a one-line call.
+ *
+ * It is a WORKLET-SAFE pure function — the readout calls it on the UI thread
+ * inside `useAnimatedProps`, so it must do nothing but arithmetic and string
+ * concatenation. No closure over objects, no allocation beyond the result.
+ *
+ * `index` is the flat word index (invariant 1), 0-based, and is reported
+ * UNCLAMPED on purpose. This is a diagnostic readout: if the index ever ran
+ * past the end of the document, clamping would hide precisely the desync the
+ * readout exists to make visible.
+ *
+ * `wordCount === 0` returns a dash rather than `Word 0 / -1`. A zero-word
+ * document is reachable — a pasted `---`, a bare fence, or whitespace alone all
+ * parse to zero words, and `usePacer` clamps its index to 0 with
+ * `Math.max(0, firstWordlikeFrom(...))` — so without this branch the readout
+ * would claim a word 0 that does not exist (AF53).
+ */
+export const WORD_INDEX_NONE = '—';
+
+export function formatWordIndexLabel(index: number, wordCount: number): string {
+  'worklet';
+  if (wordCount <= 0 || index < 0) return WORD_INDEX_NONE;
+  return `Word ${index} / ${wordCount - 1}`;
+}

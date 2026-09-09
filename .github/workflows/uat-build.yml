@@ -170,11 +170,37 @@ jobs:
       - name: Confirm the UAT identity resolved
         run: |
           grep -q "applicationId 'com.arishh.readingaid.uat'" android/app/build.gradle
-          grep -q 'versionName "1.0.0-uat"' android/app/build.gradle
+
+          # The versionCode is captured BEFORE the versionName is checked, so the
+          # versionName assertion can be an EXACT cross-assertion that the two
+          # agree in the generated file. That ordering is the point: since AD41
+          # the versionName embeds the versionCode, and a prefix-only grep for
+          # `1.0.0-UAT-` would happily pass a build where the two disagree --
+          # which is the single failure the once-only computation in
+          # app.config.ts exists to prevent. Asserting the exact string is what
+          # makes this step catch it.
           VERSION_CODE=$(grep -m1 -E '^[[:space:]]*versionCode ' android/app/build.gradle | awk '{ print $2 }')
           test -n "$VERSION_CODE"
+
+          # The base comes from app.json, never re-literalled here. app.config.ts
+          # derives it from `config.version` for exactly this reason, and a
+          # second copy in this file would be a second copy that drifts the
+          # moment `expo.version` is bumped -- the duplication class this repo
+          # has recorded three times (AD2, AF8, AD26).
+          BASE_VERSION=$(node -p "require('./app.json').expo.version")
+          test -n "$BASE_VERSION"
+          VERSION_NAME="${BASE_VERSION}-UAT-${VERSION_CODE}"
+          if ! grep -q "versionName \"${VERSION_NAME}\"" android/app/build.gradle; then
+            echo "::error::versionName does not match the resolved versionCode." \
+                 "Expected versionName \"${VERSION_NAME}\". Actual:" \
+                 "$(grep -m1 -E '^[[:space:]]*versionName ' android/app/build.gradle | awk '{ print $2 }')"
+            exit 1
+          fi
+
           echo "UAT_RESOLVED_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "UAT_RESOLVED_VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "Resolved UAT versionCode: $VERSION_CODE"
+          echo "Resolved UAT versionName: $VERSION_NAME"
 
       # arm64-v8a only, and via -P rather than a file edit:
       # android/gradle.properties:30 documents this exact override in the
@@ -318,7 +344,7 @@ jobs:
           commit         ${GITHUB_SHA}
           run            #${GITHUB_RUN_NUMBER}
           versionCode    ${UAT_RESOLVED_VERSION_CODE}
-          versionName    1.0.0-uat
+          versionName    ${UAT_RESOLVED_VERSION_NAME}
           applicationId  com.arishh.readingaid.uat
           ABI            arm64-v8a only
           built          ${BUILT_AT}

@@ -3683,6 +3683,285 @@
   shape as AD21's, AD22's, AD28's, AD30's, AD37's, AD38's and AD39's pending
   checks, and it will produce its own `AF` entry.
 
+## Milestone: UAT build identity + the word-index readout
+
+- **AD41 · The UAT `versionName` now DERIVES from the versionCode that build
+  resolved — `1.0.0-UAT-29814999` — instead of the static literal `1.0.0-uat`.
+  The versionCode is computed ONCE and used twice, and the base version is read
+  from `app.json` rather than re-literalled anywhere. The workflow's identity
+  step becomes a CROSS-ASSERTION that the two agree, not merely a corrected
+  literal.** Release identity is untouched: root `expo.version` stays `1.0.0`
+  and `app.json` is not edited at all.
+
+  **The defect.** `app.config.ts` set `android.version` to the constant
+  `1.0.0-uat`, so **every** UAT build reported the same string in Settings → App
+  info. With CI now producing UAT builds (AD39) and the project owner also
+  building them by hand (AF49), one build was indistinguishable from another on
+  the phone — while the `versionCode` that actually distinguishes them
+  (minutes since the epoch, AD37 Q2) was invisible to a human.
+
+  **COMPUTED ONCE IS THE WHOLE CORRECTNESS ARGUMENT, and it is why this is not a
+  one-line change.** `uatVersionCode()` reads the clock. Calling it twice — once
+  for the code, once for the name — could land the two calls either side of a
+  minute boundary and produce a versionName that disagrees with the versionCode.
+  **That is strictly worse than the static string it replaces:** a stale literal
+  is obviously uninformative, whereas a number that is precise and wrong looks
+  authoritative. So the value is resolved into a `const` at the top of the UAT
+  branch and both fields read it.
+
+  This is pinned by a suite check rather than by a comment. `Date.now` is stubbed
+  to advance **a full minute on every call**, so a second read would provably
+  shift the counter; the suite asserts both that the clock is read exactly once
+  and that the versionName equals `` `1.0.0-UAT-${versionCode}` `` for whatever
+  value came out. **The negative control was run before the green result was
+  believed** (AF21, AD29, AD31, AD37 precedent): splitting the single call back
+  into two failed **exactly those two checks and no others** (AF53).
+
+  **The base version is READ, not re-literalled — in both places.**
+  `uatVersionName` takes `config.version ?? '1.0.0'`, so `app.json`'s
+  `expo.version` is the single source and the two cannot drift. The same
+  reasoning then had to be applied to the workflow, and this is worth recording
+  because the first draft got it wrong: the identity step originally built the
+  expected string from a hardcoded `1.0.0-UAT-`, which would have been a second
+  copy of `expo.version` in a second file — the exact duplication class this repo
+  has recorded three times (AD2's `settings-defaults.ts`, AF8's hand-copied
+  `exclude` list, AD26's hand-copied theme values). It now reads the base with
+  `node -p "require('./app.json').expo.version"`. Writing an anti-duplication
+  comment into one file and then duplicating the value into another would have
+  been a self-refuting change.
+
+  **THE IDENTITY STEP IS NOW A CROSS-ASSERTION, and the reorder is the point —
+  not incidental tidying.** `.github/workflows/uat-build.yml`'s
+  `Confirm the UAT identity resolved` step previously grepped
+  `versionName "1.0.0-uat"` and *then* captured the versionCode. The order is
+  reversed: the versionCode is captured first, so the versionName assertion can
+  be an **exact** equality against `` "${BASE_VERSION}-UAT-${VERSION_CODE}" ``.
+
+  A prefix-only grep for `1.0.0-UAT-` would have been sufficient to stop the
+  build going red, and it was rejected: **it would pass a build in which the name
+  and the code disagree**, which is precisely and only the failure the
+  once-only computation exists to prevent. So the step does not merely tolerate
+  the new format — it verifies the invariant the format introduces, in the
+  generated file, where it matters. It fails with an `::error::` naming both the
+  expected and the actual string, so a red run is attributable without a rerun.
+
+  This preserves AD39 Q2b's framing rather than disturbing it: that step exists
+  to catch **wrong identity, right key**, the mirror image of what the
+  certificate assertion catches. It now catches one more thing in the same class
+  — a self-inconsistent identity — and it remains a different assertion from the
+  certificate one, neither subsuming the other.
+
+  **The release notes are fixed for the same reason, and it is a defect fix
+  rather than scope creep.** The notes body carried the literal
+  `versionName    1.0.0-uat`. **AD39 Q3 makes the notes authoritative** — the
+  `uat` tag goes stale by design, so the notes are the field a reader is told to
+  trust, and their own closing paragraph says so. A wrong versionName there is
+  therefore a defect by AD39's own design, not cosmetics. The step now exports
+  `UAT_RESOLVED_VERSION_NAME` to `$GITHUB_ENV` alongside the versionCode, and the
+  notes interpolate it — so, exactly as AD39 Q2b says of the versionCode, the
+  notes report **what was actually built rather than what was intended**.
+
+  **Scope.** `app.config.ts`, its suite, and two edits to `uat-build.yml` —
+  which is the file the change is *about*, not an unrelated workflow. No file
+  under `src/core/` or `android/` changed, no CORE-DIVERGENCE.md row changed,
+  and `plugins/withReleaseSigning.ts` and
+  `.github/workflows/static-and-suites.yml` were not touched.
+
+  **Alternatives rejected.** (a) *A build-number suffix independent of the
+  versionCode* (a date stamp, a run number) — rejected because it would be a
+  second sequence to reconcile against the one Android actually enforces, which
+  is AD36's whole finding; the versionCode is already the unique per-build
+  number, so anything else is a duplicate identity. (b) *Putting the versionCode
+  in the launcher label instead* — rejected as it burns the one distinguishing
+  channel `BETA Reading Aid` already uses, and AF49 measured that label already
+  truncating to `BETA Readin…`.
+
+  **PENDING ACCEPTANCE CHECK — nothing here has run a prebuild or a CI job.**
+  The versionName is proven by the overlay's suite through both loader paths and
+  by a functional replay of the identity step's own shell against synthetic
+  `build.gradle` files (AF53); it has **not** been produced by
+  `expo prebuild`, and no `workflow_dispatch` has run. Same shape as AD21's,
+  AD22's, AD28's, AD30's, AD37's, AD38's, AD39's and AD40's pending checks, and
+  the next UAT build is what closes it.
+
+- **AD42 · The reader shows a live word-index readout directly above the
+  transport button, driven by `useAnimatedProps` writing a `TextInput`'s `text`
+  prop from the UI thread. The index is NEVER React state, so a pacer tick still
+  re-renders nothing. Its only testable half — the label string — is a pure
+  function in `prepareDocument.ts`; the component itself has no behavioural
+  coverage and cannot have any.** This is a scope addition beyond AD19/AD23,
+  requested by the project owner after the UAT pipeline went live, and it is
+  recorded rather than folded into either. AD19's single-control scope is
+  undisturbed: WPM remains the only *setting*, and this is a readout, not a
+  control.
+
+  **The product reason.** With CI-built UAT APKs now on the phone (AD39, AF49),
+  the project owner wanted to see which word the pacer is on — a diagnostic the
+  reading surface itself cannot give, because the highlight tells you *where* but
+  not *which number*, and every `AF` entry that discusses position talks in flat
+  indices.
+
+  ### The constraint, and the two designs it kills
+
+  CLAUDE.md invariant 2 forbids re-rendering the document tree on the
+  per-pacer-tick path, and guard 2 forbids the index becoming React state.
+  **What makes that bite harder here than it first appears: nothing in `src/` is
+  memoised** — measured, zero `memo(` or `React.memo` anywhere — so a re-render
+  of the reader screen re-reconciles `ReaderSurface` → `BlockView` → **every**
+  `WordBox`. `ReaderSurface`'s `useMemo`s save the per-document *computation*,
+  not the reconciliation. React Compiler is enabled (`app.json` →
+  `experiments.reactCompiler`), but AD21 records its parent-render cascade
+  behaviour as measured nowhere ❓, so it cannot be relied on to prevent this.
+
+  - **`useState` in the reader screen, throttled or not — REJECTED.** At 1 Hz it
+    is still a full-document reconciliation every second. Throttling changes the
+    frequency of the cliff, not the fact of it. A throttled readout, or one
+    updating only on pause and tap, were both available and are not needed,
+    because the live version below violates nothing.
+  - **A leaf component holding its own `useState` from `pacer.subscribe` —
+    REJECTED, and this is the closer call.** It is React-sound: a leaf re-render
+    does not touch its siblings, so the document tree would not reconcile. It is
+    rejected on two grounds. ARCHITECTURE.md §4 states the rule without
+    qualification — "Do not put the current index into React state, or into a
+    prop, or into context" — and §1 records "no `useState` anywhere in
+    `src/reader/`" as a **measured property** of the tree; spending a stated
+    invariant and a measured property on a readout is a bad trade. And it would
+    still run the React reconciler on the tick path, at up to ~16 Hz at 1000 WPM,
+    to no benefit over the mechanism actually chosen.
+
+  ### The mechanism, and why it is not one of AD21's dead ones
+
+  `Animated.createAnimatedComponent(TextInput)` with
+  `useAnimatedProps(() => ({ text, defaultValue: text }))` and
+  `editable={false}`. **AD21 retired two mechanisms and this is neither** — and
+  in both cases it is AD21's *own* argument that makes this one work:
+
+  - **Not `setNativeProps`.** AD21 established that React Native's instance
+    method is unavailable under the New Architecture, which Expo SDK 55+
+    mandates. This is not that. `useAnimatedProps` is literally
+    `useAnimatedStyle(updater, deps, adapters, true)` — one line at
+    `hook/useAnimatedProps.js:8` — and on native both land on the same
+    `global.UpdatePropsManager.update(...)` (`updateProps/updateProps.js`), the
+    `isAnimatedProps` flag only skipping the style-props builder. **So this is
+    the identical UI-thread machinery AF32 proved on physical hardware for the
+    highlight**, not a second mechanism requiring its own device proof. That
+    equivalence is the strongest thing this entry rests on.
+  - **Not animated nested `Text`.** AD21's reason that nested text cannot be
+    animated is that "`Text`'s children are separate nodes rather than props".
+    `text` is a genuine **prop** of `TextInput`. The exception AD21 identified is
+    exactly the door this goes through.
+
+  **Vendor corroboration in the pinned version, not from documentation.**
+  Reanimated 4.5.1 ships this pattern itself: `component/PerformanceMonitor.js`
+  drives a live FPS counter with `createAnimatedComponent(TextInput)` and
+  `useAnimatedProps(() => ({ text, defaultValue: text }))`, `editable: false`.
+  Reanimated 4.x supports only the New Architecture, so that is first-party use
+  of the mechanism **in the version this app pins, on the architecture it
+  ships**. `defaultValue` is set alongside `text` for the same reason it is there:
+  the input is uncontrolled and `defaultValue` is what gives it a value before
+  the first UI-thread write. Measurements are **AF53**.
+
+  **One real addition to the hot path, recorded rather than glossed.** The
+  readout's worklet **allocates** — a new string per tick. ARCHITECTURE.md §4 now
+  lists it as a sixth executing item and says so. It is one small string against
+  the N per-word integer comparisons already there, and it travels the same
+  `UpdatePropsManager` path, so it does not change the *shape* of the path. But
+  "the tick path allocates nothing" would no longer be true and is not claimed.
+
+  ### The number shown, and the two edge cases
+
+  **0-based, unclamped, and the flat word index — `Word 42 / 175`.** The ruling
+  was to keep it 0-based because it must agree with invariant 1, with the
+  integer seam, and with every `AF` entry that quotes a position; a diagnostic
+  readout that disagreed with the logs would be worse than one that reads
+  slightly less naturally. Invariant 1 was re-measured for this change rather
+  than assumed: `Number(Word.id)` equals the flat array position for **all 176**
+  words of the seeded sample (AF53). `Word.id` is a **string**, so the readout
+  reads the numeric shared value, never `id` — `number === string` is always
+  false in JS, the trap ARCHITECTURE.md §3.1 already names.
+
+  **Unclamped on purpose.** If the index ever ran past the end, clamping would
+  hide precisely the desync the readout exists to expose. The suite pins this,
+  and a negative control confirmed that adding a clamp fails that check alone.
+
+  **A ZERO-WORD DOCUMENT IS REACHABLE, and this is the branch that matters.**
+  Measured: a pasted `---`, a bare code fence, or whitespace alone all parse to
+  **zero** words — and `usePacer` seeds its index with
+  `Math.max(0, firstWordlikeFrom(words, 0))`, which **clamps -1 to 0**. So
+  without a guard the readout would print `Word 0 / -1` for a document
+  containing no word at all, claiming a word that does not exist. It reads `—`
+  instead. `draft.trim()` does not prevent this: `'---'` trims to `'---'`.
+  A punctuation-only document (`...`) is deliberately *not* in that branch — it
+  has one real token, so `Word 0 / 0` is truthful.
+
+  **Before playback it reads `Word 0 / 175`** for the sample, because
+  `indexRef` initialises to the first word-like token, measured as 0.
+
+  ### Where the code lives, and the cost accepted
+
+  `formatWordIndexLabel` goes in **`src/reader/prepareDocument.ts`**: already
+  React-Native-free, already bundled by its own suite, and named in
+  CORE-DIVERGENCE.md's *exclusion prose* rather than in rows 1-26, so editing it
+  costs no manifest row. That suite's stated purpose is the flat index reaching
+  the UI unambiguously, which is exactly what the formatter does. It carries a
+  `'worklet'` directive, since it is called on the UI thread.
+
+  **The accessibility cost is real and is recorded, not glossed.** A `TextInput`
+  announces to a screen reader as an **editable field**, not a heading. Mitigated
+  structurally — `accessibilityRole="header"` on the wrapper,
+  `accessibilityRole="text"` on the input — but **that mitigation is a read of
+  React Native's accessibility mapping and has never been exercised with
+  TalkBack** ❓. AD21 already accepted a screen-reader cost on this surface
+  (N elements rather than one paragraph), so this is consistent with the reading
+  surface rather than a new kind of compromise. `pointerEvents="none"` is not
+  cosmetic: without it the field could take a touch belonging to the transport
+  button directly beneath it.
+
+  ### WHY THE SUITE COUNT STAYS AT 15 — and it is a constraint, not convenience
+
+  Recorded at the project owner's direction, so a future reader does not undo it
+  believing the suites were merged for tidiness.
+
+  The convention in this repo is one suite beside its subject, so a new pure
+  module would normally earn a sixteenth. It does not, and the reason is
+  **`.github/workflows/static-and-suites.yml:57`**, whose comment reads
+  `never "16 suites"`. A sixteenth suite would make that comment **actively
+  wrong** — and that file was out of scope for this change, so the remedy AD38
+  used was unavailable. AD38 faced this exact situation with lines 56-57 and the
+  project owner ruled then that letting a stale string become actively wrong
+  warranted a comments-only edit. **Here the same ruling cannot be applied,** so
+  the honest move is not to manufacture the wrongness: the checks were added to
+  two existing suites instead — `app.config-headless-test.mjs` and
+  `prepareDocument-headless-test.mjs` — and the tally moves **396 → 411 checks
+  across the same 15 suites**.
+
+  **This is now a recurring STRUCTURAL COST of that comment living in a file
+  that changes are routinely fenced off from.** It has bitten three times:
+  AD37 and AD38 each had to **invert rather than increment**
+  ARCHITECTURE.md §5's wording because the string it forbade had become the
+  correct one, AF51 flagged line 6 and line 64 as stale and unfixable in scope,
+  and it has now **influenced where test code is placed** rather than merely
+  requiring a doc edit. That is a materially worse failure mode than a stale
+  comment: a CI comment is now exerting pressure on repository structure. The
+  right fix is to stop encoding a live count in that file at all — but that is a
+  change to `static-and-suites.yml` and therefore its own decision, not this
+  one.
+
+  A second, independent reason the placement is defensible rather than merely
+  forced: `prepareDocument-headless-test.mjs`'s docblock already declares its
+  subject to be the flat index reaching the UI without ambiguity, and a
+  formatter that renders that index is squarely within it.
+
+  ### PENDING ACCEPTANCE CHECK — the readout has never been seen
+
+  Nothing here ran on a device or an emulator. `tsc` and ESLint pass, the pure
+  formatter is covered by ten checks with two negative controls, and the
+  mechanism's equivalence to the proven highlight path is a **structural read of
+  Reanimated's source** (AF53). Unverified until a device run: that the readout
+  updates at all, that it updates with **no** React render (the property AF32
+  measured for the highlight, not yet for this), how it looks above the button,
+  and how it announces to TalkBack. The next UAT build is what closes it.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -4360,3 +4639,87 @@
   of the self-inflicted instrument family FINDINGS.md already tracks. Nothing
   under `src/` or `android/` changed and no CORE-DIVERGENCE.md row changed.
   The fix has not run in CI; that is this entry's pending acceptance check.
+- 2026-09-09 — appended **AD41-AD42** on `feature/uat-version-and-word-index`,
+  opening a milestone for UAT build identity plus the word-index readout. This
+  is the first branch cut from `dev` rather than `main` under the three-level
+  branching model, and its pull request targets `dev`. **AD41** replaces the
+  static UAT `versionName` literal `1.0.0-uat` with a derivation from the
+  versionCode that build resolved — `1.0.0-UAT-29814999` — so a tester can tell
+  one UAT build from another in Settings → App info, which they previously could
+  not, even though the versionCode already distinguished them. **The whole
+  correctness argument is that the versionCode is computed ONCE**: two reads of
+  the clock inside `uatVersionCode()` could straddle a minute boundary and yield
+  a versionName that disagrees with the versionCode, which is **strictly worse
+  than the stale literal it replaces** — a precise, authoritative-looking number
+  that is wrong. It is pinned by a suite check that stubs `Date.now` to advance
+  a **full minute on every call**, and the negative control (splitting the call
+  back in two) failed **exactly those two checks and no others** before the
+  green run was believed. The base version is **read** from `app.json`, not
+  re-literalled — and this had to be applied in **two** places, because the
+  first draft of the workflow built the expected string from a hardcoded
+  `1.0.0-UAT-`, which would have been a second copy of `expo.version` in a
+  second file: the duplication class this repo has recorded three times (AD2,
+  AF8, AD26), and self-refuting in a change whose own comment forbids it. **The
+  identity step became a CROSS-ASSERTION rather than a corrected literal**, per
+  the project owner's ruling: the versionCode is captured **first** so the
+  versionName can be asserted **exactly**, because a prefix-only grep for
+  `1.0.0-UAT-` would pass a build where name and code disagree — precisely and
+  only the failure the once-only computation exists to prevent. It preserves
+  AD39 Q2b's framing (wrong identity, right key) and adds a self-inconsistent
+  identity to the same class. `uat-build.yml:321`'s notes literal is fixed for
+  the same reason and by the same ruling: **AD39 Q3 makes the notes
+  authoritative** — the `uat` tag goes stale by design — so a wrong versionName
+  there is a defect by AD39's own design, and the step now exports
+  `UAT_RESOLVED_VERSION_NAME` so the notes report what was built rather than
+  what was intended. **AD42** adds a live word-index readout above the transport
+  button. **Two designs are rejected on invariant 2**, and the constraint bites
+  harder than it looks because **nothing in `src/` is memoised** (measured: zero
+  `memo(`), so any re-render of the reader screen re-reconciles every
+  `WordBox` — `useMemo` saves the per-document computation, not the
+  reconciliation, and React Compiler's cascade behaviour is measured nowhere
+  (AD21 ❓). So `useState` in the screen is out at **any** frequency, throttled
+  included; and a leaf-local `useState`, though React-sound, is rejected because
+  ARCHITECTURE.md §4 forbids the index becoming state without qualification and
+  §1 records "no `useState` anywhere in `src/reader/`" as a **measured
+  property** — a bad trade for a readout. The mechanism is `useAnimatedProps`
+  writing a `TextInput`'s `text` prop, and **it is neither of AD21's dead
+  mechanisms, in both cases because of AD21's own argument**: it is not
+  `setNativeProps` (`useAnimatedProps` is literally
+  `useAnimatedStyle(..., true)` and lands on the same
+  `global.UpdatePropsManager.update(...)` — **the identical UI-thread machinery
+  AF32 proved on physical hardware**, not a second mechanism needing its own
+  proof), and it is not animated nested `Text` (AD21's reason was that "`Text`'s
+  children are separate nodes rather than props", and `text` **is** a prop).
+  Corroborated in the pinned version rather than from documentation: Reanimated
+  4.5.1's own `PerformanceMonitor` drives a live FPS counter with exactly this
+  pattern, and 4.x is New-Architecture-only. **One real addition to the hot path
+  is recorded rather than glossed**: the worklet allocates a string per tick, so
+  ARCHITECTURE.md §4 lists it as a sixth executing item and "the tick path
+  allocates nothing" is no longer claimed. The number is **0-based, unclamped,
+  and the flat word index** (`Word 42 / 175`) — 0-based so it agrees with
+  invariant 1, the seam and every `AF` entry, unclamped so a desync is visible
+  rather than masked. Invariant 1 was **re-measured**, holding for all 176
+  sample words, and `Word.id` being a string is why the readout reads the
+  numeric shared value. **A zero-word document is reachable** — a pasted `---`,
+  a bare fence or whitespace alone all parse to zero words, and `usePacer`
+  clamps -1 to 0 — so the readout would otherwise have claimed a `Word 0` that
+  does not exist; it reads `—`. `formatWordIndexLabel` lives in
+  `prepareDocument.ts` (React-Native-free, already suite-bundled, excluded from
+  manifest rows 1-26), and the component **has no behavioural coverage and
+  cannot have any**, which ARCHITECTURE.md §6.2 now states with its reason. The
+  accessibility cost is recorded, not glossed: a `TextInput` announces as an
+  editable field, and the `accessibilityRole` mitigation is a structural read
+  never exercised with TalkBack ❓. **The suite count deliberately stays at
+  15** — checks added to two existing suites, 396 → 411 — because a sixteenth
+  would make `static-and-suites.yml:57`'s `never "16 suites"` comment **actively
+  wrong** in a file this change could not edit, the AD38 situation without
+  AD38's remedy available. AD42 records that this is now a **recurring
+  structural cost** of a live count living in that file: it has forced two
+  invert-rather-than-increment doc rewrites (AD37, AD38), left two strings
+  flagged-and-unfixable (AF51), and has now influenced **where test code is
+  placed** — a CI comment exerting pressure on repository structure, which is a
+  worse failure mode than a stale string and whose real fix is its own decision.
+  **Nothing was prebuilt, built, installed or run on a device**; both entries
+  carry pending acceptance checks closed by the next UAT build. Zero files under
+  `src/core/` or `android/` changed and no CORE-DIVERGENCE.md row changed.
+  Measurements are **AF53**.
