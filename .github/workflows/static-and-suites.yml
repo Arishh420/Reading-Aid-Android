@@ -3,7 +3,7 @@
 # why lint runs last.
 #
 # The name is deliberate and must not become `tests` or `build`. A green tick
-# here means tsc passed, the fork baseline matched, 14 headless suites passed
+# here means tsc passed, the fork baseline matched, 15 headless suites passed
 # and lint was clean. It means NOTHING about the device behaviour this repo
 # depends on -- the highlight mechanism, the pacer clock, auto-scroll, MMKV,
 # release-mode Hermes. ARCHITECTURE.md §6 lists what has no automated coverage,
@@ -61,7 +61,7 @@ jobs:
       - name: Headless suites — src/core/ (8 suites)
         run: npm run test:core
 
-      - name: Headless suites — local (5 suites)
+      - name: Headless suites — local (7 suites)
         run: npm run test:local
 
       # Last on purpose: a lint failure must never mask a behavioural one.

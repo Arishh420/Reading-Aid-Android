@@ -3725,6 +3725,125 @@
      raw-`.ts`-evaluation path remains unexercised, exactly as AF48 and AF50
      left it ❓.
 
+## The baseline-check comment wasn't stale, it was inverted — and a scoped sweep missed it on two different axes
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, by reading the tracked files directly and by **running the
+> real suites** (`npm run test:core`, `npm run test:local`) rather than trusting
+> any prior document's stated count. No prebuild, Gradle build, emulator, device
+> or install was run, so this section carries **no 👁 at all**, like
+> AF44/AF47/AF48/AF50/AF51/AF52/AF53. The decision taken in response is **AD43**;
+> nothing from that entry is restated here (AD18).
+
+- **AF54 · `scripts/check-core-baseline.mjs`'s header comment was not stale, it
+  was INVERTED — it forbade the exact string that has been correct since
+  AD38.** Its docblock read "The fourteen `*-headless-test.mjs` suites... it is
+  reported separately for that reason — '14 suites plus 1 baseline check', never
+  '15 suites'." **Fifteen is the count, and has been since AD38** — the entry
+  that added the signing-config-plugin suite and, in the same change, inverted
+  `ARCHITECTURE.md`'s equivalent wording from "14, never 15" to "15, never 16."
+  This file's own docblock was not updated in that change and so was left
+  reading the opposite of true: not a fact that aged, an instruction that was
+  wrong from the moment it was written and stayed wrong through AD39, AD40,
+  AD41 and AD42 — five milestones during which `npm run check` ran green every
+  time, because the comment asserts nothing the check verifies. **Stale is a
+  gap in the record. This was an instruction to be wrong**, and nothing short
+  of a person reading the file against the real count would ever have caught
+  it — which is exactly what happened here, and only here, this session.
+
+  **The pattern, and it is the substance of this entry more than any one
+  string: two different sweeps, on two different axes, each scoped to
+  whichever number had just moved, and each blind to the other axis.**
+  - **Axis 1 — how many suites exist.** This count moved 13 (AD31) → 14 (AD37)
+    → 15 (AD38). Every sweep that followed one of those moves updated
+    `ARCHITECTURE.md`'s prose (AD37, AD38 both record inverting it) and the
+    workflow's own "15 suites... never 16" comment (also caught). What it
+    missed, on **both** of the last two moves, was `scripts/check-core-baseline.mjs`'s
+    identical claim in its own docblock, and the workflow's step name at
+    `static-and-suites.yml:64` and header comment at `:6` — flagged as wrong in
+    AD37, flagged again in AD38, flagged a **third** time in AF51 (which also
+    found the line-6 instance nobody had recorded until then), and never
+    actually fixed until this session.
+  - **Axis 2 — how many individual checks the suites assert.** This count moved
+    396 → 411 in the very next milestone after AD38 (AD41/AD42, adding checks
+    to two existing suites rather than a sixteenth). That sweep, being scoped
+    to the check-count axis, correctly updated `ARCHITECTURE.md`'s per-tier
+    table at §6 (`125 (17+18+14+9+15+14+12+26)` / `286 (52+39+20+73+27+45+30)`
+    — **re-verified live this session by actually running both suite sets**,
+    matching exactly) — but missed two **prose** mentions of the same numbers
+    elsewhere: `README.md`'s `` `npm run test:local` (7 suites, 271 checks) ``,
+    where the **suite count (7) was already correct** and only the check count
+    was the pre-AD42 figure (396 − 125 = 271, current is 411 − 125 = **286**);
+    and `ARCHITECTURE.md`'s own §3.1, `` `prepareDocument-headless-test.mjs`
+    (35 checks) ``, where AD42's own change added ten checks to that exact
+    suite and the §6 table three hundred lines below picked it up while this
+    isolated citation of the same suite did not — live run confirms
+    **45 checks**, not 35.
+  - **Axis 3 — how many decisions/findings exist.** README's document table
+    stating `AD1`–`AD39` / `AF1`–`AF51` was flagged once, by AD35, as already
+    stale and "left for its own edit" with no condition named for when that
+    edit would happen. It never came due on its own and was found again here
+    only because this session re-measured the true maxima directly —
+    `grep -oE "AD[0-9]+" DECISIONS.md | sort ... | tail` and the equivalent for
+    `AF`, rather than reading the README's own claim — and found **AD42** and
+    **AF53** as the live maxima, not AD39/AF51.
+
+  **The generalisable lesson is the method that surfaced axis 2's two sites,
+  because neither was named in the task that started this session.** A keyword
+  sweep for a string already suspected of being wrong (`"14 suites"`, a stale
+  `AD`/`AF` range) only ever catches that string. It was **running the actual
+  suites and diffing every prose mention of a suite or check count against the
+  live result** — not grepping for an already-known-bad pattern — that
+  surfaced the README and ARCHITECTURE check-count sites, which nobody had
+  flagged, in this same session, on the first pass. Four separate PRs
+  (spanning AD35, AD37, AD38, and AF51) each fixed or flagged the specific
+  string their own change had just made newly wrong, and none of them re-ran
+  the suites to check whether some *other* number, moved by an *earlier*
+  change, was also still wrong.
+
+  **All seven corrected sites, listed for completeness — rationale for each is
+  AD43 and is not restated here (AD18):**
+  1. `scripts/check-core-baseline.mjs:4,7,8` — "fourteen" → "fifteen"; "14
+     suites" → "15 suites"; never-"15 suites" → never-"16 suites". **The
+     inverted one**, and the one this entry leads with.
+  2. `.github/workflows/static-and-suites.yml:6` — "14 headless suites" → 15.
+  3. `.github/workflows/static-and-suites.yml:64` — step name `(5 suites)` →
+     `(7 suites)`, closing the flag AD37 opened and AD38 and AF51 each
+     repeated without resolving.
+  4. `README.md:256-257` — `` `AD1`–`AD39` `` / `` `AF1`–`AF51` `` →
+     `` `AD1`–`AD43` `` / `` `AF1`–`AF54` ``, closing the flag AD35 opened
+     with no trigger.
+  5. `README.md:217` — test:local subtotal, `271 checks` → `286 checks` —
+     found in this session, not named in the originating task.
+  6. `ARCHITECTURE.md:281` — `prepareDocument-headless-test.mjs` suite count,
+     `35 checks` → `45 checks` — found in this session, not named in the
+     originating task.
+  7. `ARCHITECTURE.md:472` — "That workflow has run, once, green" reworded to
+     "runs on every pull request and has been green since it first ran," an
+     evergreen form that does not require a future edit merely because the
+     workflow ran again.
+
+  **Verification, run rather than trusted.** `npm run test:core`:
+  17+18+14+9+15+14+12+26 = **125**, unchanged. `npm run test:local`:
+  52+39+20+73+27+45+30 = **286**, unchanged — this is the live figure that
+  exposed sites 5 and 6 above, since it disagreed with what both README and
+  ARCHITECTURE's §3.1 stated before this session's edits. Total **411**,
+  matching `ARCHITECTURE.md` §6's table and `README.md`'s top-line figure,
+  both of which were already correct and needed no edit. `npm run check` and
+  `npm run lint` were re-run clean after all edits (see this session's
+  verification output). No file under `src/`, `android/` or `plugins/`
+  changed; no `CORE-DIVERGENCE.md` row changed; `DECISIONS.md` and
+  `FINDINGS.md` were only appended to, never rewritten.
+
+  **What this does NOT do.** It does not build the self-correcting range-check
+  suite AD43 authorizes as a named follow-up — that stays out of scope for
+  this PR, by direction, with its own trigger recorded in AD43 rather than
+  here (AD18). It does not re-audit every other cross-document count or range
+  claim in either log's historical entries — those are append-only and
+  correctly frozen as true-when-written; only the **mutable** documents
+  (README.md, ARCHITECTURE.md, the workflow file, the baseline script) were in
+  scope, because only they claim to describe **current** state.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -4470,3 +4589,26 @@
   not been produced by a prebuild, the accessibility mitigation is a structural
   read with no screen reader run, and the string the worklet allocates per tick
   is unmeasured. Decisions are **AD41** and **AD42**.
+- 2026-09-09 — appended **AF54** on `docs/count-and-range-drift`. Leads with
+  `scripts/check-core-baseline.mjs`'s header comment: not stale, **INVERTED** —
+  it forbade "15 suites" while fifteen has been the correct count since AD38,
+  an instruction to say the wrong thing rather than a fact that aged, and it
+  survived that way through AD39-AD42 because nothing behavioural depends on a
+  comment. Frames the wider finding as **two sweeps missing two different
+  axes**: the suite-count axis (13→14→15 across AD31/AD37/AD38) was chased
+  through `ARCHITECTURE.md` and the workflow's own "never 16 suites" line each
+  time, but missed this script's docblock on both moves and left the
+  workflow's step name flagged three separate times (AD37, AD38, AF51) without
+  ever being fixed; the check-count axis (396→411 at AD41/AD42) was chased
+  through `ARCHITECTURE.md` §6's table correctly but missed two **prose**
+  citations of the same numbers — `README.md`'s test:local subtotal (271,
+  should be 286) and `ARCHITECTURE.md` §3.1's citation of
+  `prepareDocument-headless-test.mjs`'s own count (35, should be 45) — **found
+  independently in this session by running the real suites and diffing every
+  prose mention against the live result**, rather than by grepping for an
+  already-suspected string. A third axis, the `AD`/`AF` range, was flagged
+  once by AD35 with no trigger named and stayed wrong for six milestones.
+  Corrects all seven sites. Verification: `npm run test:core` **125**
+  (17+18+14+9+15+14+12+26), `npm run test:local` **286**
+  (52+39+20+73+27+45+30), total **411** — matching every figure that was
+  already correct and none that was not. Decisions are **AD43**.
