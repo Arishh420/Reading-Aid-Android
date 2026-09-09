@@ -3488,6 +3488,243 @@
   4. **Nothing here touches `src/`, `android/`, or any CORE-DIVERGENCE.md
      row.** Only `.github/workflows/uat-build.yml` changed.
 
+## The word-index readout, a reachable zero-word document, and the same dotfile trap twice
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, in this tree — against the installed
+> `react-native-reanimated@4.5.1`, the real parser over the real seeded sample,
+> Node's own TypeScript stripper, and a functional replay of the UAT workflow's
+> identity step against synthetic Gradle files. **No prebuild, Gradle build,
+> emulator, device or install was run**, and none is claimed. This section
+> therefore carries **no 👁 at all**, like AF45/AF47/AF48/AF50/AF51/AF52, and
+> nothing in it is behavioural evidence about the app on hardware. The decisions
+> are **AD41** and **AD42**; neither is restated here (AD18).
+
+- **AF53** 🧪📐 — **`useAnimatedProps` is the SAME machinery as the highlight
+  AF32 proved on hardware, so the readout needs no second mechanism proof — and
+  a zero-word document turns out to be reachable, which the readout had to be
+  designed around.**
+
+  ### The mechanism, established by reading the pinned library rather than its docs
+
+  Three measurements, and the second is the load-bearing one:
+
+  1. **Reanimated 4.5.1 ships this exact pattern itself.**
+     `node_modules/react-native-reanimated/lib/module/component/PerformanceMonitor.js:42`
+     is `createAnimatedComponent(TextInput)`, driving a live FPS number through
+     `useAnimatedProps(() => ({ text, defaultValue: text }))` with
+     `editable: false` 🧪. Reanimated 4.x supports only the New Architecture
+     (AD21), so this is **first-party use of the mechanism in the version this
+     app pins, on the architecture it ships** — not a community pattern and not
+     vendor prose.
+  2. **`useAnimatedProps` IS `useAnimatedStyle`.**
+     `lib/module/hook/useAnimatedProps.js:8` is, in full,
+     `useAnimatedStyle(updater, deps, adapters, true)` 📐. On native both then
+     land on the same `global.UpdatePropsManager.update(viewDescriptors, ...)`
+     (`lib/module/updateProps/updateProps.js`), the `isAnimatedProps` flag only
+     skipping the style-props builder — correctly, since `text` is not a style
+     prop 📐. **So the readout travels the identical UI-thread path AF32 measured
+     on physical hardware for the highlight** (1339 frames, 66 advances, zero
+     spontaneous renders). That equivalence is why AD42 does not need its own
+     device proof of the *mechanism*, only of the *display*.
+  3. **It is not `setNativeProps`.** The `setNativeProps` that appears in
+     Reanimated's tree is Reanimated's own platform function, not React Native's
+     instance method — the one AD21 established as unavailable under the New
+     Architecture 📐. Nothing on this path calls the latter.
+
+  **The erasability/worklet toolchain needed no configuration, and that was
+  checked rather than assumed.** There is no `babel.config.*` at the repo root
+  at all; `babel-preset-expo` **auto-adds** `react-native-worklets/plugin` when
+  the package is installed — `build/configs/expo.js:96-102`, and
+  `react-native-worklets@0.10.1` is installed 🧪. That is why the existing
+  `useAnimatedStyle`/`useAnimatedReaction` worklets work, and why a
+  `'worklet'`-directive function in `prepareDocument.ts` will be processed too.
+
+  **It typechecks and lints here, verified against a negative control.** The
+  component gives `tsc --noEmit` exit 0 and `eslint --max-warnings 0` exit 0;
+  injecting a deliberate type error gave **TS2322 and exit 2**, and reverting it
+  returned exit 0 🧪. `tsc --listFilesOnly` confirms the file is genuinely in the
+  program (see the instrument note below for why that check was necessary).
+
+  ### Invariant 1, re-measured rather than inherited
+
+  Bundling the real `parseMarkdown` and `flattenWords` over the real seeded
+  sample 🧪:
+
+  ```
+  sample: blocks = 12  words = 176
+  word[0]    = {"id":"0","text":"The","isWordlike":true,"spaceBefore":true}
+  word[last] = {"id":"175","text":"text.","isWordlike":true,"spaceBefore":true}
+  INVARIANT 1 (Number(Word.id) === flat position): HOLDS for all 176 words
+  typeof word[0].id = string
+  firstWordlikeFrom(sample, 0) = 0
+  ```
+
+  So the number the readout shows **is** the flat word index, and the sample
+  reads `Word 0 / 175` before playback. `Word.id` being a **string** is why the
+  readout must read the numeric shared value: `number === string` is always
+  false in JS, the trap ARCHITECTURE.md §3.1 already names for the highlight.
+
+  ### A ZERO-WORD DOCUMENT IS REACHABLE — the finding the readout was designed around
+
+  This was not anticipated and it changed the design. Measured across degenerate
+  sources 🧪:
+
+  ```
+  a horizontal rule only   blocks=0   words=0    firstWordlike=-1  Math.max(0,f)=0
+  whitespace only          blocks=0   words=0    firstWordlike=-1  Math.max(0,f)=0
+  a fence only             blocks=0   words=0    firstWordlike=-1  Math.max(0,f)=0
+  punctuation only         blocks=1   words=1    firstWordlike=-1  Math.max(0,f)=0
+  one word                 blocks=1   words=1    firstWordlike=0   Math.max(0,f)=0
+  ```
+
+  **Three of those produce a document with no words at all, and it is reachable
+  through the shipped UI:** `applyPaste` guards only on `draft.trim()`, and
+  `'---'` trims to `'---'`. `usePacer` then seeds its index with
+  `Math.max(0, firstWordlikeFrom(words, 0))`, which **clamps -1 to 0** — at
+  `usePacer.ts`'s `indexRef` initialiser, in its `[words]` reset effect, and in
+  `restart` 📐. So the shared value the readout reads is **0** for a document
+  containing no word, and a readout that trusted it would have printed
+  `Word 0 / -1`: a confident claim about a word that does not exist. Hence the
+  dash branch, which is a correctness requirement rather than a nicety.
+
+  The punctuation-only row is deliberately **not** in that branch: `...` is one
+  real token, so `Word 0 / 0` is truthful even though the token is not
+  word-like.
+
+  ### The versionName derivation, and the once-only property
+
+  Measured on the real overlay through **both** loader paths 🧪:
+
+  ```
+  ERASABLE (node stripTypeScriptTypes): yes (7431 -> 7431 bytes)
+  shape (pinned 29814999):  versionName = "1.0.0-UAT-29814999"  versionCode = 29814999
+  straddling clock: Date.now() called 1 time(s)
+    versionName = "1.0.0-UAT-30000000"  versionCode = 30000000
+    AGREE? YES — computed once
+  both loader paths agree: YES
+  UNSET returns same reference (Expo marker kept): YES
+  UNSET versionName untouched (absent): YES
+  UNSET root version untouched: 1.0.0
+  ```
+
+  **The straddling clock is the instrument worth keeping.** `Date.now` advances
+  a **full minute on every call**, so a second read inside the overlay would
+  provably push the counter and desync the two fields. Equal length on the
+  stripper is the expected result, not a null one: Node blanks type syntax to
+  whitespace rather than deleting it, exactly as AF48 records.
+
+  **Negative control, run before the green result was believed** (AF21, AD29,
+  AD31, AD37 precedent): splitting the single `uatVersionCode()` call back into
+  two gave **50 passed, 2 failed** — failing *"the clock is read EXACTLY ONCE"*
+  and *"versionName and versionCode AGREE under a clock that straddles a minute
+  per call"* **and no others** 🧪. `app.config.ts` was restored and confirmed
+  byte-identical by `diff`.
+
+  Two further controls on the readout formatter, each failing exactly its own
+  check 🧪: dropping the zero-word branch → **43 passed, 2 failed** (both
+  zero-word checks); adding a clamp → **44 passed, 1 failed** (the unclamped
+  check alone). Restored byte-identical after each.
+
+  ### The workflow identity step, replayed functionally rather than only parsed
+
+  AF51 established that parsing a workflow and `bash -n`-ing its scripts proves
+  shape and nothing more. So the identity step's **actual body** was extracted
+  and executed against synthetic `android/app/build.gradle` files in a sandbox,
+  with `GITHUB_ENV` pointed at a temp file 🧪:
+
+  | Case | Result |
+  |---|---|
+  | matching name and code | **exit 0**, exports both `UAT_RESOLVED_VERSION_CODE` and `UAT_RESOLVED_VERSION_NAME` |
+  | mismatched code | **exit 1**, `::error::` naming expected and actual |
+  | the old `1.0.0-uat` literal | **exit 1** |
+  | prefix-only `1.0.0-UAT-` with no code | **exit 1** |
+
+  **That last row is the one that justifies the exact assertion over a prefix
+  grep**, which is otherwise the obvious minimal fix: a prefix grep passes a
+  build in which the name and the code disagree, which is the single failure the
+  once-only computation exists to prevent. YAML still parses, the trigger is
+  still `workflow_dispatch` alone, the job key is still `uat-build`, and all ten
+  `run:` scripts pass `bash -n` 🧪.
+
+  ### A SEVENTH instance of the instrument family — and the first straight RECURRENCE
+
+  The first probe written to test whether the animated-text mechanism typechecks
+  was **`src/.probe-animated-text.tsx`** — a dotfile. `tsc --noEmit` returned
+  **exit 0**, which reads as a pass. `tsc --noEmit --listFilesOnly` matched it
+  **zero times** 🧪: **TypeScript's `include` globs do not match dotfiles**, so
+  the probe was never in the program and measured nothing. Renamed undotted it
+  was in the program (1 file) and the negative control then behaved correctly.
+
+  **This is AF48's third invalid instrument, verbatim.** AF48 recorded exactly
+  this — `.probe-env.ts`, "a dotfile TypeScript's `include` globs never match,
+  which measured its own filename." The repo has now hit the **identical**
+  failure twice, in two sessions, for the same reason.
+
+  **That recurrence is itself the finding, and it is why this entry is filed
+  differently from its six predecessors.** The family so far — AF44's two, AF48's
+  one, AF50's one, AF51's two — was six *distinct shapes*, each a new way to
+  measure the wrong thing, and the lesson drawn each time was the general one:
+  check the instrument against a known-in-advance outcome. **A repeat says
+  something the six did not: the general lesson was recorded and did not
+  prevent the specific trap.** A prose finding is not a guard. The concrete,
+  mechanical rule — *never name a TypeScript probe with a leading dot, and
+  confirm any `tsc` probe with `--listFilesOnly` before trusting its exit
+  code* — is what would have caught it, and it is stated here in those terms so
+  a reader has a check rather than a principle.
+
+  **A second, smaller instrument slip in the same session, recorded because the
+  mechanism is worth knowing.** A cleanup step chained after `grep -c` never
+  ran: **`grep -c` exits 1 when the count is 0**, so `grep -c … && rm …` breaks
+  the `&&` chain precisely when the count is the one being asserted, and a probe
+  file was left in the tree until the next `git status` 🧪. Caught by checking
+  `git status --porcelain`, which is why AD16's practice of confirming a clean
+  tree after probe work is worth keeping.
+
+  ### Tallies
+
+  `npm run check` is **15 suites and 411 checks**, 0 failures 🧪 — `test:core`
+  8 / **125** unchanged, `test:local` 7 / **286** (52 + 39 + 20 + 73 + 27 + 45
+  + 30). The baseline check still reports **26 files checked, 20 under
+  `src/core/`, 0 mismatches**: no manifest row changed. `npm run lint` is 0
+  errors, 0 warnings. Tracked `.mjs` files stay at **16** — no suite was added,
+  for the reason AD42 records.
+
+  **Also measured, and it is what killed two candidate designs:** there is **no
+  `memo(` or `React.memo` anywhere in `src/`** 🧪. So a re-render of the reader
+  screen re-reconciles `ReaderSurface` → `BlockView` → every `WordBox`;
+  `ReaderSurface`'s `useMemo`s save the per-document computation, not the
+  reconciliation. AD42 rests on this.
+
+  ### NOT ESTABLISHED
+
+  1. **The readout has never been seen.** Nothing here was prebuilt, built,
+     installed or run. That it updates at all, that it updates with **no** React
+     render — the property AF32 measured for the highlight and which is
+     *inferred* here from the shared code path, not observed for this component
+     — how it looks above the button, and how it announces to TalkBack are all
+     unverified ❓. AD42 carries the pending check.
+  2. **The versionName has not been produced by a prebuild.** Every result above
+     comes from calling the overlay directly and from replaying the workflow's
+     shell in a sandbox. No `expo prebuild` ran and no `workflow_dispatch` was
+     dispatched; AD41's pending check is the next UAT build.
+  3. **The accessibility mitigation is a structural read**,
+     `accessibilityRole="header"` on the wrapper and `="text"` on the input. No
+     screen reader was run. A `TextInput` announcing as an editable field is the
+     known cost; whether the mitigation changes that on Android is untested ❓.
+  4. **The allocation added to the tick path is unmeasured.** The worklet builds
+     one string per tick. That it is negligible against the existing per-word
+     comparisons is a judgement, not a measurement — and per **AF35** any
+     frame-timing claim about it would have to be made on hardware, never on the
+     emulator ❓.
+  5. **Nothing here is behavioural evidence about the app on hardware.** Every
+     👁 limit recorded in AF27–AF43, AF49 and AF52 stands untouched, and
+     ARCHITECTURE.md §6's list of what has no automated coverage is one file
+     **longer**, not shorter.
+  6. **AF42's R8/Proguard half and its untested ABIs are untouched**, and the
+     raw-`.ts`-evaluation path remains unexercised, exactly as AF48 and AF50
+     left it ❓.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -4175,3 +4412,61 @@
   correct against every apksigner build available on this machine. The fix
   has not run in CI; that remains a pending acceptance check. Decisions are
   **AD40**.
+- 2026-09-09 — appended **AF53** on `feature/uat-version-and-word-index`, the
+  first branch cut from `dev` under the three-level branching model. **Measured
+  by me**; no prebuild, Gradle build, emulator or device was involved, so the
+  section carries **no 👁**. Establishes that **`useAnimatedProps` is the same
+  machinery as the highlight AF32 proved on hardware**, which is what lets the
+  new word-index readout ship without its own device proof of mechanism:
+  `hook/useAnimatedProps.js:8` is literally `useAnimatedStyle(updater, deps,
+  adapters, true)`, and on native both land on the same
+  `global.UpdatePropsManager.update(...)`, the `isAnimatedProps` flag only
+  skipping the style-props builder. Corroborated in the **pinned** version
+  rather than from documentation: Reanimated 4.5.1's own `PerformanceMonitor`
+  drives a live FPS counter with `createAnimatedComponent(TextInput)` and
+  `useAnimatedProps(() => ({ text, defaultValue: text }))`, and 4.x is
+  New-Architecture-only. Also measured: the worklet toolchain needs **no**
+  config — there is no `babel.config.*` at all, and `babel-preset-expo`
+  auto-adds `react-native-worklets/plugin` when the package is installed. **A
+  ZERO-WORD DOCUMENT IS REACHABLE, and it changed the design**: a pasted `---`,
+  a bare fence and whitespace alone all parse to **zero** words, `applyPaste`
+  guards only on `draft.trim()` (and `'---'` trims to `'---'`), and `usePacer`
+  seeds its index with `Math.max(0, firstWordlikeFrom(...))` which **clamps -1
+  to 0** — so a readout trusting the shared value would have printed
+  `Word 0 / -1`, claiming a word that does not exist. Invariant 1 was
+  **re-measured** rather than inherited: `Number(Word.id)` equals the flat array
+  position for **all 176** sample words, and `Word.id` is a string, which is why
+  the readout reads the numeric shared value. The versionName derivation is
+  measured through **both** loader paths, with a **straddling clock** that
+  advances a full minute per call proving `Date.now` is read **exactly once**;
+  three negative controls each failed exactly their own checks and nothing else
+  (two clock reads → the two agreement checks; no zero-word branch → the two
+  zero-word checks; a clamp → the unclamped check), with byte-identical restores
+  after each. The workflow identity step was **replayed functionally**, not
+  merely parsed — its real body executed against synthetic `build.gradle` files,
+  passing on agreement and failing on a mismatch, on the old literal, **and on a
+  prefix-only match**, which is the row that justifies an exact assertion over
+  the obvious prefix grep. **A SEVENTH instance of the invalid-instrument
+  family, and the first straight RECURRENCE**: the first typecheck probe was
+  named `src/.probe-animated-text.tsx`, a **dotfile**, so `tsc` returned exit 0
+  while `--listFilesOnly` matched it **zero** times — TypeScript's `include`
+  globs do not match dotfiles. That is **AF48's third instrument, verbatim**,
+  hit again in a second session. The entry argues the recurrence is itself the
+  finding: the previous six were six distinct shapes and each drew the same
+  general lesson, whereas a repeat shows the general lesson was recorded and did
+  not prevent the specific trap — so a **mechanical** rule is stated instead
+  (never dot-prefix a TypeScript probe; confirm any `tsc` probe with
+  `--listFilesOnly` before trusting its exit code). A second, smaller slip in
+  the same session is recorded for its mechanism: **`grep -c` exits 1 when the
+  count is 0**, so a cleanup chained after it with `&&` never ran and left a
+  probe file in the tree. Tallies: **15 suites / 411 checks**, 0 failures;
+  baseline 26 files / 0 mismatches, no row changed; lint 0/0; tracked `.mjs`
+  stays at **16**, since no suite was added (AD42 records why). Also measured,
+  and it is what killed two candidate designs: **no `memo(` or `React.memo`
+  anywhere in `src/`**, so any re-render of the reader screen re-reconciles
+  every `WordBox`. Not established: the readout **has never been seen** —
+  including that it updates with no React render, which is *inferred* from the
+  shared code path and **not** observed for this component — the versionName has
+  not been produced by a prebuild, the accessibility mitigation is a structural
+  read with no screen reader run, and the string the worklet allocates per tick
+  is unmeasured. Decisions are **AD41** and **AD42**.

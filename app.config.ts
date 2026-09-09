@@ -55,6 +55,8 @@ type AndroidConfig = {
 
 type StaticConfig = {
   name?: string;
+  /** The root version. Read as the UAT versionName's base; never overwritten. */
+  version?: string;
   scheme?: string | string[];
   android?: AndroidConfig;
   [key: string]: unknown;
@@ -92,9 +94,17 @@ const UAT = {
   name: 'BETA Reading Aid',
   scheme: 'readingaiduat',
   androidPackage: 'com.arishh.readingaid.uat',
-  androidVersionName: '1.0.0-uat',
+  versionNameSuffix: 'UAT',
   iconBackgroundColor: '#FFEB3B',
 } as const;
+
+/**
+ * Only reached if `app.json` ever loses `expo.version`, which declares "1.0.0"
+ * today. The base is READ from the static config rather than re-literalled here
+ * so the two cannot drift — a second copy of a value is a second copy that will
+ * eventually disagree (AD2, AF8, AD26).
+ */
+const UAT_FALLBACK_BASE_VERSION = '1.0.0';
 
 /** Android's own ceiling is int32; 2.1e9 is the lower, stricter Play limit. */
 const MAX_VERSION_CODE = 2100000000;
@@ -138,6 +148,23 @@ function uatVersionCode(): number {
   return Math.floor(Date.now() / 60000);
 }
 
+/**
+ * `1.0.0` + 29814999 -> `1.0.0-UAT-29814999`.
+ *
+ * The build number IS the versionCode, so the string a tester reads in
+ * Settings -> App info identifies the artifact exactly. Before this, every UAT
+ * build reported the same literal `1.0.0-uat` and one build was
+ * indistinguishable from another on the phone.
+ *
+ * The versionCode is taken as a PARAMETER, never re-derived here. See the call
+ * site: computing it twice could straddle a minute boundary and produce a
+ * versionName that disagrees with the versionCode, which is worse than a static
+ * string because it would look precise while lying.
+ */
+function uatVersionName(baseVersion: string, versionCode: number): string {
+  return `${baseVersion}-${UAT.versionNameSuffix}-${versionCode}`;
+}
+
 export default ({ config }: ConfigContext): StaticConfig => {
   if (!isUatBuild()) {
     // By reference, not a copy. See the docblock.
@@ -145,6 +172,12 @@ export default ({ config }: ConfigContext): StaticConfig => {
   }
 
   const android: AndroidConfig = config.android ?? {};
+
+  // Resolved ONCE, then used twice. Two calls to the clock in `uatVersionCode`
+  // could land either side of a minute boundary, so the versionName and the
+  // versionCode must come from the same evaluation. The suite pins this with a
+  // clock that advances a full minute on every call.
+  const versionCode = uatVersionCode();
 
   // `backgroundImage` is omitted rather than overwritten: while it is present it
   // is the adaptive icon's background layer and `backgroundColor` is written to
@@ -160,8 +193,8 @@ export default ({ config }: ConfigContext): StaticConfig => {
     android: {
       ...android,
       package: UAT.androidPackage,
-      version: UAT.androidVersionName,
-      versionCode: uatVersionCode(),
+      version: uatVersionName(config.version ?? UAT_FALLBACK_BASE_VERSION, versionCode),
+      versionCode,
       adaptiveIcon: {
         ...carriedIcon,
         backgroundColor: UAT.iconBackgroundColor,

@@ -37,7 +37,8 @@ sentence rather than marching through it. Each word carries a **bionic anchor**
 scrolls itself to follow the highlight, and **tapping any word moves the
 highlight there**. Close the app, reopen it, and you are where you left off.
 
-One screen. One setting: words per minute. That is the whole app.
+One screen. One setting: words per minute. A small readout above the play
+button tells you which word you are on. That is the whole app.
 
 It is a **locally built, manually installed APK** — not a Play Store listing and
 not an Expo Go project. See [README.md](README.md) to run it.
@@ -125,6 +126,11 @@ Everything in the app, with the decision that put it there:
   (AD24 `D-I`). Position is keyed to a content fingerprint, so it follows the
   document rather than a filename (AD27).
 - **Documents arrive as the seeded sample or pasted text** (AD24 `D-H`).
+- **A live word-index readout** above the transport button, showing the flat
+  word index the pacer is on — `Word 42 / 175`, 0-based, so it agrees with
+  invariant 1 and with every `AF` entry. It is driven from the same Reanimated
+  shared value as the highlight and writes its text on the UI thread, so it
+  costs no React render on a tick (AD42).
 
 ## 5. What is deliberately NOT built
 

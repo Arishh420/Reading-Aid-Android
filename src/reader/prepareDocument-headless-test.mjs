@@ -36,6 +36,8 @@ const result = await build({
   stdin: {
     contents: `
       export { prepareDocument, buildWordBlockMap, countWords } from './prepareDocument';
+      export { formatWordIndexLabel, WORD_INDEX_NONE } from './prepareDocument';
+      export { flattenWords } from '../core/model/tokenize';
       export { parseMarkdown } from '../core/parsers/markdown';
       export { SAMPLE_MARKDOWN } from '../core/ui/sample';
       export { BIONIC_RATIO } from '../core/reader/bionic';
@@ -55,9 +57,12 @@ const { writeFile, unlink } = await import('node:fs/promises');
 await writeFile(tmpPath, result.outputFiles[0].text);
 
 let prepareDocument, buildWordBlockMap, countWords, parseMarkdown, SAMPLE_MARKDOWN, BIONIC_RATIO;
+let formatWordIndexLabel, WORD_INDEX_NONE, flattenWords;
 try {
-  ({ prepareDocument, buildWordBlockMap, countWords, parseMarkdown, SAMPLE_MARKDOWN, BIONIC_RATIO } =
-    await import(`${tmpPath}?t=${Date.now()}`));
+  ({
+    prepareDocument, buildWordBlockMap, countWords, parseMarkdown, SAMPLE_MARKDOWN, BIONIC_RATIO,
+    formatWordIndexLabel, WORD_INDEX_NONE, flattenWords,
+  } = await import(`${tmpPath}?t=${Date.now()}`));
 } finally {
   await unlink(tmpPath);
 }
@@ -283,6 +288,68 @@ check('buildWordBlockMap on an empty document is empty',
     'the Y map would have holes and auto-scroll would no-op');
 
   console.log(`        (real sample: ${p.length} blocks, ${flatOriginal.length} words)`);
+}
+
+// ─── 5. formatWordIndexLabel — the word-index readout's only testable half ───
+//
+// The readout component itself has NO automated coverage and cannot have any:
+// no Node suite can execute a Reanimated worklet, `useAnimatedProps`, or a
+// native TextInput (ARCHITECTURE.md §6.2). This is the part that can be
+// executed, so it is where the logic lives (AD42).
+{
+  check('readout: first word of a 176-word document', formatWordIndexLabel(0, 176), 'Word 0 / 175');
+  check('readout: last word of a 176-word document', formatWordIndexLabel(175, 176), 'Word 175 / 175');
+
+  // A ZERO-WORD DOCUMENT IS REACHABLE, and this is the branch that matters.
+  // `usePacer` seeds its index with Math.max(0, firstWordlikeFrom(words, 0)),
+  // which clamps -1 to 0 — so without this branch the readout would print
+  // "Word 0 / -1" for a document that contains no word at all (AF53).
+  check('readout: a ZERO-word document reads as a dash, not "Word 0"', formatWordIndexLabel(0, 0), WORD_INDEX_NONE);
+  check('readout: a negative index reads as a dash', formatWordIndexLabel(-1, 176), WORD_INDEX_NONE);
+
+  // Deliberately UNCLAMPED: a diagnostic readout must show a desync rather than
+  // hide it behind a clamp that would make a broken index look correct.
+  check('readout: an out-of-range index is reported UNCLAMPED', formatWordIndexLabel(999, 176), 'Word 999 / 175');
+
+  // Against the REAL parser and the REAL seeded sample, so the numbers the
+  // readout shows are tied to invariant 1 rather than to a hand-built fixture.
+  {
+    const parsed = parseMarkdown(SAMPLE_MARKDOWN, 'Sample document');
+    const flat = flattenWords(parsed);
+    const prepared = prepareDocument(parsed, BIONIC_RATIO.medium);
+    const total = countWords(prepared);
+
+    ok(
+      'readout: countWords agrees with flattenWords on the real sample (invariant 1)',
+      total === flat.length,
+      `countWords=${total} flattenWords=${flat.length}`,
+    );
+    check(
+      'readout: the real sample at rest reads "Word 0 / 175"',
+      formatWordIndexLabel(0, total),
+      'Word 0 / 175',
+    );
+    check(
+      'readout: the real sample at its last word reads "Word 175 / 175"',
+      formatWordIndexLabel(total - 1, total),
+      'Word 175 / 175',
+    );
+  }
+
+  // A punctuation-only document parses to one token that is NOT word-like, so
+  // word 0 genuinely exists and showing it is truthful.
+  {
+    const parsed = parseMarkdown('...', 't');
+    const total = countWords(prepareDocument(parsed, BIONIC_RATIO.medium));
+    check('readout: a punctuation-only document still has a real word 0', formatWordIndexLabel(0, total), 'Word 0 / 0');
+  }
+
+  // A pasted `---` is the concrete route to a zero-word document.
+  {
+    const parsed = parseMarkdown('---', 't');
+    const total = countWords(prepareDocument(parsed, BIONIC_RATIO.medium));
+    check('readout: a pasted "---" yields zero words and reads as a dash', formatWordIndexLabel(0, total), WORD_INDEX_NONE);
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -45,7 +45,7 @@ reviewer has to hold.
 |---|---|---|---|
 | `src/core/` | Pure, portable logic: the document model, tokenizer, Markdown parser, dwell table, bionic split, ORP, PDF/EPUB text extraction, theme ids, the sample document. Plus the eight seeded headless suites. | Anything touching React, React Native, the DOM, Node, or a native module. | **`tsconfig.core.json`** typechecks it in isolation. Partly enforced — see below for exactly which half. Also **baseline-pinned**: every file is a row in [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) and a completeness walk fails on any file not listed (§5). |
 | `src/pacer/` | The clock: `usePacer.ts`, a React hook, and its suite. | Rendering, layout, colours. | Convention. It imports `react` and names the `React` type namespace, so it *cannot* live in core (below). |
-| `src/reader/` | The rendering surface: `ReaderSurface.tsx`, `WordBox.tsx`, the pure `prepareDocument.ts`, the `palette.ts` visual constants, and three suites. | The clock, storage, screen wiring, any `useState` on the index. | Convention, plus one measured property: there is **no `useState` anywhere in `src/reader/`** 🧪 (grep, this session — the only textual hit is a comment in `ReaderSurface.tsx:17`). |
+| `src/reader/` | The rendering surface: `ReaderSurface.tsx`, `WordBox.tsx`, `WordIndexReadout.tsx`, the pure `prepareDocument.ts`, the `palette.ts` visual constants, and three suites. | The clock, storage, screen wiring, any `useState` on the index. | Convention, plus one measured property: there is **no `useState` anywhere in `src/reader/`** 🧪 (grep, this session — the only textual hits are comments, in `ReaderSurface.tsx:17` and in `WordIndexReadout.tsx`'s docblock, which explains why it does not use one). |
 | `src/storage/` | Persistence: the MMKV wrapper, the reading-position record, the resume-target resolver, the content fingerprint, one suite. | Anything about rendering or pacing. | Convention. `storage.ts` is the **only** file that touches the native store, deliberately, so a stub can replace it in Node (§6). |
 | `src/app/` | Routes. `_layout.tsx` (a single `Stack`) and `index.tsx`, the reader screen and the app's only screen (AD24 `D-J`). | Reusable logic. It is the wiring layer: it owns the clock, the WPM state and the save timer, and hands the surface a document and a shared value. | `expo-router` file-based routing — `package.json`'s `"main"` is `expo-router/entry` 📐, so files here *are* the routes. |
 | `types/` | `hermes-globals.d.ts` — a five-method ambient `console` for the core guard (AD4). | Anything else. | The main `tsconfig.json` **excludes** it (`exclude` entry `${configDir}/types/hermes-globals.d.ts` 📐) so it cannot collide with `lib.dom`'s own `console`; `tsconfig.core.json` explicitly **includes** it. |
@@ -193,6 +193,7 @@ each.
 | 12 | Document → render-ready data, **once per document**: `splitBionic` per word, and `Number(w.id)` → `index`. This is the whole of the per-word computation. | `src/reader/prepareDocument.ts:64` `prepareDocument`; the conversion at `:72` |
 | 13 | **The worklet.** One integer comparison per word box, on the UI thread. | `src/reader/WordBox.tsx:87-89` — `currentIndex.value === index ? HIGHLIGHT_BG : HIGHLIGHT_NONE` |
 | 14 | Auto-scroll reacts to the *same* shared value and scrolls only when the active word's absolute Y differs from the Y last scrolled for. Runs on the UI thread. | `src/reader/ReaderSurface.tsx:242` `useAnimatedReaction`; `:255` `scrollTo` |
+| 14b | The word-index readout reacts to the *same* shared value: `useAnimatedProps` builds the label with the pure `formatWordIndexLabel` and writes it to a `TextInput`'s `text` prop, on the UI thread. No React render (AD42). | `src/reader/WordIndexReadout.tsx` `useAnimatedProps`; `prepareDocument.ts:134` `formatWordIndexLabel` |
 | 15 | The Y map feeding hop 14: each word reports **only** its block-relative Y, each block **only** its own Y; absolute Y = block Y + word Y. Rebuilds are coalesced behind one `setTimeout(0)` because mounting fires an event per word *and* per block, and rebuilding per event would be quadratic. | `WordBox.tsx:92` → `ReaderSurface.tsx:233` `onMeasureWordY` / `:223` `onMeasureBlockY` → `:205` `publish`; keyed by `prepareDocument.ts:91` `buildWordBlockMap` |
 | — | **The tap branch rejoins at hop 9.** A tap seeks and never changes transport state (AD28). | `WordBox.tsx:98` `handlePress` → `index.tsx:269` `onSeekWord={pacer.seek}` → `usePacer.ts:212` `seek` → `nearestWordlike` → `commit` |
 
@@ -333,6 +334,16 @@ This is what the whole architecture is arranged around. On one pacer tick:
    `useAnimatedStyle` (`WordBox.tsx:88`).
 5. `useAnimatedReaction` (`ReaderSurface.tsx:242`) — an array lookup and a
    compare; `scrollTo` only when the Y actually changed.
+6. The word-index readout's `useAnimatedProps` worklet
+   (`WordIndexReadout.tsx`) — one `formatWordIndexLabel` call, i.e. a compare
+   and a template string, then a native `text` prop write. On the **UI thread**,
+   and it is the one item on this list that ALLOCATES: a new string per tick.
+   Recorded rather than glossed, because it is a real addition to a path this
+   section exists to keep empty (AD42). It is a single small string against the
+   per-word comparisons in item 4, and it goes through the same
+   `UpdatePropsManager` path as those, so it does not change the shape of the
+   path — but "the tick path allocates nothing" would no longer be true, and is
+   not claimed.
 
 **What does NOT execute**
 
@@ -431,12 +442,12 @@ completeness walk covers `src/core/` only.
 ## 6. What has no automated coverage — read this before you trust a green check
 
 `npm run check` runs `tsc --noEmit`, then the core portability guard, then the
-baseline check, then **15 headless suites totalling 396 checks** 🧪:
+baseline check, then **15 headless suites totalling 411 checks** 🧪:
 
 | | Suites | Checks |
 |---|---|---|
 | `test:core` — `src/core/` | 8 | 125 (17 + 18 + 14 + 9 + 15 + 14 + 12 + 26) |
-| `test:local` — everything else | 7 | 271 (47 + 39 + 20 + 73 + 27 + 35 + 30) |
+| `test:local` — everything else | 7 | 286 (52 + 39 + 20 + 73 + 27 + 45 + 30) |
 
 Every suite esbuild-bundles **real source** and asserts what it computes, which
 is what makes them worth having. But they are **Node-only by construction**:
@@ -450,7 +461,7 @@ errors, 0 warnings across 39 files 🧪. So **the local pre-push sequence is two
 commands, not one**:
 
 ```
-npm run check     # tsc, core guard, baseline, 15 suites / 396 checks
+npm run check     # tsc, core guard, baseline, 15 suites / 411 checks
 npm run lint      # eslint, 0 errors 0 warnings
 ```
 
@@ -531,6 +542,18 @@ line of this list.
   record, and it names two residuals left unfixed (a seek to a word on a line
   that was manually scrolled away fires no scroll; `lastScrolledY` is not reset
   when the document changes).
+- **`src/reader/WordIndexReadout.tsx`** — no suite bundles it, for the same
+  reason: it imports `react-native` and `react-native-reanimated`, and its whole
+  behaviour is a `useAnimatedProps` worklet writing a native `TextInput`'s
+  `text` prop on the UI thread. Node can execute none of that, and no Node suite
+  can assert "no React render occurred". Its **only** testable half is
+  `formatWordIndexLabel` in `prepareDocument.ts`, which is pure and is covered
+  by that module's suite (AD42) — so the string, including the zero-word branch,
+  is tested and the display is not. Two things are therefore unverified until a
+  device run (**AF53**): that the readout updates at all, and how it announces
+  to a screen reader, since a `TextInput` announces as an editable field and the
+  `accessibilityRole` mitigation is a structural read rather than a TalkBack
+  observation ❓.
 - **`src/app/index.tsx`** and **`_layout.tsx`** — the wiring, the save timer and
   the restore ordering are untested by anything automated.
 - **`usePacer`'s hook and its rAF clock.** Its suite covers **only** the three
@@ -603,7 +626,7 @@ them as abandoned:
 | `ui/theme.ts` | **AD19** ships one theme; all four ids are already declared here | **none** — no suite bundles it 🧪 |
 | `model/blocks.ts` | **Nothing gates it** — see below | **none**, and no importer either 🧪 |
 
-Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 396 checks) bundle modules
+Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 411 checks) bundle modules
 the app never reaches, `spine-integrity` spanning both categories.
 
 **`model/blocks.ts` is the exception and is worth calling out honestly.** It is

@@ -56,6 +56,7 @@ import { SAMPLE_MARKDOWN } from '../core/ui/sample';
 import { usePacer } from '../pacer/usePacer';
 import { LAYOUT, LIGHT } from '../reader/palette';
 import { ReaderSurface } from '../reader/ReaderSurface';
+import { WordIndexReadout } from '../reader/WordIndexReadout';
 import { fingerprintText } from '../storage/fingerprint';
 import { loadBookRecord, saveReadingPosition } from '../storage/readingPosition';
 import { resolveResumeTarget } from '../storage/resumeTarget';
@@ -216,9 +217,15 @@ export default function Index() {
   return (
     <View style={styles.screen}>
       <View style={styles.controls}>
-        <Pressable style={styles.primaryButton} onPress={onTransport}>
-          <Text style={styles.primaryButtonText}>{transportLabel}</Text>
-        </Pressable>
+        {/* The readout sits directly above the transport button. It takes the
+            SAME shared value the highlight does and writes its text from the UI
+            thread, so a pacer tick still re-renders nothing (AD42). */}
+        <View style={styles.transportGroup}>
+          <WordIndexReadout currentIndex={currentIndex} wordCount={words.length} />
+          <Pressable style={styles.primaryButton} onPress={onTransport}>
+            <Text style={styles.primaryButtonText}>{transportLabel}</Text>
+          </Pressable>
+        </View>
 
         {/* The MVP's ONE setting (AD19/AD23). Not persisted — AD24 `D-I` scopes
             storage to position only: a reset WPM costs one gesture, a reset
@@ -286,6 +293,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: LIGHT.border,
     backgroundColor: LIGHT.surface,
+  },
+  transportGroup: {
+    alignItems: 'center',
+    gap: 4,
   },
   primaryButton: {
     backgroundColor: LIGHT.accent,
