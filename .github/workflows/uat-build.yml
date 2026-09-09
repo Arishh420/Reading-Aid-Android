@@ -199,23 +199,79 @@ jobs:
           APK=android/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
 
-          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
-          test -x "$APKSIGNER"
+          # PINNED TO THE SAME build-tools VERSION AGP ITSELF RESOLVED FOR THIS
+          # BUILD -- not globbed for "whatever is highest on the runner". Run
+          # 34275986703 (AF52) failed here because the runner ships several
+          # build-tools versions side by side (34.0.0 through 37.0.0 on
+          # ubuntu-24.04) and `sort -V | tail -1` picked a DIFFERENT, never-
+          # exercised one than the 36.0.0 the build step above actually used
+          # (visible in that step's own "- buildTools:" line).
+          #
+          # node_modules/react-native/gradle/libs.versions.toml is the exact
+          # file expo-modules-autolinking's ExpoRootProjectPlugin.kt reads via
+          # versionCatalogs.getVersionOrDefault("buildTools", ...) -- the same
+          # mechanism AD39 already pins ndkVersion/cmake through, two lines
+          # away in that file. Reading it here rather than hardcoding a literal
+          # means this can never drift from what the build actually used: it
+          # is the one pinned source, read twice, not two independent guesses.
+          BUILD_TOOLS_VERSION=$(awk -F'"' '/^buildTools[[:space:]]*=/ { print $2 }' node_modules/react-native/gradle/libs.versions.toml)
+          test -n "$BUILD_TOOLS_VERSION"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "::error::apksigner not found for build-tools $BUILD_TOOLS_VERSION (the version this build used) at $APKSIGNER -- the runner image does not have it."
+            exit 1
+          fi
+          echo "Using apksigner from build-tools $BUILD_TOOLS_VERSION: $APKSIGNER"
 
           # Under `bash -e` a non-zero apksigner exit fails this assignment, so
           # "the APK is validly signed at all" is asserted here too.
           CERTS=$("$APKSIGNER" verify --print-certs "$APK")
 
+          # PERMANENT DIAGNOSTIC, kept unconditionally rather than only on
+          # failure. apksigner's console output is not a documented, versioned
+          # interface -- Android's own build-tools release notes record
+          # exactly one change to it, ever (the 2016 addition of the MD5
+          # line) -- so the next format drift should be diagnosable straight
+          # from this log, not by another blind round-trip through a failing
+          # run (AF52). Certificate fingerprints and DNs are public; nothing
+          # printed here is a secret.
+          echo "--- raw apksigner verify --print-certs output ---"
+          printf '%s\n' "$CERTS"
+          echo "--- end raw apksigner output ---"
+
           # Exactly one signer. A multi-signer APK could carry the expected
           # certificate alongside an unexpected one and still match below.
-          if printf '%s\n' "$CERTS" | grep -q '^Signer #2 '; then
+          # Matched on the "Signer #2" ordinal (tolerating a colon or other
+          # punctuation immediately after it, not only a space) rather than on
+          # the DN-line wording that follows it, since that ordinal is how
+          # apksigner enumerates signers at all and is far less likely to
+          # change than the words after it (AF52).
+          if printf '%s\n' "$CERTS" | grep -qE '^Signer #2([^0-9]|$)'; then
             echo "::error::APK has more than one signer; exactly one was required."
             exit 1
           fi
 
-          ACTUAL=$(printf '%s\n' "$CERTS" \
-            | awk -F': ' '/^Signer #1 certificate SHA-256 digest:/ { print $2 }' \
-            | tr -d ':[:space:]' | tr 'A-Z' 'a-z')
+          # Keyed on the "Signer #1" ordinal, the word "certificate" (so a
+          # possible future "public key SHA-256 digest" line for the same
+          # signer -- a DIFFERENT value -- is never mistaken for this one),
+          # and a bare 64-hex-character token: a SHA-256 digest is always
+          # exactly 64 hex characters, which is what actually distinguishes it
+          # from the SHA-1 (40) and MD5 (32) digest lines, independent of the
+          # English wording around it. `exit` after the first match keeps this
+          # deterministic even if a future apksigner ever prints the digest
+          # twice. Validated against AF42's real signed release APK under two
+          # build-tools versions, plus hand-constructed adversarial variants
+          # (a colon after the ordinal, a decoy "public key" digest line, a
+          # two-signer block) that the OLD anchor failed and this one does not
+          # (AF52).
+          ACTUAL=$(printf '%s\n' "$CERTS" | awk '
+            /^Signer #1([^0-9]|$)/ && /[Cc]ertificate/ {
+              if (match($0, /[0-9a-fA-F]{64}/)) {
+                print substr($0, RSTART, RLENGTH)
+                exit
+              }
+            }
+          ' | tr -d ':[:space:]' | tr 'A-Z' 'a-z')
 
           if [ -z "$ACTUAL" ]; then
             echo "::error::Could not read Signer #1 SHA-256 from apksigner output."

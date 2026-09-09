@@ -3216,6 +3216,278 @@
   6. **The raw-`.ts`-evaluation path remains unexercised**, exactly as AF48 and
      AF50 left it ❓.
 
+## The UAT workflow's first dispatch — eleven steps proven, one apksigner parse bug, and a build-tools selection mismatch
+
+> Scope note: **everything below was measured by me**, in this session, from the
+> run log of the workflow's first `workflow_dispatch` (run **34275986703**,
+> 2026-09-08), from local `apksigner` invocations against AF42's real,
+> already-signed release APK, and from GitHub's own `actions/runner-images`
+> documentation for the `ubuntu-24.04` image. **No secret was read, decoded or
+> printed**, and no new prebuild, Gradle build, emulator, device or install was
+> run beyond re-executing the workflow's own extraction logic locally against
+> real and hand-constructed text. This section carries **no 👁 at all**, like
+> AF45/AF47/AF48/AF50/AF51 — nothing here was observed on a running device.
+
+- **AF52 · The first dispatch got ELEVEN of fourteen steps green, and that is a
+  genuine measurement, not a partial failure to be read past.** Per-step
+  conclusions, read directly from the run rather than inferred from the log
+  text 🧪: steps 1–11 (`Set up job` through `Assemble the release APK`) all
+  `success`; step 12 (`Assert the APK carries the UAT certificate`) `failure`;
+  steps 13–14 (`Stage the APK`, `Publish to the uat release`) `skipped` as a
+  direct consequence. **What those eleven close, one gap at a time:**
+
+  - **The from-scratch prebuild ran, for real, for the first time anywhere.**
+    AD38 and AD39 both named this as the one case a prose recovery record can
+    never reach and AF47/AF49 could only *reason about* it (AF47: "the case
+    RELEASE-SIGNING.md §3 exists to protect… has still never happened
+    anywhere"). It has now happened: `npx expo prebuild --platform android
+    --no-install` completed in step 9 (20:39:43Z–20:39:46Z) against a checkout
+    with **no** `android/` directory, generating one from the stock template
+    with the signing plugin applying to it. Step 10 (`Confirm the UAT identity
+    resolved`) then read back `applicationId 'com.arishh.readingaid.uat'`,
+    `versionName "1.0.0-uat"` and a resolved `versionCode` of **29814999** from
+    that freshly-generated `android/app/build.gradle` — all three matching
+    AD37's design, all three read from generated output rather than argued
+    from source.
+  - **AD39's Q5 "not proven necessary" flag on the NDK/CMake install step is
+    SETTLED, and settled as necessary.** The step's own log shows CMake 3.22.1
+    and NDK 27.1.12297006 (`android-ndk-r27b`) genuinely downloaded and
+    unzipped from the network — not a `sdkmanager` no-op against
+    already-present components 🧪. So the runner image did **not** already
+    ship these at the pinned versions, and AD39's provisional "if the first run
+    shows the image already has them, this step can simply be deleted" does
+    **not** apply: the step earns its place. The step ran 20:38:59Z–20:39:42Z,
+    **43 seconds**.
+  - **`assembleRelease` succeeded, in Gradle's own self-reported 13m 23s**
+    (`BUILD SUCCESSFUL in 13m 23s`, read from the step's own output 🧪; the
+    step's wall-clock per the run's timestamps is 20:39:46Z–20:53:10Z, 13m24s,
+    consistent to the second). The keystore materialisation and its `keytool
+    -list` pre-flight (step 8) also passed, meaning the two UAT secrets decode
+    to a valid keystore with the expected alias — the first time that has been
+    established anywhere outside AF49's separately-built local artifact.
+
+  **Total job wall-clock: 14m40s** (20:38:31Z–20:53:11Z). Most of what this
+  workflow was built to establish, it established. Only step 12 is new
+  territory this entry addresses.
+
+  ### The failure, exact
+
+  Step 12 failed in well under a second (20:53:10.1038680Z the script's env
+  block prints, 20:53:10.5877966Z the error — **≈0.48s** for the entire step
+  body, plausible for this step's actual work on a 45 MB arm64-only APK: local
+  timing of the equivalent single `apksigner verify --print-certs` call against
+  a **110 MB** APK on this machine was 0.72s, so 0.48s against a smaller,
+  arm64-only artifact on a CI-fast disk is unremarkable and not itself a sign
+  of a truncated or aborted apksigner invocation 🧪):
+
+  ```
+  ##[error]Could not read Signer #1 SHA-256 from apksigner output.
+  ##[error]Process completed with exit code 1.
+  ```
+
+  That is the empty-`ACTUAL` guard firing — the guard behaved exactly as
+  designed, refusing to publish an APK whose certificate it could not read,
+  rather than silently treating an extraction failure as a pass. **The
+  workflow never echoed what `apksigner` actually printed**, so the run log
+  itself contains zero evidence of the real cause — the gap this entry's fix
+  closes permanently.
+
+  ### Diagnosis
+
+  **Local reproduction did NOT reproduce the failure.** AF42's real, already
+  release-signed APK is still on disk
+  (`android/app/build/outputs/apk/release/app-release.apk`, 110,763,372 bytes,
+  matching AF42 exactly). `apksigner verify --print-certs` against it, run
+  under **both** locally-installed build-tools versions (35.0.0 and 36.0.0),
+  produced byte-identical four-line output — DN, SHA-256, SHA-1, MD5 — and the
+  workflow's **original, unmodified** awk pattern extracted the SHA-256 digest
+  from it successfully both times 🧪 (`1803301a68788814682514ca119dda906bd25fb52f8923dc1f6a46d0b986e902`,
+  64 hex characters). So the extraction logic is not broken against any
+  apksigner build available on this machine.
+
+  **The runner ships build-tools versions neither this repo nor I have ever
+  exercised.** GitHub's own `actions/runner-images` documentation for the
+  `ubuntu-24.04` image (fetched this session) lists build-tools **34.0.0,
+  35.0.0, 35.0.1, 36.0.0, 36.1.0, 37.0.0** at `ANDROID_HOME=/usr/local/lib/android/sdk`,
+  no preview/RC directories. The failed step's own selection line —
+  `` APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1) ``
+  — picks the **highest** of whatever is present, which on that list is
+  **37.0.0**. I attempted to install build-tools 37.0.0 locally to test it
+  directly; the deprecated `sdkmanager` CLI's own downloader crashed with an
+  unrelated `Files.move` exception before completing — a local tooling defect,
+  not evidence about apksigner's behaviour, and not pursued further given the
+  cost of working around it.
+
+  **The run's own log supplies the sharper fact: two disagreeing selections
+  for the same tool.** The `Assemble the release APK` step's output contains
+  Expo's own diagnostic block, printed by `ExpoRootProjectPlugin.kt`, reading
+  `- buildTools:  36.0.0` 🧪 — i.e. AGP itself, for the *build*, resolved
+  **36.0.0**, not 37.0.0. So the workflow had two independent, disagreeing
+  mechanisms for choosing a build-tools version: the build used 36.0.0, and
+  the *verification* step's glob reached for the highest available, most
+  likely 37.0.0 — a version genuinely never exercised by this build, by this
+  repo's suites, or by me locally.
+
+  **Whether apksigner's console format actually changed at 37.0.0 remains
+  unconfirmed, and that uncertainty is stated rather than resolved by
+  assumption.** Two pieces of evidence argue against a format change: the
+  current AOSP source of the print routine
+  (`android.googlesource.com/platform/tools/apksig`, `main` branch, fetched
+  this session) still literally builds each line as
+  `name + " certificate SHA-256 digest: " + hex` with `name = "Signer #" +
+  signerNumber` — the exact format the old pattern assumed; and Android's own
+  published build-tools release notes record **exactly one** change to this
+  output, ever (adding the MD5 line, in 2016), with nothing published for
+  36.x/37.0.0. Neither is proof for 37.0.0 specifically, and Google does not
+  publish this console output as a documented, versioned interface — the
+  absence of a changelog entry means "not tracked as a stable contract," not
+  "guaranteed unchanged." **Recommendation for whoever runs the fix on the next
+  dispatch:** read the new permanent diagnostic block this entry adds to the
+  log; it will settle this definitively either way.
+
+  ### The fix — three independent hardenings, one file
+
+  **1. The build-tools SELECTION is now pinned to what AGP actually used, read
+  from the same source AGP reads, not globbed for the runner's highest.**
+  `node_modules/react-native/gradle/libs.versions.toml` is the exact file
+  `ExpoRootProjectPlugin.kt:52` reads via
+  `versionCatalogs.getVersionOrDefault("buildTools", "35.0.0")` — the identical
+  mechanism AD39 already uses to pin `ndkVersion`/`cmake`, two lines away in
+  that same file (`:56`). Reading it — `awk -F'"' '/^buildTools[[:space:]]*=/
+  { print $2 }'` — returns **36.0.0** against this repo's current
+  `node_modules` 🧪, matching the CI run's own printed value exactly. The
+  workflow now resolves `APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"`
+  directly from that read, rather than `ls | sort -V | tail -1`.
+
+  **Two alternatives were considered and rejected**, both structurally weaker:
+  - *Capture Gradle's own printed `- buildTools:` diagnostic line from the
+    build step and parse that instead.* Rejected: that line is a decorative,
+    ANSI-coloured console banner from a **third-party plugin**
+    (`expo-modules-autolinking`) — coupling the verification step to *another*
+    unversioned console format is the identical hazard this whole fix exists
+    to remove from apksigner, just relocated.
+  - *A hardcoded literal, matching the `PINNED_NDK_VERSION`/`PINNED_CMAKE_VERSION`
+    style already in this workflow.* Rejected on drift risk **and** on failure
+    mode. Unlike NDK/CMake — which must be named *before* the build so
+    `sdkmanager` can install them, a genuine chicken-and-egg constraint — this
+    is a pure *selection among versions Gradle's build already resolved by
+    itself*; nothing needs to be decided in advance. A literal here would need
+    a human to notice and update it every time `react-native`'s bundled
+    catalog value changes, and its failure modes are both worse than a live
+    read's: if the literal goes stale and the old version is **absent** from a
+    future runner, the error message would misleadingly point at "the runner
+    doesn't have it" when the real defect is a stale literal; if the literal
+    goes stale and the old version is **still present** (kept for backward
+    compatibility), the check would silently run against the wrong,
+    still-untested apksigner build — reintroducing this exact bug in the
+    opposite direction. A live read can only ever ask for the version that was
+    actually used, so neither failure mode is reachable.
+
+  **Fail-closed, verified by local negative control**: with `ANDROID_HOME`
+  pointed at a nonexistent path, the step now prints
+  `` ::error::apksigner not found for build-tools 36.0.0 (the version this build used) at <path> -- the runner image does not have it. ``
+  and exits 1, **before** ever invoking apksigner 🧪 — an attributable failure
+  naming the exact version that was expected and why, rather than a silent
+  substitution of whatever else happens to be present.
+
+  **2. The multi-signer check** now matches `^Signer #2([^0-9]|$)` rather than
+  `^Signer #2 ` — tolerating a colon or other punctuation immediately after the
+  ordinal (not only a literal space) while still refusing to match a
+  hypothetical `Signer #20`.
+
+  **3. The SHA-256 extraction** is re-anchored on what is structurally stable
+  rather than the exact trailing English wording:
+
+  ```awk
+  /^Signer #1([^0-9]|$)/ && /[Cc]ertificate/ {
+    if (match($0, /[0-9a-fA-F]{64}/)) { print substr($0, RSTART, RLENGTH); exit }
+  }
+  ```
+
+  the `Signer #1` ordinal (tolerant of a following colon, as above), the word
+  "certificate" (so a hypothetical future `Signer #1 public key SHA-256
+  digest:` line — a **different** value — is never mistaken for the
+  certificate digest), and a bare 64-hex-character token, which is what
+  actually distinguishes a SHA-256 digest from the 40-char SHA-1 and 32-char
+  MD5 lines, independent of whatever words surround it. `exit` after the first
+  match keeps the result deterministic even if a future format ever prints the
+  same digest twice.
+
+  **Validated against REAL tool output and, separately, against hand-constructed
+  adversarial variants — the two kept distinct.** Real: both local build-tools
+  versions' actual output for AF42's APK, extracting the correct known digest
+  both times 🧪. Adversarial (my own constructed text, explicitly not observed
+  from any real apksigner build, used only to stress-test tolerance): a
+  colon-after-ordinal variant (`Signer #1: certificate…`), a decoy `Signer #1
+  public key SHA-256 digest:` line placed before the real certificate line, and
+  a two-signer block with colons after both ordinals. The new pattern handles
+  all three correctly (extracts the certificate digest, ignores the decoy,
+  and — on the two-signer variant — the relaxed multi-signer check fires); the
+  **original, unmodified** pattern was re-run against the same two colon
+  variants and returned empty on both, confirming these are not contrived
+  non-cases but genuine gaps the old anchor had 🧪.
+
+  **The empty-`ACTUAL` guard, the positive equality check against
+  `EXPECTED_UAT_CERT_SHA256`, and the literal itself are all untouched.**
+  Re-verified after the edit: the guard still fires on a deliberately wrong
+  expected value, printing both the expected and actual digests before exiting
+  1 🧪.
+
+  **The permanent diagnostic.** The step now echoes the resolved `$APKSIGNER`
+  path and the complete raw `$CERTS` block unconditionally — not only on
+  failure — before any parsing branches on it. Certificate fingerprints and
+  distinguished names are public information; nothing this prints is a secret.
+  The point is that the *next* format surprise, at 37.0.0 or any future
+  build-tools release, is diagnosable directly from the log rather than by
+  another blind round-trip through a failing dispatch.
+
+  ### Classification — the unpinned/never-exercised pattern, not a seventh instance
+
+  This is deliberately **not** filed as a seventh instance of the
+  instrument-measuring-the-wrong-thing family (AF44's two, AF48's one, AF50's
+  one). Every one of those four was a **self-inflicted, locally reproducible**
+  bug in code written for this repo — a dotfile glob TypeScript's `include`
+  never matches, a `$'` substitution hazard in an editing script, a suite
+  reading the working tree instead of the commit — each fully explained and
+  fixed by inspection alone, with no external moving target involved. Here,
+  the identical extraction logic is **correct against every apksigner build
+  available on this machine**; the failure traces to the workflow reaching,
+  by default, for a build-tools version that has **never been exercised
+  anywhere** — by this repo's suites, by AF42's or AF49's device builds, or by
+  me locally — while a different, already-verified version was sitting one
+  Gradle property away. That is the same shape as two hazards already on
+  record elsewhere in this repo, not a new family: **AD35**'s reasoning for
+  staying on ESLint 9 (moving to 10 would be moving to a transitive plugin set
+  — `@typescript-eslint`, `eslint-plugin-import`, `eslint-plugin-react-hooks`
+  — "never exercised at ESLint 10 in this repo"), and **AD38**'s standing
+  concern that a config plugin's anchor-based transform "fails silently if a
+  future template restructures" unless explicitly guarded against — both are,
+  like this one, a live surface quietly depending on a version nobody has
+  actually run.
+
+  ### NOT ESTABLISHED
+
+  1. **This fix has never run in CI.** No `workflow_dispatch` has exercised
+     the hardened extraction, the relaxed multi-signer check, or the pinned
+     build-tools selection against a real runner. It is a pending acceptance
+     check, in the same shape as AD21's, AD22's, AD28's, AD30's, AD37's,
+     AD38's and AD39's, and it will produce its own `AF` entry — the one that
+     also confirms, one way or the other, whether build-tools 37.0.0's
+     `apksigner` output actually differs from what AOSP's current source and
+     the official release notes suggest it should not.
+  2. **Build-tools 37.0.0's actual `apksigner verify --print-certs` output was
+     never observed**, by me or by this repo, at any point in this
+     investigation. The diagnosis above is the strongest evidence obtainable
+     without it — a measured version mismatch, source-level evidence the
+     format is unchanged, and a local reproduction that could not be forced —
+     but it stops short of a byte-for-byte comparison, and the permanent
+     diagnostic step is what closes that gap on the next run.
+  3. **Nothing about steps 13–14** (staging the APK, publishing to the `uat`
+     release) has run successfully yet; both were skipped as a consequence of
+     step 12's failure and remain unexercised.
+  4. **Nothing here touches `src/`, `android/`, or any CORE-DIVERGENCE.md
+     row.** Only `.github/workflows/uat-build.yml` changed.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -3860,3 +4132,46 @@
   evidence about the app and every 👁 limit in AF27–AF43 and AF49 stands; AF42's
   R8 half and untested ABIs are untouched, with the UAT artifact narrowing ABI
   coverage further by design. Decisions are **AD39**.
+- 2026-09-09 — appended **AF52** on `fix/apksigner-cert-parse`, diagnosing and
+  fixing the UAT workflow's first-dispatch failure (run 34275986703). Records
+  the eleven green steps as substantive: the first-ever from-scratch prebuild
+  with the signing plugin applying, matching AD37's identity design in
+  generated output; AD39's Q5 "not proven necessary" flag on the NDK/CMake
+  install step **settled as necessary** — both were genuinely downloaded, not
+  a no-op; and `assembleRelease` succeeding in Gradle's own reported 13m 23s.
+  The failure — `Could not read Signer #1 SHA-256 from apksigner output` — is
+  the empty-`ACTUAL` guard firing correctly on an extraction the workflow never
+  echoed, closing no evidence about the real cause. **Local reproduction with
+  both installed build-tools versions (35.0.0, 36.0.0) did NOT reproduce it**;
+  the run's own log shows AGP resolved **36.0.0** for the build while the
+  verification step's `sort -V | tail -1` glob reaches for the runner's
+  highest available (37.0.0 per GitHub's own `ubuntu-24.04` runner-images
+  documentation) — a version never exercised anywhere in this repo's history.
+  AOSP's current apksigner source and Android's own build-tools release notes
+  both argue the console format is unchanged, but neither proves it at
+  37.0.0, which was left unconfirmed after a local install attempt crashed on
+  an unrelated `sdkmanager` tooling bug. Three independent hardenings ship in
+  one file: the build-tools **selection** is now read from
+  `node_modules/react-native/gradle/libs.versions.toml` — the exact source
+  `ExpoRootProjectPlugin.kt` itself reads, the same mechanism AD39 already
+  uses for `ndkVersion`/`cmake` — rather than globbed, with two rejected
+  alternatives recorded (parsing Gradle's own decorative diagnostic banner;
+  a hardcoded literal, rejected for strictly worse drift and failure-mode
+  properties than a live read); the multi-signer grep and the SHA-256
+  extraction are both re-anchored on structurally stable substrings (an
+  ordinal tolerant of trailing punctuation, the word "certificate", a bare
+  64-hex-character token) rather than exact trailing wording, validated
+  against AF42's real APK under both local build-tools versions and against
+  hand-constructed adversarial variants that the **original** pattern
+  provably failed. A permanent, unconditional diagnostic now prints the
+  resolved apksigner path and the complete raw certificate block on every
+  run. The empty-`ACTUAL` guard, the positive fingerprint comparison, and
+  `EXPECTED_UAT_CERT_SHA256` are all untouched, re-verified after the edit.
+  Classified, at the project owner's explicit ruling, as the **unpinned,
+  never-exercised third-party version** pattern already on record via AD35's
+  ESLint-9 reasoning and AD38's template-anchor concern — **not** a seventh
+  instance of the self-inflicted, locally-reproducible instrument family
+  (AF44's two, AF48's one, AF50's one), since the extraction logic here is
+  correct against every apksigner build available on this machine. The fix
+  has not run in CI; that remains a pending acceptance check. Decisions are
+  **AD40**.
