@@ -1,0 +1,343 @@
+# UAT build — press one button, get a signed APK at a URL that never changes.
+#
+# WHY EVERY CHOICE HERE IS WHAT IT IS: DECISIONS.md AD39. The measurements it
+# rests on are FINDINGS.md AF51, and AF47/AF49/AF50 before it. Neither is
+# restated here (AD18).
+#
+# THIS IS NOT `static-and-suites` AND MUST NEVER BE NAMED THAT. Both `main` and
+# `dev` are protected with `static-and-suites` as their sole required check and
+# `enforce_admins` enabled, so the job key below being `uat-build` is what keeps
+# this workflow from adding a required check or gating any merge.
+name: uat-build
+
+on:
+  # workflow_dispatch ONLY -- no push, no pull_request, no schedule. NEVER
+  # pull_request_target or workflow_run: AF47 records both as the triggers that
+  # run with the base repository's secrets against fork-authored code, and this
+  # job holds signing credentials.
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: >-
+          Optional explicit versionCode. LEAVE EMPTY for the normal case -- the
+          overlay then uses minutes-since-epoch, which stays monotonic across CI
+          and local builds alike. Set it only to escape AD37's same-minute
+          collision.
+        required: false
+        type: string
+
+# The repository default is `read` (AF47, re-measured for AF51), so this must be
+# declared or `gh release create` fails with 403. Nothing else is granted.
+permissions:
+  contents: write
+
+# Serialised, never cancelled. Two concurrent runs could land in the same
+# wall-clock minute and resolve the SAME versionCode -- AD37's known limit -- and
+# could race each other clobbering the same release asset.
+concurrency:
+  group: uat-build
+  cancel-in-progress: false
+
+env:
+  # The UAT signing certificate's SHA-256, normalised to apksigner's own output
+  # form: lowercase, colon-free (measured for AF51). A LITERAL, deliberately,
+  # not a secret. A certificate fingerprint is public, and as a literal it is
+  # reviewable in a diff -- as a secret it could be changed with nobody seeing.
+  EXPECTED_UAT_CERT_SHA256: e3f1a6d667dc5026947cb5589e56616a027f4a537409e0be1749035e36e493e3
+
+  UAT_KEYSTORE_FILE: reading-aid-uat.keystore
+  UAT_KEY_ALIAS: readingaiduat
+  UAT_APK_NAME: reading-aid-uat.apk
+
+  # THE `PINNED_` PREFIXES ARE LOAD-BEARING, NOT TIDINESS, AND MUST NOT BE
+  # REMOVED. react-native/ReactAndroid/build.gradle.kts:52 reads CMAKE_VERSION
+  # from the ENVIRONMENT, so a bare `CMAKE_VERSION` here would be visible to
+  # Gradle. Measured as a near-miss for AF51.
+  PINNED_NDK_VERSION: 27.1.12297006
+  PINNED_CMAKE_VERSION: 3.22.1
+
+jobs:
+  uat-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned for determinism. AF47 measured the runner's JDK 17.0.20 an exact
+      # match for this project's toolchain, but a runner image is a moving
+      # target and pinning the JVM costs one cached step.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Major 26, matching AD35 and every recorded measurement (AF10, AD27).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # workflow_dispatch can target ANY branch, so without this a UAT APK could
+      # be built from a tree that never passed a pull request. AF45 measured the
+      # behavioural steps at roughly 4 seconds against an install already being
+      # paid for. Lint is deliberately NOT here: AD34 keeps it out of `check`,
+      # and a style violation must not stand between the project owner and a UAT
+      # build. static-and-suites already gates lint on every PR.
+      - name: Repo gate — npm run check
+        run: npm run check
+
+      # NOT PROVEN NECESSARY, and AD39 says so. `android.builder.sdkDownload` is
+      # absent from android/gradle.properties and therefore defaults to true, so
+      # AGP may well fetch both unaided. This step exists to convert a slow,
+      # opaque mid-build failure into a fast explicit one, and to remove reliance
+      # on an AGP default that could change. sdkmanager is idempotent, so it is a
+      # no-op when the image already ships them -- and if the first run shows it
+      # does, this step can simply be deleted.
+      - name: Install the pinned NDK and CMake
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "ndk;$PINNED_NDK_VERSION" "cmake;$PINNED_CMAKE_VERSION"
+
+      # SECRETS REACH THIS STEP THROUGH `env:`, NEVER THROUGH `${{ }}` IN THE
+      # SCRIPT BODY -- interpolation bakes the value into the script text. The
+      # properties file is written by HEREDOC REDIRECT and the keytool
+      # pre-flight takes its password on STDIN, so the password is never an argv
+      # token anywhere. There is no `set -x` in this workflow.
+      #
+      # PATHS. rootProject for this Gradle build is <repo>/android, because the
+      # settings file is android/settings.gradle. So the plugin's
+      # rootProject.file('../keystore.properties') resolves to the REPO ROOT, and
+      # its '../' + storeFile does too. storeFile must therefore be a BARE
+      # repo-root-relative filename: an absolute path would be concatenated onto
+      # '../' and resolve to <repo>/<that path>, which does not exist.
+      #
+      # Both files are gitignored already (.gitignore:47 *.keystore, :48
+      # keystore.properties), so materialising them cannot alter git state.
+      - name: Materialise UAT signing credentials
+        env:
+          UAT_KEYSTORE_BASE64: ${{ secrets.UAT_KEYSTORE_BASE64 }}
+          UAT_KEYSTORE_PASSWORD: ${{ secrets.UAT_KEYSTORE_PASSWORD }}
+        run: |
+          # tr strips any wrapping introduced by however the secret was pasted.
+          printf '%s' "$UAT_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$UAT_KEYSTORE_FILE"
+          test -s "$UAT_KEYSTORE_FILE"
+
+          cat > keystore.properties <<EOF
+          storeFile=$UAT_KEYSTORE_FILE
+          storePassword=$UAT_KEYSTORE_PASSWORD
+          keyAlias=$UAT_KEY_ALIAS
+          keyPassword=$UAT_KEYSTORE_PASSWORD
+          EOF
+
+          # Fail here, loudly, on a malformed secret or a wrong alias, rather
+          # than twenty minutes later as an opaque Gradle error. Output is
+          # discarded because it would otherwise print the certificate.
+          printf '%s\n' "$UAT_KEYSTORE_PASSWORD" \
+            | keytool -list -keystore "$UAT_KEYSTORE_FILE" -alias "$UAT_KEY_ALIAS" > /dev/null
+
+      # --no-install because npm ci has already run and prebuild can otherwise
+      # rewrite package.json (AF41). Clean-versus-no-clean is MOOT here:
+      # android/ is gitignored, so a CI checkout has none and there is nothing
+      # to preserve. That is not a departure from AD36 §7, whose --no-clean
+      # exists to protect Gradle caches and hand edits on a developer machine.
+      #
+      # THIS IS THE FIRST FROM-SCRATCH PREBUILD ANYWHERE -- the case
+      # RELEASE-SIGNING.md §3 exists to protect, and the one a prose recovery
+      # record can never reach (AF47, AF49).
+      - name: Prebuild the UAT variant
+        env:
+          READING_AID_UAT: '1'
+          # Empty when the input is omitted, which app.config.ts treats as
+          # unset and falls through to the clock.
+          UAT_VERSION_CODE: ${{ inputs.version_code }}
+        run: npx expo prebuild --platform android --no-install
+
+      # THIS CATCHES A DIFFERENT FAILURE FROM THE CERTIFICATE STEP BELOW, AND IS
+      # NOT BELT-AND-BRACES. If READING_AID_UAT failed to reach the overlay, the
+      # build would proceed with RELEASE identity and sign it with the UAT key --
+      # wrong identity, right key, which the certificate assertion would pass.
+      # The certificate step catches the mirror image: right identity, wrong key.
+      # Neither subsumes the other. See AD39.
+      #
+      # Capturing the RESOLVED versionCode into $GITHUB_ENV also means the
+      # release notes state what was actually built rather than what was
+      # intended.
+      - name: Confirm the UAT identity resolved
+        run: |
+          grep -q "applicationId 'com.arishh.readingaid.uat'" android/app/build.gradle
+          grep -q 'versionName "1.0.0-uat"' android/app/build.gradle
+          VERSION_CODE=$(grep -m1 -E '^[[:space:]]*versionCode ' android/app/build.gradle | awk '{ print $2 }')
+          test -n "$VERSION_CODE"
+          echo "UAT_RESOLVED_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "Resolved UAT versionCode: $VERSION_CODE"
+
+      # arm64-v8a only, and via -P rather than a file edit:
+      # android/gradle.properties:30 documents this exact override in the
+      # generated file itself. AF49 measured 45 MB and about three minutes
+      # arm64-only against 237 MB all-ABI, and UAT targets one arm64 phone.
+      - name: Assemble the release APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+
+      # THE LOAD-BEARING STEP, AND IT MUST PRECEDE THE UPLOAD.
+      #
+      # AF49 recorded, as an executed build, that a tree without the signing
+      # configuration produces a release APK that SUCCEEDS and carries
+      # CN=Android Debug. So inspecting the config proves nothing and only the
+      # ARTIFACT does. Asserted POSITIVELY against the known UAT fingerprint: a
+      # "not the debug cert" check would happily pass a build signed with any
+      # other key, the real release key included.
+      - name: Assert the APK carries the UAT certificate
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+
+          # PINNED TO THE SAME build-tools VERSION AGP ITSELF RESOLVED FOR THIS
+          # BUILD -- not globbed for "whatever is highest on the runner". Run
+          # 34275986703 (AF52) failed here because the runner ships several
+          # build-tools versions side by side (34.0.0 through 37.0.0 on
+          # ubuntu-24.04) and `sort -V | tail -1` picked a DIFFERENT, never-
+          # exercised one than the 36.0.0 the build step above actually used
+          # (visible in that step's own "- buildTools:" line).
+          #
+          # node_modules/react-native/gradle/libs.versions.toml is the exact
+          # file expo-modules-autolinking's ExpoRootProjectPlugin.kt reads via
+          # versionCatalogs.getVersionOrDefault("buildTools", ...) -- the same
+          # mechanism AD39 already pins ndkVersion/cmake through, two lines
+          # away in that file. Reading it here rather than hardcoding a literal
+          # means this can never drift from what the build actually used: it
+          # is the one pinned source, read twice, not two independent guesses.
+          BUILD_TOOLS_VERSION=$(awk -F'"' '/^buildTools[[:space:]]*=/ { print $2 }' node_modules/react-native/gradle/libs.versions.toml)
+          test -n "$BUILD_TOOLS_VERSION"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+          if [ ! -x "$APKSIGNER" ]; then
+            echo "::error::apksigner not found for build-tools $BUILD_TOOLS_VERSION (the version this build used) at $APKSIGNER -- the runner image does not have it."
+            exit 1
+          fi
+          echo "Using apksigner from build-tools $BUILD_TOOLS_VERSION: $APKSIGNER"
+
+          # Under `bash -e` a non-zero apksigner exit fails this assignment, so
+          # "the APK is validly signed at all" is asserted here too.
+          CERTS=$("$APKSIGNER" verify --print-certs "$APK")
+
+          # PERMANENT DIAGNOSTIC, kept unconditionally rather than only on
+          # failure. apksigner's console output is not a documented, versioned
+          # interface -- Android's own build-tools release notes record
+          # exactly one change to it, ever (the 2016 addition of the MD5
+          # line) -- so the next format drift should be diagnosable straight
+          # from this log, not by another blind round-trip through a failing
+          # run (AF52). Certificate fingerprints and DNs are public; nothing
+          # printed here is a secret.
+          echo "--- raw apksigner verify --print-certs output ---"
+          printf '%s\n' "$CERTS"
+          echo "--- end raw apksigner output ---"
+
+          # Exactly one signer. A multi-signer APK could carry the expected
+          # certificate alongside an unexpected one and still match below.
+          # Matched on the "Signer #2" ordinal (tolerating a colon or other
+          # punctuation immediately after it, not only a space) rather than on
+          # the DN-line wording that follows it, since that ordinal is how
+          # apksigner enumerates signers at all and is far less likely to
+          # change than the words after it (AF52).
+          if printf '%s\n' "$CERTS" | grep -qE '^Signer #2([^0-9]|$)'; then
+            echo "::error::APK has more than one signer; exactly one was required."
+            exit 1
+          fi
+
+          # Keyed on the "Signer #1" ordinal, the word "certificate" (so a
+          # possible future "public key SHA-256 digest" line for the same
+          # signer -- a DIFFERENT value -- is never mistaken for this one),
+          # and a bare 64-hex-character token: a SHA-256 digest is always
+          # exactly 64 hex characters, which is what actually distinguishes it
+          # from the SHA-1 (40) and MD5 (32) digest lines, independent of the
+          # English wording around it. `exit` after the first match keeps this
+          # deterministic even if a future apksigner ever prints the digest
+          # twice. Validated against AF42's real signed release APK under two
+          # build-tools versions, plus hand-constructed adversarial variants
+          # (a colon after the ordinal, a decoy "public key" digest line, a
+          # two-signer block) that the OLD anchor failed and this one does not
+          # (AF52).
+          ACTUAL=$(printf '%s\n' "$CERTS" | awk '
+            /^Signer #1([^0-9]|$)/ && /[Cc]ertificate/ {
+              if (match($0, /[0-9a-fA-F]{64}/)) {
+                print substr($0, RSTART, RLENGTH)
+                exit
+              }
+            }
+          ' | tr -d ':[:space:]' | tr 'A-Z' 'a-z')
+
+          if [ -z "$ACTUAL" ]; then
+            echo "::error::Could not read Signer #1 SHA-256 from apksigner output."
+            exit 1
+          fi
+
+          if [ "$ACTUAL" != "$EXPECTED_UAT_CERT_SHA256" ]; then
+            echo "::error::WRONG SIGNING CERTIFICATE -- refusing to publish."
+            echo "  expected: $EXPECTED_UAT_CERT_SHA256"
+            echo "  actual:   $ACTUAL"
+            exit 1
+          fi
+
+          echo "Certificate verified: the APK is signed with the UAT release key."
+
+      - name: Stage the APK under its stable name
+        run: cp android/app/build/outputs/apk/release/app-release.apk "$UAT_APK_NAME"
+
+      # ONE tag, `uat`, overwritten in place, so the download URL never changes:
+      #   https://github.com/<owner>/<repo>/releases/download/uat/reading-aid-uat.apk
+      #
+      # A Release rather than a workflow artifact because AF47 measured Release
+      # assets anonymously downloadable (HTTP 206, no auth) while artifacts
+      # return 401 -- downloading on a phone with no login is the entire point.
+      # The repository is public, so the APK is world-downloadable; AD39 records
+      # that as accepted knowingly.
+      #
+      # The release is NEVER deleted. --clobber's documented risk is that a
+      # failed upload loses the existing asset, which is exactly why this step
+      # runs only after the certificate assertion has passed.
+      - name: Publish to the `uat` release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BUILT_AT=$(date -u '+%Y-%m-%d %H:%M UTC')
+
+          NOTES=$(cat <<EOF
+          Reading Aid — UAT build.
+
+          To install: tap the .apk asset below on the phone. It installs
+          alongside the release app, which has a different applicationId, so
+          both can be present at once.
+
+          commit         ${GITHUB_SHA}
+          run            #${GITHUB_RUN_NUMBER}
+          versionCode    ${UAT_RESOLVED_VERSION_CODE}
+          versionName    1.0.0-uat
+          applicationId  com.arishh.readingaid.uat
+          ABI            arm64-v8a only
+          built          ${BUILT_AT}
+
+          The uat tag stays pinned at the commit that first created this
+          release, so the lines above are what is authoritative. See
+          DECISIONS.md AD39.
+          EOF
+          )
+
+          if ! gh release view uat > /dev/null 2>&1; then
+            gh release create uat \
+              --title 'Reading Aid — UAT' \
+              --target "$GITHUB_SHA" \
+              --latest=false \
+              --notes "$NOTES"
+          fi
+
+          gh release upload uat "$UAT_APK_NAME" --clobber
+          gh release edit uat --notes "$NOTES"
+
+          echo "Download: https://github.com/${GITHUB_REPOSITORY}/releases/download/uat/${UAT_APK_NAME}"

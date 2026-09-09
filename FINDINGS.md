@@ -2676,6 +2676,818 @@
      **for the fields AD37 designed**, not for the signing question named in
      item 1 above.
 
+## The signing config plugin — a second loader with the same erasability trap
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, in this tree, against the installed
+> `@expo/config-plugins@57.0.9` / `@expo/require-utils@57.0.5` packages, the
+> published `expo-template-bare-minimum` tarballs pulled read-only with
+> `npm pack`, and the existing generated `android/` directory. **No prebuild,
+> Gradle build, emulator, device or install was run**, and none is claimed. This
+> section therefore carries **no 👁 at all**, like AF45, AF47 and AF48, and
+> nothing in it is behavioural evidence about the app on hardware. The decisions
+> taken in response are **AD38**; nothing from that entry is restated here
+> (AD18).
+
+- **AF50** 🧪📐 — **The `.ts` config-plugin loader is the SAME two-transpiler
+  path AF48 measured for `app.config.ts`, so the erasability trap applies to a
+  second file — and is invisible to `tsc` in both.**
+
+  Expo's plugin resolver accepts TypeScript directly:
+  `plugin-resolver.js:39` is
+  `pluginExtensions = ['.js', '.cjs', '.mjs', '.ts', '.cts', '.mts']`, and
+  `:136` loads the resolved file with `@expo/require-utils`' `loadModuleSync`
+  📐. That function routes a `.ts` file to `evalModule`
+  (`load.js:399-425` → `:296`), which is **the identical code AF48 traced**:
+  `typescript`'s `transpileModule` at `:316` when the API exists, falling back
+  to Node's `module.stripTypeScriptTypes` at `:335-341` when it does not, with
+  Expo's own comment at `:77-79` anticipating that TypeScript 7 removes
+  `transpileModule`.
+
+  **Measured on a plugin-shaped probe pair in the scratchpad** 🧪:
+
+  | probe | `loadModuleSync` | `stripTypeScriptTypes` |
+  |---|---|---|
+  | erasable `.ts` (types + `as const`) | **loads**, default is a function | **accepts** |
+  | identical file plus `enum Bad { A, B }` | **loads**, default is a function | **rejects** — *"TypeScript enum is not supported in strip-only mode"* |
+
+  **That top-right/bottom-left asymmetry is the whole finding.** A non-erasable
+  construct in a config plugin typechecks, lints, and **loads perfectly well on
+  the machine that added it**, because `transpileModule` handles it. It breaks
+  only on a machine that takes the fallback — one whose `typescript` is v7 or
+  absent. Nothing in the ordinary gates would catch it. This is why
+  `plugins/withReleaseSigning-headless-test.mjs` runs the real stripper over the
+  real source, exactly as `app.config-headless-test.mjs` does.
+
+  **`@expo/config-plugins` is transitive and unpinned**, confirmed rather than
+  assumed 🧪: `npm ls` reports `57.0.9` reached only through `expo@57.0.18`,
+  `expo-splash-screen@57.0.8`, `@expo/cli`, `@expo/prebuild-config`,
+  `@expo/config` and `@expo/inline-modules` — **no direct dependency of this
+  repo declares it**, and `package.json` names it in neither `dependencies` nor
+  `devDependencies`. Also measured: `expo/tsconfig.base` sets
+  `skipLibCheck: true` 📐, so the package's own `.d.ts` errors cannot leak into
+  this repo's typecheck — which bounds, without eliminating, the exposure from
+  importing its one runtime value.
+
+  ### The appBuildGradle field is still uncontested — re-verified at 57.0.9
+
+  AF47 recorded that nothing in the default plugin chain touches
+  `signingConfigs`. Re-swept for this entry 🧪, and the first sweep was **wrong
+  and is recorded as such**: grepping for `withAppBuildGradle(` returned
+  **nothing**, because the compiled call form is
+  `(0, _androidPlugins().withAppBuildGradle)(config, …)`. Corrected, the sweep
+  finds **exactly three** consumers — `Package.js:78`, `Version.js:25`,
+  `GoogleServices.js:63` — and **none touches `signingConfigs` or
+  `buildTypes`**. The only `signingConfig` strings anywhere in
+  `@expo/config-plugins` or `@expo/prebuild-config` are in
+  `EasBuildGradleScript.js`, referenced solely by `EasBuild.js` and re-exported
+  by `android/index.js`, with no caller in prebuild or the CLI 🧪.
+
+  **Mod ordering, read from source rather than inferred.** `withMod`'s wrapper
+  runs the user action and *then* calls `nextMod(results)`
+  (`withMod.js:189-203`), and the provider base mod — which must be registered
+  last (`withMod.js:90-92` throws `INVALID_MOD_ORDER` otherwise) — reads the
+  file, calls `nextMod`, and writes (`createBaseMod.js:44-66`) 📐. So
+  **last-registered runs first**, which is what Expo's own
+  `// Added last to ensure this plugin runs first` comment records.
+  `getPrebuildConfig.js:26-78` resolves user plugins via `getConfig` **before**
+  registering the built-ins 📐, so a user plugin runs **last** among
+  `appBuildGradle` mods. A throw from it is not swallowed: `mod-compiler.js:203`
+  has no `try`/`catch` around `await mod(...)` 📐.
+
+  ### The stock template, and a dist-tag that has already moved
+
+  `expo-template-bare-minimum@sdk-57` resolved to **57.0.23** on 2026-09-08,
+  against **57.0.22** when AF47 pulled it on 2026-09-04 🧪 — a **moving tag**,
+  which is why the suite's fixture is committed rather than fetched (AD38).
+
+  **NULL RESULT, recorded per AF30's and AF41's precedent: the stock
+  `android/app/build.gradle` is BYTE-IDENTICAL across 57.0.20, 57.0.21, 57.0.22
+  and 57.0.23**, all four hashing
+  `c5056fedcc8225aae86d3432ca48aa1711130987bac10427e68f4e0d6938bd40` 🧪. So the
+  tag moving did **not** move this file, the committed fixture is stable across
+  the whole patch range, and AF41's zero-drift observation extends by four
+  releases. Had it drifted, the plugin's anchors would have been written against
+  stale text on their first day.
+
+  ### Byte-identity, and what it does and does not prove
+
+  The plugin's transform, applied to the committed stock fixture and then
+  through Expo's own three identity substitutions, reproduces the hand-edited
+  `android/app/build.gradle` **exactly** 🧪:
+
+  ```
+  stock template                   c5056fedcc8225aae86d3432ca48aa1711130987bac10427e68f4e0d6938bd40
+  transform(stock)                 06fe1eef76396bf17d73819bda1d57f44e6f4e4e38065dce98ca1bb259172b55
+  + Expo identity mods             0b322188fa0661d91389c80c86a65c3d10dbd5996e8dc44d24031f539bdefcb9
+  android/app/build.gradle         0b322188fa0661d91389c80c86a65c3d10dbd5996e8dc44d24031f539bdefcb9
+  ```
+
+  Also measured: the transform is **idempotent** — `transform(transform(x))`
+  equals `transform(x)` — and the **only** lines differing between the plugin's
+  own output and the real file are the three Expo owns (`namespace`,
+  `applicationId`, `versionName`) 🧪.
+
+  **What that is NOT.** It is a string transform over a published tarball. **No
+  prebuild generated this file**, so it is not evidence that Expo invokes the
+  plugin, writes the result, or produces this on disk. The closest thing to
+  end-to-end evidence obtained here is one step short of that, and it is real:
+  Expo's own `resolveConfigPluginFunctionWithInfo(projectRoot, './plugins/withReleaseSigning')`
+  resolves to `plugins/withReleaseSigning.ts`, loads it through the production
+  loader, and calling the resolved function registers a mod at
+  `mods.android.appBuildGradle` 🧪.
+
+  ### The hand-edit surface under `android/` — AF41's method, reapplied
+
+  **The method is the point, and it is AF41's**: a machine-generated tree writes
+  every file inside a narrow window, so a hand edit shows up as an **isolated,
+  later mtime**. A clean sweep is therefore positive evidence of absence, not
+  merely a failure to find something.
+
+  ```
+  $ find android -type f -not -path '*/build/*' -not -path '*/.gradle/*' \
+      -not -path '*/.cxx/*' -exec stat -f "%Sm %N" -t "%Y-%m-%d %H:%M" {} \;
+  53 files   2026-09-02 15:31      <- prebuild's generation window
+   1 file    2026-09-02 15:35      <- android/app/build.gradle
+  ```
+
+  **54 non-build files; 53 in one generation-minute; exactly one later, and it
+  is the signing edit** 🧪. So the signing block is the **only** hand edit under
+  `android/`.
+
+  **This is what makes AD38's Q4 recommendation checkable rather than asserted —
+  and it is also why that recommendation is conservative.** The measurement
+  supports "a clean prebuild would today destroy nothing the plugin cannot
+  regenerate". It does **not** support "clean prebuilds are safe": it is a
+  statement about this tree at this moment, it says nothing about the Gradle
+  caches a clean run discards, and nothing about a hand edit someone makes
+  tomorrow. AD36 §7's `--no-clean` is therefore kept, with only its stated
+  reason changed.
+
+  ### A FOURTH self-caught invalid instrument, and it is the same shape as the other three
+
+  While refactoring the plugin to remove a latent `String.replace` substitution
+  hazard, **the editing script hit that exact hazard**. Its replacement text
+  contained the literal `'$'` — and `` $` `` and `$'` are substitution patterns
+  in a `String.replace` replacement string, so `$'` spliced *everything after
+  the match* back into the file, producing a 414-line file with a mangled
+  comment and a duplicated block. It was caught immediately because esbuild
+  refused to parse the result 🧪; the file was rewritten from scratch and
+  re-verified byte-identical.
+
+  With AF44's two (the flat-config probe that threw `ReferenceError` at load and
+  so measured ESLint's *loader* rather than its linter; the `paths:` sweep whose
+  only hit was the comment forbidding the key) and AF48's one (`.probe-env.ts`,
+  a dotfile TypeScript's `include` globs never match, which measured its own
+  filename), the pattern is now four for four: **the invalid instrument produced
+  a confident, plausible, wrong result, and what exposed it was a check whose
+  outcome was known in advance.** The plugin now builds its anchor and its
+  replacement by **concatenation from one shared constant** rather than by
+  `String.replace`, so no dollar sequence in the Gradle text can ever be read as
+  a pattern.
+
+  ### One assertion that was wrong before it was right
+
+  A check written as *"exactly one `signingConfig signingConfigs.debug` remains,
+  down from two"* **failed at 2** 🧪 — correctly. The preamble the plugin
+  *inserts* quotes the template default inside a comment, so the naive substring
+  count is 2 even though only one executable statement remains. The check now
+  counts the **statement form** — twelve-space indent, whole line — and pins
+  both ends: stock has 2, output has 1, and `buildTypes.debug` still carries
+  its own. Recorded because the naive count looks like a defect in the plugin
+  and is a defect in the test.
+
+  ### A negative control found a real weakness IN THE SUITE, not in the subject
+
+  The fourth negative control — rewriting the plugin to anchor on the bare
+  `signingConfig signingConfigs.debug` statement, so that `String.replace` takes
+  the **first** match and mutilates `buildTypes.debug` — did fail the suite, but
+  it failed it by **crashing**: the broken transform threw from inside an
+  argument position, the exception escaped `check()`, and the run aborted at the
+  idempotence section with **no tally printed and later sections never
+  reached** 🧪. That is precisely the fail-fast masking **AF17** records, which
+  this repo deliberately designed out of `test:core` at the runner level,
+  reappearing one level down *inside* a suite.
+
+  Fixed by evaluating every transform through a helper that converts an
+  unexpected throw into a marker string, so a broken subject produces clean
+  FAIL lines instead of a stack trace. Re-run afterwards, the same control
+  reports **7 failures and a tally** 🧪, among them the two that matter — *"the
+  template's release signingConfig default is GONE"* and *"buildTypes.debug
+  STILL signs with signingConfigs.debug"* — which is the duplicate-string trap
+  caught in both directions at once.
+
+  **The lesson generalises past this suite:** a negative control validates the
+  instrument, and an instrument that *crashes* on a broken subject is reporting
+  less than one that *fails* on it. The control's value here was not confirming
+  that the check caught the defect; it was revealing that the harness would have
+  hidden six other checks while doing so.
+
+  ### NOT ESTABLISHED
+
+  1. **Nothing was prebuilt, built, installed or run.** The signing block has
+     never been produced by an actual `expo prebuild` in this repo. Every hash
+     above comes from a string transform. AD38's pending acceptance check is
+     open, and it is the same check that retires RELEASE-SIGNING.md §3.
+  2. **Nothing here is behavioural evidence about the app**, and no 👁 limit
+     recorded in AF27-AF43 or AF49 is narrowed by one line. ARCHITECTURE.md §6's
+     list of what has no automated coverage is not shortened.
+  3. **AF47's CI fail-open blocker is not closed.** This entry supplies the
+     mechanism that would close it, but no CI job runs Gradle, and none is added
+     here.
+  4. **AF42's R8/Proguard half and its untested ABIs are untouched.**
+     `minifyEnabled` is still `false` and this entry adds no ABI coverage.
+  5. **The raw-`.ts`-evaluation path is still unexercised** — a Node lacking
+     `stripTypeScriptTypes` combined with a TypeScript lacking `transpileModule`
+     was not simulated, exactly as AF48 left it ❓.
+
+## The signing plugin proven by generation, and a suite that read the wrong tree
+
+> Scope note that governs this section: **the prebuild and the CI run described
+> below were executed by the project owner; every hash, mtime, count and log
+> reading is MINE**, measured in this session against the resulting tree, the
+> installed packages, and run logs fetched with `gh`. **No prebuild, Gradle
+> build, emulator, device or install was run by me**, and no secret was read,
+> decoded or printed at any point. This section carries **no 👁 at all**, like
+> AF45, AF47, AF48 and AF50 — nothing here was observed on a running device, and
+> nothing here is behavioural evidence about the app. The decisions taken in
+> response are **AD39**; nothing from that entry is restated here (AD18).
+
+- **AF51** 🧪📐 — **AD38's exit condition is SATISFIED, and the evidence is of
+  the kind AD38 said it lacked: GENERATION, not a string transform.**
+
+  AF50 recorded byte-identity between the plugin's output and the hand-edited
+  file, and bounded that result carefully — *"a string transform over a
+  published tarball. **No prebuild generated this file**, so it is not evidence
+  that Expo invokes the plugin, writes the result, or produces this on disk."*
+  RELEASE-SIGNING.md §3 named the closing condition in one sentence: a real
+  `npx expo prebuild --platform android` in this repo whose generated
+  `android/app/build.gradle` hashes to the pinned value.
+
+  **It has run, and I measured the result rather than accepting it** 🧪:
+
+  ```
+  $ shasum -a 256 android/app/build.gradle
+  0b322188fa0661d91389c80c86a65c3d10dbd5996e8dc44d24031f539bdefcb9  android/app/build.gradle
+  ```
+
+  Byte-for-byte the value AD38 pinned and RELEASE-SIGNING.md §3 quotes. So the
+  residual AF50 named — that the suite exercised the **transform** and not the
+  **wiring** — is closed: Expo's prebuild resolved `./plugins/withReleaseSigning`,
+  loaded it through `@expo/require-utils`, ran the `appBuildGradle` mod, and
+  wrote the result to disk, and the bytes on disk are the ones the plugin
+  produces.
+
+  **INDEPENDENT CORROBORATION FROM AF41'S MTIME METHOD, AND IT IS THE PART
+  WORTH KEEPING.** AF50 applied that method and found the signature of a hand
+  edit: **53 of 54** non-build files in a single generation-minute, and **exactly
+  one later** — `android/app/build.gradle` at 15:35 against a 15:31 window. Run
+  again now:
+
+  ```
+   11 2026-09-02 15:31        <- survivors, untouched by --no-clean
+   43 2026-09-08 14:17        <- this prebuild's generation window
+  ---
+   54 non-build files
+
+  2026-09-08 14:17:59  android/app/build.gradle
+  2026-09-08 14:17:59  android/settings.gradle
+  ```
+
+  **The outlier is GONE.** `build.gradle` now carries the same
+  generation-second as `settings.gradle`, which is what a machine-written file
+  looks like and what a hand-edited one cannot. The mtime evidence and the hash
+  evidence are independent — one could hold without the other — and they agree.
+
+  Two smaller readings fall out of the same measurement. The **11/43 split is
+  itself the signature of `--no-clean`**: files prebuild had no need to rewrite
+  kept their 2026-09-02 mtimes, whereas a clean prebuild would have put all 54
+  in one window as AF41 recorded for its own clean run. And **the file count is
+  unchanged at 54**, so this generation added and removed nothing.
+
+  **What this does NOT license, and AD39 rules accordingly:
+  RELEASE-SIGNING.md §3 and §4 STAY.** The plugin has now run exactly **once**,
+  against a tree that **already carried the signing block** — which is the
+  transform's *already-applied* branch, its easiest path, the one whose entire
+  job is to return the contents unchanged. The **from-scratch** case — no
+  `android/` at all, generation from the stock template, the case AF47 and AF49
+  established a prose recovery record can never reach — **has still never
+  happened anywhere.** The workflow AD39 adds is what will first exercise it.
+
+  ---
+
+  ### A suite that went green locally and red in CI on nothing but the staging list — the FIFTH instance of this repo's recurring pattern
+
+  **Measured from the run log of PR #29** 🧪 (`gh run view 34261054953`), which
+  failed while its identical local run passed:
+
+  ```
+  PASS  RELEASE-SIGNING.md §3 still carries exactly four gradle blocks
+  FAIL  §3 is marked as a fallback rather than the mechanism:
+          RELEASE-SIGNING.md §3 does not name the plugin as the live mechanism
+  FAIL  the demotion states the condition that would retire §3:
+          RELEASE-SIGNING.md does not pin the hash that would retire §3
+  37 passed, 2 failed
+  ```
+
+  **The mechanism.** `plugins/withReleaseSigning-headless-test.mjs:73` reads
+  `path.join(__dirname, '..', 'RELEASE-SIGNING.md')` 📐 — a repo file the suite
+  does **not** live beside. Locally that read the **working tree**, which already
+  carried the demotion; in CI it read **what had been committed**, which did not.
+  Nothing about the code differed. The commit timeline, from the reflog and the
+  run list, closes it 🧪: plugin commit `5ad4183` at 18:05:55Z, failing run at
+  18:06:20Z, demotion commit `eb1c4ad` at 18:15:58Z, passing run `34262024405`
+  at 18:16:10Z.
+
+  **THE SHARPER FINDING IS WHICH CHECKS COULD SEE IT, AND IT IS AN ARGUMENT FOR
+  KEEPING PROSE ASSERTIONS IN A BYTE-COMPARISON SUITE.** Section 7 of that suite
+  holds six checks. **Four are byte-for-byte comparisons** of §3's fenced
+  `gradle` blocks against the plugin's exported constants, and all four
+  **PASSED** against a document that had never been demoted — they compare
+  Gradle text, and are structurally blind to whether §3 has been reframed as a
+  fallback at all. **Only the two prose assertions** — `/FALLBACK/` plus
+  `/withReleaseSigning/`, and the presence of the pinned retiring hash — could
+  detect it, and both did.
+
+  So a suite that had confined itself to byte comparison, which is this repo's
+  strong instinct and usually the right one, would have shipped a document
+  asserting the hand edit was the live mechanism while the plugin actually was.
+  **The prose assertions are not decoration around the rigorous checks; they are
+  the only two checks in that section that can see a stale framing.**
+
+  **As the fifth instance it differs from the other four in a way worth
+  stating.** AF44's two (a flat-config probe that threw `ReferenceError` at load
+  and so measured ESLint's *loader* rather than its linter; a `paths:` sweep
+  whose only hit was the comment forbidding the key), AF48's one
+  (`.probe-env.ts`, a dotfile TypeScript's `include` globs never match, which
+  measured its own filename) and AF50's one (an editing script corrupted by the
+  `$'` substitution hazard it was removing) were all instruments measuring the
+  wrong **thing**. This one is an instrument measuring the right thing in the
+  wrong **tree**. The family resemblance holds regardless: **a confident,
+  plausible, wrong result, exposed by a check whose outcome was known in
+  advance.**
+
+  **The generalisable rule:** a suite that reads a repo file it does not live
+  beside is testing the working tree locally and the commit in CI, and those are
+  different documents until everything is staged. That is not a defect in the
+  suite — reading the document is the whole point of the guard — but it means
+  such a suite's local green is **conditional on the staging list**, and only CI
+  reads what a reviewer will.
+
+  ---
+
+  ### CORRECTED PREMISE — `github.run_number` as the CI versionCode would not install
+
+  Recorded as a premise correction, and **recorded as the project owner's**,
+  because AF37's lesson is that an unchallenged claim about mechanism is caught
+  by nothing. The UAT pipeline work was scoped on the framing that CI would
+  derive the UAT `versionCode` from `github.run_number`. **That is wrong, and
+  the project owner corrected it on being shown the measurement.**
+
+  `run_number` begins at **1** for a workflow's first run. The UAT app already
+  installed on the project owner's phone carries a **minutes-since-epoch** code
+  near **29,809,000** (AF48's measured 29,809,147 for that day; AF49's hardware
+  run). Android refuses an update whose `versionCode` is not strictly greater for
+  the same `applicationId` ❓ (documented platform behaviour, as AD36 records,
+  not something this repo's files establish). So a CI build numbered in the tens
+  is **far below** what is installed and **would simply refuse to install** —
+  reintroducing precisely the upgrade failure AD36 exists to prevent.
+
+  Two further properties measured while settling it 📐. `run_number` **knows
+  nothing about local builds**, and the project owner builds UAT APKs by hand
+  (AF49), so adopting it would create **two independent counters writing to one
+  `applicationId`** — a local build after a CI build could regress. And
+  `app.config.ts:129` treats an empty-string override as unset
+  (`raw.trim() !== ''`), so an omitted `workflow_dispatch` input falls through to
+  the clock with no special handling. AD39 takes the clock.
+
+  ---
+
+  ### CORRECTION TO AF47 — only the NDK is a project pin; CMake 3.22.1 is AGP's default
+
+  **AF47 recorded that "this project pins NDK `27.1.12297006` and CMake
+  `3.22.1`" and that `ubuntu-latest` ships neither.** Measured, **only the first
+  half is true.** AF47 is append-only and is **superseded here, not edited**, the
+  way AF31 corrected AF28 and AF43 completed AF32.
+
+  | | AF47 | Measured |
+  |---|---|---|
+  | NDK `27.1.12297006` | project pin | **Effectively yes.** `ExpoRootProjectPlugin.kt:56` — `extra.setIfNotExist("ndkVersion") { versionCatalogs.getVersionOrDefault("ndkVersion", "27.1.12297006") }`, consumed **unconditionally** at `android/app/build.gradle:132` 🧪 |
+  | CMake `3.22.1` | project pin | **No. Not pinned anywhere.** **No `cmake { version … }` declaration exists** in the app module or in any of the six native modules; their `cmake_minimum_required` values are 3.9.0–3.16. `3.22.1` is **AGP 8.12.0's default** 🧪 |
+
+  **Native code genuinely does compile from source, so the NDK requirement is
+  real rather than nominal.** Six installed modules carry a `CMakeLists.txt` and
+  an `externalNativeBuild` — `expo-modules-core`, `react-native-reanimated`,
+  `react-native-worklets`, `react-native-mmkv`, `react-native-nitro-modules`,
+  `react-native-screens` 🧪. The app module has **no** `externalNativeBuild`,
+  only `ndkVersion`, so the app itself compiles no C++; its dependencies do, in
+  the same Gradle invocation.
+
+  **What the local build actually used**, read out of AGP's own record
+  (`expo-modules-core/.../intermediates/cxx/Debug/.../build_model.json`) rather
+  than inferred 🧪: `ndkVersion 27.1.12297006`, toolchain from
+  `.../ndk/27.1.12297006/build/cmake/android.toolchain.cmake`, `cmakeExe`
+  `.../cmake/3.22.1/bin/cmake`, `ninjaExe` from the same directory, AGP `8.12.0`.
+
+  **A related default that materially changes what a CI install step is for:
+  `android.builder.sdkDownload` is ABSENT from `android/gradle.properties`** 📐,
+  and therefore defaults to **`true`** — AGP is permitted to fetch a missing NDK
+  and CMake itself. **Whether that succeeds on `ubuntu-latest`, and what the
+  current runner image already ships, cannot be determined without running a
+  build** ❓. AD39's explicit `sdkmanager` step is therefore recorded there as
+  **provisional and not proven necessary**, with permission to delete it once a
+  run settles the question.
+
+  ---
+
+  ### A MEASURED NEAR-MISS — `CMAKE_VERSION` is read from the ENVIRONMENT by React Native
+
+  Recorded because it is invisible from the workflow that avoids it, and a future
+  reader renaming two variables for tidiness would reintroduce it.
+
+  `node_modules/react-native/ReactAndroid/build.gradle.kts:52` is 🧪:
+
+  ```kotlin
+  val cmakeVersion = System.getenv("CMAKE_VERSION") ?: "3.30.5"
+  ```
+
+  A sweep of every `.gradle`/`.kts` under `node_modules` finds this as the **only**
+  environment read of either version name — there is no `getenv("NDK_VERSION")`
+  🧪. So a workflow-level `env: CMAKE_VERSION: 3.22.1`, which is the natural way
+  to name a pin, would have been **visible to Gradle** and would have overridden
+  ReactAndroid's own default.
+
+  **It would probably never have fired**, and the honest bound matters: that line
+  governs building **ReactAndroid from source**, and this project consumes
+  prebuilt React Native artifacts from Maven, so nothing here should reach it ❓.
+  It was caught while drafting the workflow, before any run, and avoided by
+  prefixing both variables `PINNED_NDK_VERSION` / `PINNED_CMAKE_VERSION`. A
+  six-character collision avoided at zero cost is worth a record rather than a
+  comment alone — this is the same class as AF50's `$'` substitution hazard: a
+  string that is inert until the day something reads it.
+
+  ---
+
+  ### A SIXTH instance, caught twice in this change's own verification
+
+  Recorded because it happened while verifying the workflow above, and because
+  it is the same failure AF44 already recorded once — which makes it a repeat
+  rather than a novelty, and therefore worth a rule.
+
+  Two of the structural assertions written for the new workflow **failed on a
+  correct file** 🧪. Both swept the raw file text for a forbidden string:
+
+  | Assertion | Only textual hit |
+  |---|---|
+  | `pull_request_target` / `workflow_run` absent | line 15, the comment **forbidding** them |
+  | `set -x` absent | line 110, the comment stating **there is none** |
+
+  In both cases the workflow was right and the instrument was wrong: the
+  comments that document a prohibition contain the prohibited string, so a raw
+  grep can never distinguish "this file uses X" from "this file explains that it
+  must not use X". **AF44 recorded exactly this for its own `paths:` sweep,
+  whose only hit was the comment forbidding the key** — so this is the second
+  and third time the same instrument has misfired in this repo, on three
+  different files, across two sessions.
+
+  Fixed by asserting against the file with **comment lines stripped**, plus the
+  parsed trigger keys, which is what the property actually means; both then
+  passed. The rule generalises past YAML: **a repo whose convention is to
+  document prohibitions in comments cannot verify those prohibitions with a raw
+  text search.** Strip comments, or parse.
+
+  A related over-broad grep in the same pass is worth distinguishing, because it
+  behaved correctly. Sweeping for any `echo`/`printf`/`cat` naming a
+  secret-bearing variable flagged two lines, and both were **fine** — one
+  redirects into a file, one pipes into `keytool` with stdout discarded. That
+  grep was written deliberately over-broad so that every hit gets read, and its
+  output was then narrowed by an assertion that classifies each secret-bearing
+  line by its **sink** (pipe, redirect, heredoc body, continuation) rather than
+  by its command name 🧪. An over-broad check whose hits you inspect is sound; a
+  precise check measuring the wrong text is not.
+
+  ### A third stale-string site in `static-and-suites.yml`, flagged and unfixed
+
+  The count of unrecorded drift sites is itself worth writing down. Measured 🧪:
+
+  | Line | Says | Should say |
+  |---|---|---|
+  | `:6` | "14 headless suites passed" | **15** |
+  | `:64` | step name `Headless suites — local (5 suites)` | **7** — `test:local` runs seven |
+
+  **Line 64 was already flagged by AD38**, which ruled it a `name:` key rather
+  than a comment and left it to ride along with a real workflow change.
+  **Line 6 is a third site nobody has recorded**, and it is inconsistent
+  *within its own file*: line 56's comment already reads "15 suites plus 1
+  baseline check", so the header and the body of the same document disagree.
+
+  Both stay **flagged and unfixed**: `.github/workflows/static-and-suites.yml`
+  is off-limits in the change that carries this entry, and touching a required
+  check's file for a comment is not worth the risk of an unrelated edit. Recorded
+  here so the next real edit to that file can sweep all three at once.
+
+  ---
+
+  ### NOT ESTABLISHED
+
+  1. **The new workflow has NEVER EXECUTED.** It was parsed locally and every
+     `run:` script extracted and syntax-checked with `bash -n`, which establishes
+     valid YAML, the intended keys, and shell that parses — and **nothing** about
+     whether Actions accepts the schema, whether the runner has the SDK
+     components, whether signing applies, or whether the release upload
+     succeeds. AD39 holds the pending acceptance check and lists what a first run
+     could plausibly get wrong.
+  2. **The from-scratch prebuild is still unexercised.** Everything in the first
+     block above describes a `--no-clean` prebuild over a tree that already
+     carried the signing block. RELEASE-SIGNING.md §3 and §4 stay for exactly
+     this reason (AD39).
+  3. **No secret was read, decoded, printed or verified.** The two UAT secrets
+     exist — `gh secret list` returns their **names and timestamps only**, since
+     a public repository's secrets are write-only via the API 🧪 — and that the
+     base64 decodes to a keystore whose alias is `readingaiduat` is **unverified
+     here** ❓. The workflow's `keytool` pre-flight is what will establish it.
+  4. **Nothing here is behavioural evidence about the app.** A runner cannot
+     execute a worklet, a shared value, a `ScrollView`, MMKV or release-mode
+     Hermes. Every 👁 limit recorded in AF27–AF43 and AF49 stands untouched, and
+     ARCHITECTURE.md §6's list of what has no automated coverage is not
+     shortened by one line.
+  5. **AF42's R8/Proguard half and its untested ABIs are untouched**, and the
+     UAT artifact narrows ABI coverage further by design — arm64-v8a only (AD39).
+  6. **The raw-`.ts`-evaluation path remains unexercised**, exactly as AF48 and
+     AF50 left it ❓.
+
+## The UAT workflow's first dispatch — eleven steps proven, one apksigner parse bug, and a build-tools selection mismatch
+
+> Scope note: **everything below was measured by me**, in this session, from the
+> run log of the workflow's first `workflow_dispatch` (run **34275986703**,
+> 2026-09-08), from local `apksigner` invocations against AF42's real,
+> already-signed release APK, and from GitHub's own `actions/runner-images`
+> documentation for the `ubuntu-24.04` image. **No secret was read, decoded or
+> printed**, and no new prebuild, Gradle build, emulator, device or install was
+> run beyond re-executing the workflow's own extraction logic locally against
+> real and hand-constructed text. This section carries **no 👁 at all**, like
+> AF45/AF47/AF48/AF50/AF51 — nothing here was observed on a running device.
+
+- **AF52 · The first dispatch got ELEVEN of fourteen steps green, and that is a
+  genuine measurement, not a partial failure to be read past.** Per-step
+  conclusions, read directly from the run rather than inferred from the log
+  text 🧪: steps 1–11 (`Set up job` through `Assemble the release APK`) all
+  `success`; step 12 (`Assert the APK carries the UAT certificate`) `failure`;
+  steps 13–14 (`Stage the APK`, `Publish to the uat release`) `skipped` as a
+  direct consequence. **What those eleven close, one gap at a time:**
+
+  - **The from-scratch prebuild ran, for real, for the first time anywhere.**
+    AD38 and AD39 both named this as the one case a prose recovery record can
+    never reach and AF47/AF49 could only *reason about* it (AF47: "the case
+    RELEASE-SIGNING.md §3 exists to protect… has still never happened
+    anywhere"). It has now happened: `npx expo prebuild --platform android
+    --no-install` completed in step 9 (20:39:43Z–20:39:46Z) against a checkout
+    with **no** `android/` directory, generating one from the stock template
+    with the signing plugin applying to it. Step 10 (`Confirm the UAT identity
+    resolved`) then read back `applicationId 'com.arishh.readingaid.uat'`,
+    `versionName "1.0.0-uat"` and a resolved `versionCode` of **29814999** from
+    that freshly-generated `android/app/build.gradle` — all three matching
+    AD37's design, all three read from generated output rather than argued
+    from source.
+  - **AD39's Q5 "not proven necessary" flag on the NDK/CMake install step is
+    SETTLED, and settled as necessary.** The step's own log shows CMake 3.22.1
+    and NDK 27.1.12297006 (`android-ndk-r27b`) genuinely downloaded and
+    unzipped from the network — not a `sdkmanager` no-op against
+    already-present components 🧪. So the runner image did **not** already
+    ship these at the pinned versions, and AD39's provisional "if the first run
+    shows the image already has them, this step can simply be deleted" does
+    **not** apply: the step earns its place. The step ran 20:38:59Z–20:39:42Z,
+    **43 seconds**.
+  - **`assembleRelease` succeeded, in Gradle's own self-reported 13m 23s**
+    (`BUILD SUCCESSFUL in 13m 23s`, read from the step's own output 🧪; the
+    step's wall-clock per the run's timestamps is 20:39:46Z–20:53:10Z, 13m24s,
+    consistent to the second). The keystore materialisation and its `keytool
+    -list` pre-flight (step 8) also passed, meaning the two UAT secrets decode
+    to a valid keystore with the expected alias — the first time that has been
+    established anywhere outside AF49's separately-built local artifact.
+
+  **Total job wall-clock: 14m40s** (20:38:31Z–20:53:11Z). Most of what this
+  workflow was built to establish, it established. Only step 12 is new
+  territory this entry addresses.
+
+  ### The failure, exact
+
+  Step 12 failed in well under a second (20:53:10.1038680Z the script's env
+  block prints, 20:53:10.5877966Z the error — **≈0.48s** for the entire step
+  body, plausible for this step's actual work on a 45 MB arm64-only APK: local
+  timing of the equivalent single `apksigner verify --print-certs` call against
+  a **110 MB** APK on this machine was 0.72s, so 0.48s against a smaller,
+  arm64-only artifact on a CI-fast disk is unremarkable and not itself a sign
+  of a truncated or aborted apksigner invocation 🧪):
+
+  ```
+  ##[error]Could not read Signer #1 SHA-256 from apksigner output.
+  ##[error]Process completed with exit code 1.
+  ```
+
+  That is the empty-`ACTUAL` guard firing — the guard behaved exactly as
+  designed, refusing to publish an APK whose certificate it could not read,
+  rather than silently treating an extraction failure as a pass. **The
+  workflow never echoed what `apksigner` actually printed**, so the run log
+  itself contains zero evidence of the real cause — the gap this entry's fix
+  closes permanently.
+
+  ### Diagnosis
+
+  **Local reproduction did NOT reproduce the failure.** AF42's real, already
+  release-signed APK is still on disk
+  (`android/app/build/outputs/apk/release/app-release.apk`, 110,763,372 bytes,
+  matching AF42 exactly). `apksigner verify --print-certs` against it, run
+  under **both** locally-installed build-tools versions (35.0.0 and 36.0.0),
+  produced byte-identical four-line output — DN, SHA-256, SHA-1, MD5 — and the
+  workflow's **original, unmodified** awk pattern extracted the SHA-256 digest
+  from it successfully both times 🧪 (`1803301a68788814682514ca119dda906bd25fb52f8923dc1f6a46d0b986e902`,
+  64 hex characters). So the extraction logic is not broken against any
+  apksigner build available on this machine.
+
+  **The runner ships build-tools versions neither this repo nor I have ever
+  exercised.** GitHub's own `actions/runner-images` documentation for the
+  `ubuntu-24.04` image (fetched this session) lists build-tools **34.0.0,
+  35.0.0, 35.0.1, 36.0.0, 36.1.0, 37.0.0** at `ANDROID_HOME=/usr/local/lib/android/sdk`,
+  no preview/RC directories. The failed step's own selection line —
+  `` APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1) ``
+  — picks the **highest** of whatever is present, which on that list is
+  **37.0.0**. I attempted to install build-tools 37.0.0 locally to test it
+  directly; the deprecated `sdkmanager` CLI's own downloader crashed with an
+  unrelated `Files.move` exception before completing — a local tooling defect,
+  not evidence about apksigner's behaviour, and not pursued further given the
+  cost of working around it.
+
+  **The run's own log supplies the sharper fact: two disagreeing selections
+  for the same tool.** The `Assemble the release APK` step's output contains
+  Expo's own diagnostic block, printed by `ExpoRootProjectPlugin.kt`, reading
+  `- buildTools:  36.0.0` 🧪 — i.e. AGP itself, for the *build*, resolved
+  **36.0.0**, not 37.0.0. So the workflow had two independent, disagreeing
+  mechanisms for choosing a build-tools version: the build used 36.0.0, and
+  the *verification* step's glob reached for the highest available, most
+  likely 37.0.0 — a version genuinely never exercised by this build, by this
+  repo's suites, or by me locally.
+
+  **Whether apksigner's console format actually changed at 37.0.0 remains
+  unconfirmed, and that uncertainty is stated rather than resolved by
+  assumption.** Two pieces of evidence argue against a format change: the
+  current AOSP source of the print routine
+  (`android.googlesource.com/platform/tools/apksig`, `main` branch, fetched
+  this session) still literally builds each line as
+  `name + " certificate SHA-256 digest: " + hex` with `name = "Signer #" +
+  signerNumber` — the exact format the old pattern assumed; and Android's own
+  published build-tools release notes record **exactly one** change to this
+  output, ever (adding the MD5 line, in 2016), with nothing published for
+  36.x/37.0.0. Neither is proof for 37.0.0 specifically, and Google does not
+  publish this console output as a documented, versioned interface — the
+  absence of a changelog entry means "not tracked as a stable contract," not
+  "guaranteed unchanged." **Recommendation for whoever runs the fix on the next
+  dispatch:** read the new permanent diagnostic block this entry adds to the
+  log; it will settle this definitively either way.
+
+  ### The fix — three independent hardenings, one file
+
+  **1. The build-tools SELECTION is now pinned to what AGP actually used, read
+  from the same source AGP reads, not globbed for the runner's highest.**
+  `node_modules/react-native/gradle/libs.versions.toml` is the exact file
+  `ExpoRootProjectPlugin.kt:52` reads via
+  `versionCatalogs.getVersionOrDefault("buildTools", "35.0.0")` — the identical
+  mechanism AD39 already uses to pin `ndkVersion`/`cmake`, two lines away in
+  that same file (`:56`). Reading it — `awk -F'"' '/^buildTools[[:space:]]*=/
+  { print $2 }'` — returns **36.0.0** against this repo's current
+  `node_modules` 🧪, matching the CI run's own printed value exactly. The
+  workflow now resolves `APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"`
+  directly from that read, rather than `ls | sort -V | tail -1`.
+
+  **Two alternatives were considered and rejected**, both structurally weaker:
+  - *Capture Gradle's own printed `- buildTools:` diagnostic line from the
+    build step and parse that instead.* Rejected: that line is a decorative,
+    ANSI-coloured console banner from a **third-party plugin**
+    (`expo-modules-autolinking`) — coupling the verification step to *another*
+    unversioned console format is the identical hazard this whole fix exists
+    to remove from apksigner, just relocated.
+  - *A hardcoded literal, matching the `PINNED_NDK_VERSION`/`PINNED_CMAKE_VERSION`
+    style already in this workflow.* Rejected on drift risk **and** on failure
+    mode. Unlike NDK/CMake — which must be named *before* the build so
+    `sdkmanager` can install them, a genuine chicken-and-egg constraint — this
+    is a pure *selection among versions Gradle's build already resolved by
+    itself*; nothing needs to be decided in advance. A literal here would need
+    a human to notice and update it every time `react-native`'s bundled
+    catalog value changes, and its failure modes are both worse than a live
+    read's: if the literal goes stale and the old version is **absent** from a
+    future runner, the error message would misleadingly point at "the runner
+    doesn't have it" when the real defect is a stale literal; if the literal
+    goes stale and the old version is **still present** (kept for backward
+    compatibility), the check would silently run against the wrong,
+    still-untested apksigner build — reintroducing this exact bug in the
+    opposite direction. A live read can only ever ask for the version that was
+    actually used, so neither failure mode is reachable.
+
+  **Fail-closed, verified by local negative control**: with `ANDROID_HOME`
+  pointed at a nonexistent path, the step now prints
+  `` ::error::apksigner not found for build-tools 36.0.0 (the version this build used) at <path> -- the runner image does not have it. ``
+  and exits 1, **before** ever invoking apksigner 🧪 — an attributable failure
+  naming the exact version that was expected and why, rather than a silent
+  substitution of whatever else happens to be present.
+
+  **2. The multi-signer check** now matches `^Signer #2([^0-9]|$)` rather than
+  `^Signer #2 ` — tolerating a colon or other punctuation immediately after the
+  ordinal (not only a literal space) while still refusing to match a
+  hypothetical `Signer #20`.
+
+  **3. The SHA-256 extraction** is re-anchored on what is structurally stable
+  rather than the exact trailing English wording:
+
+  ```awk
+  /^Signer #1([^0-9]|$)/ && /[Cc]ertificate/ {
+    if (match($0, /[0-9a-fA-F]{64}/)) { print substr($0, RSTART, RLENGTH); exit }
+  }
+  ```
+
+  the `Signer #1` ordinal (tolerant of a following colon, as above), the word
+  "certificate" (so a hypothetical future `Signer #1 public key SHA-256
+  digest:` line — a **different** value — is never mistaken for the
+  certificate digest), and a bare 64-hex-character token, which is what
+  actually distinguishes a SHA-256 digest from the 40-char SHA-1 and 32-char
+  MD5 lines, independent of whatever words surround it. `exit` after the first
+  match keeps the result deterministic even if a future format ever prints the
+  same digest twice.
+
+  **Validated against REAL tool output and, separately, against hand-constructed
+  adversarial variants — the two kept distinct.** Real: both local build-tools
+  versions' actual output for AF42's APK, extracting the correct known digest
+  both times 🧪. Adversarial (my own constructed text, explicitly not observed
+  from any real apksigner build, used only to stress-test tolerance): a
+  colon-after-ordinal variant (`Signer #1: certificate…`), a decoy `Signer #1
+  public key SHA-256 digest:` line placed before the real certificate line, and
+  a two-signer block with colons after both ordinals. The new pattern handles
+  all three correctly (extracts the certificate digest, ignores the decoy,
+  and — on the two-signer variant — the relaxed multi-signer check fires); the
+  **original, unmodified** pattern was re-run against the same two colon
+  variants and returned empty on both, confirming these are not contrived
+  non-cases but genuine gaps the old anchor had 🧪.
+
+  **The empty-`ACTUAL` guard, the positive equality check against
+  `EXPECTED_UAT_CERT_SHA256`, and the literal itself are all untouched.**
+  Re-verified after the edit: the guard still fires on a deliberately wrong
+  expected value, printing both the expected and actual digests before exiting
+  1 🧪.
+
+  **The permanent diagnostic.** The step now echoes the resolved `$APKSIGNER`
+  path and the complete raw `$CERTS` block unconditionally — not only on
+  failure — before any parsing branches on it. Certificate fingerprints and
+  distinguished names are public information; nothing this prints is a secret.
+  The point is that the *next* format surprise, at 37.0.0 or any future
+  build-tools release, is diagnosable directly from the log rather than by
+  another blind round-trip through a failing dispatch.
+
+  ### Classification — the unpinned/never-exercised pattern, not a seventh instance
+
+  This is deliberately **not** filed as a seventh instance of the
+  instrument-measuring-the-wrong-thing family (AF44's two, AF48's one, AF50's
+  one). Every one of those four was a **self-inflicted, locally reproducible**
+  bug in code written for this repo — a dotfile glob TypeScript's `include`
+  never matches, a `$'` substitution hazard in an editing script, a suite
+  reading the working tree instead of the commit — each fully explained and
+  fixed by inspection alone, with no external moving target involved. Here,
+  the identical extraction logic is **correct against every apksigner build
+  available on this machine**; the failure traces to the workflow reaching,
+  by default, for a build-tools version that has **never been exercised
+  anywhere** — by this repo's suites, by AF42's or AF49's device builds, or by
+  me locally — while a different, already-verified version was sitting one
+  Gradle property away. That is the same shape as two hazards already on
+  record elsewhere in this repo, not a new family: **AD35**'s reasoning for
+  staying on ESLint 9 (moving to 10 would be moving to a transitive plugin set
+  — `@typescript-eslint`, `eslint-plugin-import`, `eslint-plugin-react-hooks`
+  — "never exercised at ESLint 10 in this repo"), and **AD38**'s standing
+  concern that a config plugin's anchor-based transform "fails silently if a
+  future template restructures" unless explicitly guarded against — both are,
+  like this one, a live surface quietly depending on a version nobody has
+  actually run.
+
+  ### NOT ESTABLISHED
+
+  1. **This fix has never run in CI.** No `workflow_dispatch` has exercised
+     the hardened extraction, the relaxed multi-signer check, or the pinned
+     build-tools selection against a real runner. It is a pending acceptance
+     check, in the same shape as AD21's, AD22's, AD28's, AD30's, AD37's,
+     AD38's and AD39's, and it will produce its own `AF` entry — the one that
+     also confirms, one way or the other, whether build-tools 37.0.0's
+     `apksigner` output actually differs from what AOSP's current source and
+     the official release notes suggest it should not.
+  2. **Build-tools 37.0.0's actual `apksigner verify --print-certs` output was
+     never observed**, by me or by this repo, at any point in this
+     investigation. The diagnosis above is the strongest evidence obtainable
+     without it — a measured version mismatch, source-level evidence the
+     format is unchanged, and a local reproduction that could not be forced —
+     but it stops short of a byte-for-byte comparison, and the permanent
+     diagnostic step is what closes that gap on the next run.
+  3. **Nothing about steps 13–14** (staging the APK, publishing to the `uat`
+     release) has run successfully yet; both were skipped as a consequence of
+     step 12's failure and remain unexercised.
+  4. **Nothing here touches `src/`, `android/`, or any CORE-DIVERGENCE.md
+     row.** Only `.github/workflows/uat-build.yml` changed.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -3177,3 +3989,189 @@
   coverage gaps are scoped to `src/`, R8/Proguard and the release APK's ABIs,
   none of which this entry touches, so no edit is made. No `DECISIONS.md`
   entry: nothing here is a decision. AF35, AF41, AF47 and AF48 are not edited.
+- 2026-09-08 — appended **AF50** on `feature/signing-config-plugin`. **Measured
+  by me**, in this tree; no prebuild, Gradle, emulator or device was involved,
+  so the section carries **no 👁**. Records that **Expo's `.ts` config-plugin
+  loader is the SAME two-transpiler path AF48 measured for `app.config.ts`** —
+  `plugin-resolver.js:39` accepts `.ts` and `:136` loads via
+  `@expo/require-utils`' `loadModuleSync`, reaching `transpileModule` at
+  `load.js:316` with Node's `stripTypeScriptTypes` as the `:335-341` fallback —
+  **so the erasability trap now applies to a second file and is invisible to
+  `tsc` in both.** Demonstrated on a probe pair: an `enum` in a plugin-shaped
+  `.ts` **loads perfectly well today** and the native stripper **rejects** it,
+  so the failure appears only on a machine that takes the fallback. Confirms
+  `@expo/config-plugins@57.0.9` is **transitive and unpinned** (declared by no
+  direct dependency) and that `skipLibCheck: true` bounds the type exposure.
+  **AF47's uncontested-field finding is re-verified at 57.0.9** — exactly three
+  `appBuildGradle` consumers, none touching `signingConfigs`/`buildTypes` — and
+  **a wrong first sweep is recorded as wrong**: grepping `withAppBuildGradle(`
+  returned nothing because the compiled call form is
+  `(0, _androidPlugins().withAppBuildGradle)(…)`. Mod ordering is read from
+  source (`withMod.js:189-203`, `createBaseMod.js:44-66`,
+  `getPrebuildConfig.js:26-78`): **last-registered runs first**, so a user
+  plugin runs last, and `mod-compiler.js:203` has no `try`/`catch`, so its throw
+  stops the prebuild. **NULL RESULT** per AF30/AF41: the stock
+  `android/app/build.gradle` is **byte-identical across template 57.0.20-57.0.23**
+  even though the `sdk-57` dist-tag moved 57.0.22 → **57.0.23** since AF47 — so
+  the committed fixture is stable and AF41's zero-drift observation extends by
+  four releases. Byte-identity is reported with all four hashes, together with
+  idempotence and the fact that the **only** lines differing from the real file
+  are the three Expo owns; and it is bounded honestly — a string transform over
+  a tarball, **not** evidence that prebuild generates anything, with the closest
+  end-to-end result being that Expo's own resolver loads the plugin and
+  registers a mod at `mods.android.appBuildGradle`. **AF41's mtime method is
+  reapplied and the method recorded, not just the result:** 54 non-build files
+  under `android/`, **53 in one generation-minute and exactly one later** — the
+  signing edit is the only hand edit there — which is what makes AD38's Q4
+  recommendation checkable, and also why it stays conservative, since that is a
+  statement about this tree now and not about clean prebuilds in general. A
+  **FOURTH self-caught invalid instrument** is recorded: an editing script hit
+  the very `String.replace` substitution hazard it was removing — a literal
+  `$'` in its replacement spliced the rest of the file back in — caught because
+  esbuild refused to parse the result. With AF44's two and AF48's one the
+  pattern is four for four: **a confident, plausible, wrong result exposed by a
+  check whose outcome was known in advance.** Also recorded: an assertion that
+  was **wrong before it was right** — a naive count of `signingConfig
+  signingConfigs.debug` reads 2 in the output because the plugin's own inserted
+  comment quotes the template default, so the check now counts the executable
+  statement form. Not established: nothing was prebuilt, built or installed;
+  no 👁 limit in AF27-AF43 or AF49 is narrowed; AF47's CI fail-open blocker is
+  not closed; AF42's R8 half and untested ABIs are untouched; and the
+  raw-`.ts`-evaluation path stays unexercised. Decisions are **AD38**.
+- 2026-09-08 — appended **AF51** on `feature/uat-build-workflow`. **Measured by
+  me** against the resulting tree, the installed packages and `gh` run logs; the
+  prebuild and the CI run themselves were executed by the project owner, and no
+  prebuild, Gradle build, emulator, device or install was run by me — so the
+  section carries **no 👁**. **AD38's exit condition is SATISFIED, and by the
+  kind of evidence AD38 said it lacked: generation rather than a string
+  transform.** `shasum -a 256 android/app/build.gradle` returns
+  `0b322188…9bdefcb9`, the pinned value, so Expo's prebuild resolved, loaded and
+  ran the plugin and wrote its output to disk — closing the residual AF50 named,
+  that the suite exercised the transform and not the **wiring**. **AF41's mtime
+  method corroborates it independently, and the corroboration is the part worth
+  keeping:** AF50 found the hand-edit signature of 53 files in one
+  generation-minute plus **exactly one later**, and that outlier is now **GONE** —
+  `build.gradle` shares `settings.gradle`'s generation *second*, which is what a
+  machine-written file looks like and a hand-edited one cannot. Two smaller
+  readings fall out: the 11/43 mtime split is itself the signature of
+  `--no-clean`, and the file count is unchanged at 54. **What it does not
+  license:** the plugin has run exactly **once**, against a tree that already
+  carried the block — the transform's *already-applied* branch, its easiest path
+  — so the **from-scratch** case has still never happened, and
+  RELEASE-SIGNING.md §3/§4 stay (AD39). **The staging-list finding, the FIFTH
+  instance of this repo's recurring pattern**, measured from PR #29's failing run
+  `34261054953`: the suite reads `path.join(__dirname, '..',
+  'RELEASE-SIGNING.md')`, a file it does not live beside, so locally it read the
+  **working tree** (already demoted) and in CI the **commit** (not yet), with the
+  timeline closing it — plugin commit 18:05:55Z, failure 18:06:20Z, demotion
+  commit 18:15:58Z, pass 18:16:10Z. **The sharper half is which checks could see
+  it:** of section 7's six checks, the **four byte-for-byte** comparisons of §3's
+  fenced blocks all **PASSED** against a never-demoted document — they compare
+  Gradle text and are structurally blind to the framing — and **only the two
+  prose assertions** caught it. So a suite confined to byte comparison, which is
+  this repo's usual and usually-correct instinct, would have shipped a document
+  claiming the hand edit was the live mechanism; the prose assertions are not
+  decoration around the rigorous checks but the only two that can see a stale
+  framing. As the fifth instance it differs in kind from AF44's two, AF48's one
+  and AF50's one — those were instruments measuring the wrong **thing**, this one
+  measures the right thing in the wrong **tree** — with the family resemblance
+  intact: a confident, plausible, wrong result exposed by a check whose outcome
+  was known in advance. **A CORRECTED PREMISE, recorded as the project owner's:**
+  deriving the CI UAT `versionCode` from `github.run_number` **would not
+  install** — it starts at 1 while the installed UAT app carries a
+  minutes-since-epoch code near 29,809,000 (AF48, AF49), and Android refuses an
+  update whose code is not strictly greater for the same `applicationId` ❓ —
+  reintroducing exactly AD36's failure; the owner corrected the premise on being
+  shown the measurement. Also measured: `run_number` knows nothing about local
+  builds, so it would be a second counter writing one `applicationId`, and
+  `app.config.ts:129` treats an empty override as unset. **CORRECTION TO AF47,
+  by supersession rather than edit:** AF47 recorded both NDK `27.1.12297006` and
+  CMake `3.22.1` as "project pins"; measured, **only the NDK is** —
+  `ExpoRootProjectPlugin.kt:56` sets it via the version catalog and
+  `android/app/build.gradle:132` consumes it unconditionally, while **no
+  `cmake { version }` declaration exists anywhere** and `3.22.1` is **AGP
+  8.12.0's default**, confirmed against AGP's own `build_model.json`. Native code
+  genuinely compiles from source (six modules with `CMakeLists.txt`), and
+  `android.builder.sdkDownload` is **absent** and so defaults to **true**, so AGP
+  may fetch both unaided — unverifiable without a build ❓, which is why AD39's
+  install step is recorded there as provisional. **A MEASURED NEAR-MISS:**
+  `react-native/ReactAndroid/build.gradle.kts:52` reads **`CMAKE_VERSION` from
+  the environment**, the only such env read of either version name in
+  `node_modules`, so the natural `env: CMAKE_VERSION` in a workflow would have
+  been visible to Gradle; bounded honestly as probably never firing, since that
+  line governs building ReactAndroid from source and this project consumes
+  prebuilt artifacts ❓. Caught while drafting, avoided by the `PINNED_` prefixes,
+  and recorded so a future tidy-up rename does not reintroduce it — the same
+  class as AF50's `$'` hazard, a string inert until something reads it.
+  **A SIXTH instance of the invalid-instrument pattern, caught twice in this
+  change's own verification**, and a repeat rather than a novelty: two structural
+  assertions written for the new workflow **failed on a correct file**, because
+  the only textual hits for `pull_request_target`/`workflow_run` and for
+  `set -x` were the **comments forbidding them** — exactly what AF44 recorded for
+  its `paths:` sweep, now the second and third misfire of the same instrument
+  across three files and two sessions. Fixed by stripping comment lines and
+  asserting on parsed trigger keys. The rule generalises: **a repo that documents
+  prohibitions in comments cannot verify them with a raw text search — strip
+  comments, or parse.** Distinguished from an over-broad secret grep in the same
+  pass that behaved *correctly*: it flagged two lines that were both fine, and
+  was narrowed by classifying each secret-bearing line by its **sink** rather
+  than its command name. An over-broad check whose hits you read is sound; a
+  precise check measuring the wrong text is not.
+  **A third stale-string site**, flagged and unfixed: `static-and-suites.yml:6`
+  says "14 headless suites" where it is now **15**, alongside line 64's
+  `(5 suites)` step name — now **7** — already flagged by AD38. Line 6 is
+  inconsistent *within its own file*, since line 56 already reads "15 suites";
+  that file is off-limits in this change, so all three are left for its next real
+  edit. **Not established:** the new workflow has **never executed** — parsed and
+  every `run:` script `bash -n` checked, which establishes shape and nothing
+  else; the from-scratch prebuild is still unexercised; **no secret was read,
+  decoded, printed or verified** (`gh secret list` returns names and timestamps
+  only, a public repo's secrets being write-only), so that the base64 decodes to
+  a keystore with alias `readingaiduat` is unverified here ❓ and the workflow's
+  `keytool` pre-flight is what will establish it; nothing here is behavioural
+  evidence about the app and every 👁 limit in AF27–AF43 and AF49 stands; AF42's
+  R8 half and untested ABIs are untouched, with the UAT artifact narrowing ABI
+  coverage further by design. Decisions are **AD39**.
+- 2026-09-09 — appended **AF52** on `fix/apksigner-cert-parse`, diagnosing and
+  fixing the UAT workflow's first-dispatch failure (run 34275986703). Records
+  the eleven green steps as substantive: the first-ever from-scratch prebuild
+  with the signing plugin applying, matching AD37's identity design in
+  generated output; AD39's Q5 "not proven necessary" flag on the NDK/CMake
+  install step **settled as necessary** — both were genuinely downloaded, not
+  a no-op; and `assembleRelease` succeeding in Gradle's own reported 13m 23s.
+  The failure — `Could not read Signer #1 SHA-256 from apksigner output` — is
+  the empty-`ACTUAL` guard firing correctly on an extraction the workflow never
+  echoed, closing no evidence about the real cause. **Local reproduction with
+  both installed build-tools versions (35.0.0, 36.0.0) did NOT reproduce it**;
+  the run's own log shows AGP resolved **36.0.0** for the build while the
+  verification step's `sort -V | tail -1` glob reaches for the runner's
+  highest available (37.0.0 per GitHub's own `ubuntu-24.04` runner-images
+  documentation) — a version never exercised anywhere in this repo's history.
+  AOSP's current apksigner source and Android's own build-tools release notes
+  both argue the console format is unchanged, but neither proves it at
+  37.0.0, which was left unconfirmed after a local install attempt crashed on
+  an unrelated `sdkmanager` tooling bug. Three independent hardenings ship in
+  one file: the build-tools **selection** is now read from
+  `node_modules/react-native/gradle/libs.versions.toml` — the exact source
+  `ExpoRootProjectPlugin.kt` itself reads, the same mechanism AD39 already
+  uses for `ndkVersion`/`cmake` — rather than globbed, with two rejected
+  alternatives recorded (parsing Gradle's own decorative diagnostic banner;
+  a hardcoded literal, rejected for strictly worse drift and failure-mode
+  properties than a live read); the multi-signer grep and the SHA-256
+  extraction are both re-anchored on structurally stable substrings (an
+  ordinal tolerant of trailing punctuation, the word "certificate", a bare
+  64-hex-character token) rather than exact trailing wording, validated
+  against AF42's real APK under both local build-tools versions and against
+  hand-constructed adversarial variants that the **original** pattern
+  provably failed. A permanent, unconditional diagnostic now prints the
+  resolved apksigner path and the complete raw certificate block on every
+  run. The empty-`ACTUAL` guard, the positive fingerprint comparison, and
+  `EXPECTED_UAT_CERT_SHA256` are all untouched, re-verified after the edit.
+  Classified, at the project owner's explicit ruling, as the **unpinned,
+  never-exercised third-party version** pattern already on record via AD35's
+  ESLint-9 reasoning and AD38's template-anchor concern — **not** a seventh
+  instance of the self-inflicted, locally-reproducible instrument family
+  (AF44's two, AF48's one, AF50's one), since the extraction logic here is
+  correct against every apksigner build available on this machine. The fix
+  has not run in CI; that remains a pending acceptance check. Decisions are
+  **AD40**.
