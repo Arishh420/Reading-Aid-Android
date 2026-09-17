@@ -3844,6 +3844,269 @@
   (README.md, ARCHITECTURE.md, the workflow file, the baseline script) were in
   scope, because only they claim to describe **current** state.
 
+## Two green UAT dispatches nobody had recorded, and the fallback they retire
+
+> Scope note that governs this section, in AF52's shape: **the two CI runs were
+> dispatched by the project owner; every run ID, timestamp, step conclusion and
+> log line below was read by me**, in this session, with `gh run list` and
+> `gh run view`. **No CI run, prebuild, Gradle build, emulator, device or
+> install was performed by me**, and **no secret was read, decoded or printed** —
+> the certificate SHA-256 digests were redacted at the point of capture and
+> appear nowhere in this repo. This section carries **no 👁 at all**, like
+> AF45/AF47/AF48/AF50/AF51/AF52/AF53/AF54: nothing here was observed on a
+> running device, and nothing here is behavioural evidence about the app.
+> **None of it is reproducible from a clone** — it lives in GitHub's run logs,
+> which expire, which is the reason for recording it at this length. The
+> decision taken in response is **AD44**; nothing from that entry is restated
+> here (AD18).
+
+- **AF55** 🧪📐 — **TWO `uat-build` DISPATCHES HAVE SUCCEEDED, AND UNTIL THIS
+  ENTRY NEITHER WAS RECORDED IN EITHER LOG.** They are now the sole evidentiary
+  basis for retiring RELEASE-SIGNING.md §3, so they are written down in full
+  rather than cited.
+
+  `gh run list --workflow=uat-build.yml` returns three runs, total 🧪:
+
+  | Run ID | Branch | Started (UTC) | Duration | Conclusion |
+  |---|---|---|---|---|
+  | 34275986703 | `main` | 2026-09-08 20:38:26Z | 14m48s | **failure** — this is AF52's run |
+  | **34350254968** | `main` | **2026-09-09 12:18:25Z** | 12m43s | **success** |
+  | **34364814937** | `dev` | **2026-09-09 14:37:16Z** | 13m20s | **success** |
+
+  **All fourteen steps are `success` in both**, read from the jobs API per step
+  rather than inferred from the log text 🧪 — `Set up job`, `checkout@v7`,
+  `setup-java@v5`, `setup-node@v7`, `Install dependencies`,
+  `Repo gate — npm run check`, `Install the pinned NDK and CMake`,
+  `Materialise UAT signing credentials`, `Prebuild the UAT variant`,
+  `Confirm the UAT identity resolved`, `Assemble the release APK`,
+  **`Assert the APK carries the UAT certificate`**, `Stage the APK under its
+  stable name`, `Publish to the` `uat` `release`. Steps 13 and 14 running at all
+  is itself new: **AF52 item 3** records both as never having run successfully.
+
+  ### AD40's pinned build-tools selection, and its diagnostic, both working
+
+  **AD40's fix is confirmed in CI, which closes its own pending check.** Both
+  successful runs print, identically 🧪:
+
+  ```
+  Using apksigner from build-tools 36.0.0: /usr/local/lib/android/sdk/build-tools/36.0.0/apksigner
+  ```
+
+  **36.0.0 is the version AGP resolved for the build**, read from
+  `node_modules/react-native/gradle/libs.versions.toml` exactly as AD40
+  designed — not the runner's highest available, which is what the old
+  `sort -V | tail -1` glob reached for and which AF52 diagnosed as the
+  never-exercised 37.0.0. So the two disagreeing opinions AF52 found are now one
+  opinion, and it is AGP's.
+
+  **AD40's permanent, unconditional diagnostic also works**, and it is what
+  makes the rest of this entry auditable rather than inferred. AF52 recorded
+  that the raw `apksigner` output had never once been visible in a run log; it
+  now is, in both runs 🧪 (SHA-256, SHA-1 and MD5 digests redacted here at
+  capture):
+
+  ```
+  --- raw apksigner verify --print-certs output ---
+  Signer #1 certificate DN: CN=Arish Khan, OU=Self, O=Self, L=India, ST=MP, C=IN
+  Signer #1 certificate SHA-256 digest: <64 hex, redacted>
+  Signer #1 certificate SHA-1 digest: <redacted>
+  Signer #1 certificate MD5 digest: <redacted>
+  --- end raw apksigner output ---
+  ```
+
+  **That also settles AF52's open item 2 for 36.0.0** — the format is
+  `Signer #<N> certificate SHA-256 digest: <hex>`, exactly what AOSP's current
+  source predicted and what AD40's hardened anchor keys on. **It settles nothing
+  about 37.0.0**, which remains unobserved by this repo; AD40's selection now
+  makes reaching it accidental rather than default.
+
+  ### Step 12 is a POSITIVE assertion, and that is what carries the retirement
+
+  Step 12 passed, and what it asserts is **equality** against the workflow's
+  `EXPECTED_UAT_CERT_SHA256` literal — not the absence of a debug certificate.
+  AD39 chose positive equality deliberately, because a "not `CN=Android Debug`"
+  check would pass a build signed with any other key. The DN above corroborates
+  it independently: the signer is **the project owner's own release key, and is
+  not `CN=Android Debug`**.
+
+  **THE INFERENCE CHAIN TO THE PLUGIN, stated step by step, because it is the
+  whole argument and each link is separately recorded.**
+  1. The CI checkout has **no `android/`** at all — `git ls-files android`
+     returns 0 (AF47, re-confirmed in AF51's session), so prebuild generates the
+     tree from the stock `expo-template-bare-minimum` template.
+  2. The stock template ships `release { signingConfig signingConfigs.debug }`
+     with **no guard of any kind** (AF47, read from the published tarball).
+  3. **AF49 established, as an executed build rather than a source read, that a
+     tree in that state SUCCEEDS and emits a `CN=Android Debug`-signed "release"
+     APK.** That is the fail-open case.
+  4. These runs produced an APK whose certificate **matches the expected UAT
+     fingerprint** and is not the debug key.
+  5. Therefore the signing block **was present in the CI-generated
+     `android/app/build.gradle`**, and since nothing put it there by hand, the
+     config plugin generated it — **in the from-scratch case**.
+
+  Link 3 is what makes this an argument rather than an assumption. Without
+  AF49, a green `assembleRelease` would be consistent with the plugin having
+  been skipped entirely, which is exactly why **AF52's from-scratch prebuild,
+  on its own, proves nothing about signing** — its step 12 failed and the
+  certificate was never read.
+
+  **A residual worth stating precisely, so this entry is not read as claiming
+  more than it measures.** No step greps the generated `build.gradle` for
+  `signingConfigs.release`, and no run hashes it, so the signing block's
+  presence in CI is established **by the artifact's certificate**, via the chain
+  above, rather than by direct inspection of the generated file. That is
+  stronger evidence than a grep for the property that matters — a grep can pass
+  while the build signs with the wrong key — but it is indirect about the file
+  itself, and the distinction is recorded rather than smoothed over.
+
+  ### AD40's pending acceptance check is DISCHARGED
+
+  **AD40 closed with "PENDING ACCEPTANCE CHECK. Nothing here has run in CI. No
+  `workflow_dispatch` has exercised the pinned selection, the hardened
+  extraction, or the relaxed multi-signer check against a real runner."** All
+  three have now run, twice, green: the pinned selection resolved 36.0.0 (above),
+  the hardened extraction returned a digest that satisfied the equality check,
+  and the multi-signer check found no `Signer #2` — which is only observable at
+  all because the run reached the equality assertion. **AD40 is not edited**;
+  this entry discharges its pending check by cross-reference, the way AF42 did
+  for AD30 and AF40 for AD28, and the cross-reference runs in this direction
+  only.
+
+  ### The retirement as executed
+
+  **RELEASE-SIGNING.md §3 is deleted** — the heading, the demotion preamble, the
+  exit-condition block, the "Verbatim. Anchors are given as…" line, subsections
+  3a/3b/3c and all **four** fenced `gradle` blocks: 139 lines, taking the
+  document from **337 to 198** 🧪. **§4 survives minus its step 5**, and the
+  numbering is **not** closed up — the document now runs §1, §2, §4, §5, §6, §7,
+  with the gap explained in its own header. Rationale for both is AD44.
+
+  **Seven suite assertions were removed from
+  `plugins/withReleaseSigning-headless-test.mjs`, and every one had §3 as its
+  subject** — listed individually so a future reader can confirm none was a
+  live guard on the plugin 🧪:
+
+  | Assertion | Subject |
+  |---|---|
+  | `RELEASE-SIGNING.md §3 still carries exactly four gradle blocks` | §3's block count |
+  | `§3a preamble matches the plugin byte for byte` | §3a's fenced block |
+  | `§3b signingConfigs.release matches the plugin byte for byte` | §3b's fenced block |
+  | `§3c template anchor matches the plugin byte for byte` | §3c's first fenced block |
+  | `§3c replacement matches the plugin byte for byte` | §3c's second fenced block |
+  | `§3 is marked as a fallback rather than the mechanism` | §3's framing prose |
+  | `the demotion states the condition that would retire §3` | §3's pinned hash |
+
+  With §3 gone their subject does not exist, so they were **removed, not
+  relaxed**. The orphaned `RELEASE_SIGNING_DOC` path constant and the `doc`
+  binding that read the document went with them — `npm run lint` runs
+  `--max-warnings 0`, so an unused binding fails the run. **`AF42_BUILD_GRADLE_SHA256`
+  was kept**: it is still the oracle at the byte-identity assertion, which is
+  the check that actually protects the release artifact, and which **passed
+  after every edit** 🧪 —
+  `PASS  transform(stock) + Expo's identity mods reproduces AF42's build.gradle EXACTLY`.
+  That assertion is also what proves the edits to `plugins/withReleaseSigning.ts`
+  touched no block constant and changed no generated byte.
+
+  **Measured counts, before and after, by running the suites rather than
+  predicting them** 🧪:
+
+  | | Before | After |
+  |---|---|---|
+  | `withReleaseSigning-headless-test.mjs` | 39 | **32** |
+  | `test:local` (7 suites) | 286 | **279** (52 + **32** + 20 + 73 + 27 + 45 + 30) |
+  | `test:core` (8 suites) | 125 | **125** — unchanged |
+  | **Total** | 411 | **404** |
+  | Suites | 15 | **15** — unchanged |
+  | Tracked `.mjs` | 16 | **16** — unchanged |
+
+  **`npm run check` exits 0** — `26 files checked, 20 under src/core/, 0
+  mismatches`, then 17+18+14+9+15+14+12+26 = 125 and 52+32+20+73+27+45+30 =
+  279, **404 checks across 15 suites, 0 failures** 🧪. **`npm run lint` exits 0**
+  with no ESLint output at all, which is ESLint being silent on success exactly
+  as **AF45** records — so the clean run means "eslint exited 0", and the
+  coverage behind that remains AF44's negative controls, not this run.
+  **`check:baseline` is green and no `CORE-DIVERGENCE.md` row changed:** none of
+  the files in scope is manifest-pinned, checked file by file rather than
+  assumed 🧪.
+
+  **ONE FURTHER STALE FIGURE, FOUND BY MEASURING AND FIXED HERE RATHER THAN
+  LEFT.** `ARCHITECTURE.md` claimed lint was clean "across **39** files" 🧪.
+  Re-measured with `npx eslint . --format json`: **44 files, 0 errors, 0
+  warnings** 🧪. The 39 was true when **AF44** measured it on 2026-09-04 and
+  drifted as AD37, AD38 and AD42 each added files — so it is **not** something
+  this change negates, and under AD32's boundary rule it was strictly its own
+  edit. It is fixed anyway, because this PR is already correcting that same
+  document's verification figures, and **AF54 is one PR old**: leaving a known
+  false 🧪 claim in a document whose count strings you are actively editing is
+  precisely the drift AF54 exists to stop. The three occurrences in
+  `FINDINGS.md` are **left untouched** — append-only, and each was true when
+  written. Worth noting it is a **different axis** from the check count: no
+  suite moved it, file *additions* did, which is why a sweep scoped to check
+  counts would never have caught it — AF54's exact lesson, recurring one PR
+  later on a third axis.
+
+  ### A DEFERRAL WITH NO TRIGGER, PROPOSED THE SAME DAY AD43 REQUIRED ONE
+
+  Recorded rather than quietly dropped, because it is the exact failure AD43
+  was written to stop and it happened immediately after — which is a stronger
+  observation than AD43 itself could make.
+
+  **In conversation, I advised holding §3 "until the plugin has run a few more
+  times."** That names **no checkable condition**: not a number of runs, not a
+  branch, not an observable state of the world. It is AD35's flag-and-leave
+  shape — the one AD43 traces through six milestones of README staleness — and
+  it was offered on **2026-09-09**, the same day AD43 was appended
+  (commit `d5c85d2`, PR #34) establishing that "a deferral must carry a NAMED,
+  CHECKABLE revisit trigger, or it is not a deferral — it is drift with a note
+  attached."
+
+  **The sharper part is that a correct trigger already existed and I proposed
+  replacing it with a vague one.** AD39 had already written "Retirement waits
+  until a CI build has succeeded" — checkable, and by then **already satisfied
+  twice over**. So the advice was not merely unfalsifiable, it would have
+  reset a met condition to an unmeetable one, and §3 would have survived on
+  nobody's stated criterion.
+
+  **The generalisable lesson, and it is not the one AD43 states.** AD43's rule
+  is about *writing* triggers. This is about *reading* them: before proposing
+  any further deferral, **check whether the existing trigger has already
+  fired**. A well-formed trigger is worthless if the next person to touch the
+  question substitutes their own intuition for it — and intuition reaches for
+  "a bit longer" precisely when the recorded condition is already met and the
+  change therefore feels abrupt. **AF54's method applies here too**: it was
+  re-measuring against the world, rather than re-reading a prior claim, that
+  settled this — `gh run list` took one command and turned "hold a while
+  longer" into "the condition was met yesterday, twice."
+
+  ### NOT ESTABLISHED
+
+  1. **Nothing here is behavioural evidence about the app.** A runner cannot
+     execute a worklet, a shared value, a `ScrollView`, MMKV or the reading
+     surface. Every 👁 limit recorded in AF27–AF43, AF49 and AF53 stands
+     untouched, and ARCHITECTURE.md §6's list of what has no automated coverage
+     is not shortened by one line.
+  2. **The APK these runs published was never installed or opened.** Steps 13
+     and 14 staged and published it; **no device or emulator ran it**, and the
+     word-index readout AD42 added remains unseen (AF53's pending check is
+     untouched by this entry).
+  3. **No secret was read, decoded, printed or verified.** The certificate
+     digests were redacted at capture. That the two UAT secrets decode to a
+     keystore with the expected alias is evidenced only by step 8's `keytool`
+     pre-flight passing, as AF51 left it.
+  4. **Build-tools 37.0.0's `apksigner` output is still unobserved**, exactly as
+     AF52 item 2 left it. AD40's pinned selection means a future runner reaches
+     it only if `react-native`'s catalog moves there.
+  5. **The signing block's presence in the CI-generated file was not directly
+     inspected** — see the residual above; it is established through the
+     certificate and AF49's fail-open finding.
+  6. **AF42's R8/Proguard half and its untested ABIs are untouched.**
+     `minifyEnabled` is still `false`, and the UAT artifact narrows ABI coverage
+     further by design — arm64-v8a only (AD39).
+  7. **These runs are not reproducible from a clone**, and GitHub's logs expire.
+     This entry is the durable record; if it disagrees with a re-fetched log,
+     the log has aged out and this is all there is.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -4612,3 +4875,64 @@
   (17+18+14+9+15+14+12+26), `npm run test:local` **286**
   (52+39+20+73+27+45+30), total **411** — matching every figure that was
   already correct and none that was not. Decisions are **AD43**.
+- 2026-09-10 — appended **AF55** on `docs/retire-signing-fallback`. **Measured
+  by me** from `gh run list`/`gh run view`; the two CI runs were dispatched by
+  the project owner, and no prebuild, Gradle build, emulator, device or install
+  was run by me, so the section carries **no 👁**. **No secret was read, decoded
+  or printed** — certificate digests were redacted at capture. Records that
+  **two `uat-build` dispatches have SUCCEEDED and until this entry neither was
+  recorded in either log**: **34350254968** (`main`, 2026-09-09 12:18:25Z,
+  12m43s) and **34364814937** (`dev`, 14:37:16Z, 13m20s), **all fourteen steps
+  `success` in both**, read per step from the jobs API. Steps 13-14 running at
+  all is new — **AF52 item 3** records both as never having run successfully.
+  **AD40's fix is confirmed in CI and its pending check is DISCHARGED**: both
+  runs print `Using apksigner from build-tools 36.0.0`, the version AGP resolved
+  from `libs.versions.toml`, not the runner's highest — so the two disagreeing
+  opinions AF52 diagnosed are now one, and it is AGP's. AD40's **permanent
+  diagnostic** works too, making the rest auditable rather than inferred: the
+  raw `apksigner` block is visible for the first time, in the format
+  `Signer #<N> certificate SHA-256 digest: <hex>` that AOSP's source predicted,
+  which **settles AF52's open item 2 for 36.0.0 and nothing about 37.0.0**.
+  **Step 12 is a POSITIVE equality assertion** against
+  `EXPECTED_UAT_CERT_SHA256`, corroborated by a DN that is the project owner's
+  own release key and **not** `CN=Android Debug`. **The inference chain to the
+  plugin is set out link by link**, because it is the whole argument: a CI
+  checkout has no `android/` (AF47), so prebuild generates from the stock
+  template, whose guardless `signingConfigs.debug` **AF49 proved as an executed
+  build** yields a `CN=Android Debug` APK — therefore a matching UAT
+  certificate is only reachable if the plugin generated the block **in the
+  from-scratch case**. Link 3 is what makes it an argument rather than an
+  assumption, and it is why **AF52's from-scratch prebuild proves nothing about
+  signing on its own** — its step 12 failed and the certificate was never read.
+  **One residual is stated rather than smoothed over:** no step greps the
+  generated `build.gradle` for the signing block or hashes it, so its presence
+  in CI is established **through the artifact's certificate**, not by inspecting
+  the file — stronger for the property that matters, indirect about the file.
+  Also records **the retirement as executed**: §3 deleted entire (139 lines,
+  document **337 → 198**), §4 surviving minus step 5, numbering **not** closed
+  up; the **seven** removed suite assertions **listed individually** so a reader
+  can confirm none was a live guard on the plugin, all seven having §3 as their
+  subject and therefore **removed, not relaxed**; `AF42_BUILD_GRADLE_SHA256`
+  kept, and its byte-identity assertion **passing after every edit**, which is
+  what proves the `plugins/withReleaseSigning.ts` edits touched no block
+  constant and changed no generated byte. Counts **measured by running, not
+  predicted**: suite **39 → 32**, `test:local` **286 → 279**, `test:core`
+  **125** unchanged, total **411 → 404**, suites **15** and tracked `.mjs`
+  **16** unchanged. `npm run check` exit **0** (26 files, 0 mismatches; 404
+  checks, 0 failures); `npm run lint` exit **0** with no ESLint output at all,
+  which per **AF45** means "eslint exited 0" and not that coverage was
+  demonstrated. Closes by owning a **deferral with no trigger that I proposed
+  the same day AD43 required one**: advising that §3 be held "until the plugin
+  has run a few more times" names no checkable condition — AD35's
+  flag-and-leave shape — and the sharper half is that **a correct trigger
+  already existed and was already satisfied twice**, so the advice would have
+  reset a met condition to an unmeetable one. The lesson drawn is **not**
+  AD43's: AD43 is about *writing* triggers, this is about *reading* them —
+  check whether the existing trigger has already fired before proposing another
+  deferral, since intuition reaches for "a bit longer" precisely when the
+  recorded condition is already met. One `gh run list` settled it. Also fixes
+  one further stale 🧪 figure found by measuring rather than by grepping a
+  suspected string — `ARCHITECTURE.md`'s lint claim of "across **39** files",
+  re-measured at **44** — which drifted on a **third axis** (file additions, not
+  suite or check counts) and which a sweep scoped to this PR's own numbers would
+  never have caught. Decisions are **AD44**.

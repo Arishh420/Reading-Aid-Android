@@ -442,12 +442,12 @@ completeness walk covers `src/core/` only.
 ## 6. What has no automated coverage — read this before you trust a green check
 
 `npm run check` runs `tsc --noEmit`, then the core portability guard, then the
-baseline check, then **15 headless suites totalling 411 checks** 🧪:
+baseline check, then **15 headless suites totalling 404 checks** 🧪:
 
 | | Suites | Checks |
 |---|---|---|
 | `test:core` — `src/core/` | 8 | 125 (17 + 18 + 14 + 9 + 15 + 14 + 12 + 26) |
-| `test:local` — everything else | 7 | 286 (52 + 39 + 20 + 73 + 27 + 45 + 30) |
+| `test:local` — everything else | 7 | 279 (52 + 32 + 20 + 73 + 27 + 45 + 30) |
 
 Every suite esbuild-bundles **real source** and asserts what it computes, which
 is what makes them worth having. But they are **Node-only by construction**:
@@ -457,11 +457,11 @@ they can and cannot see.
 
 **Lint is a SEPARATE command and is deliberately not part of `npm run check`**
 (AD34). `npm run lint` is `eslint . --max-warnings 0`, and it is clean — 0
-errors, 0 warnings across 39 files 🧪. So **the local pre-push sequence is two
+errors, 0 warnings across 44 files 🧪. So **the local pre-push sequence is two
 commands, not one**:
 
 ```
-npm run check     # tsc, core guard, baseline, 15 suites / 411 checks
+npm run check     # tsc, core guard, baseline, 15 suites / 404 checks
 npm run lint      # eslint, 0 errors 0 warnings
 ```
 
@@ -627,7 +627,7 @@ them as abandoned:
 | `ui/theme.ts` | **AD19** ships one theme; all four ids are already declared here | **none** — no suite bundles it 🧪 |
 | `model/blocks.ts` | **Nothing gates it** — see below | **none**, and no importer either 🧪 |
 
-Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 411 checks) bundle modules
+Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 404 checks) bundle modules
 the app never reaches, `spine-integrity` spanning both categories.
 
 **`model/blocks.ts` is the exception and is worth calling out honestly.** It is

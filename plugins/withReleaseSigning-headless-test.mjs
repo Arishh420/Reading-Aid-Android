@@ -70,7 +70,6 @@ const { stripTypeScriptTypes } = await import('node:module');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_TS = path.join(__dirname, 'withReleaseSigning.ts');
 const STOCK_FIXTURE = path.join(__dirname, '__fixtures__', 'stock-app-build.gradle');
-const RELEASE_SIGNING_DOC = path.join(__dirname, '..', 'RELEASE-SIGNING.md');
 
 /**
  * The hand-edited android/app/build.gradle as it stood when AF42's release-mode
@@ -123,7 +122,6 @@ async function importCode(code, tag) {
 
 const source = await readFile(PLUGIN_TS, 'utf8');
 const stock = await readFile(STOCK_FIXTURE, 'utf8');
-const doc = await readFile(RELEASE_SIGNING_DOC, 'utf8');
 
 /**
  * Stub @expo/config-plugins. It is a transitive, unpinned dependency and the
@@ -419,30 +417,6 @@ console.log('\nrelease-signing config plugin — headless checks\n');
 
   throws('a non-Groovy build.gradle throws rather than being guessed at',
     () => action({ modResults: { language: 'kt', contents: stock } }), 'not Groovy');
-}
-
-// ─── 7. RELEASE-SIGNING.md §3 must still describe what is generated ─────────
-//
-// Ruling 1: §3's prose copy is kept as a fallback, so it is a second copy of
-// the same Gradle text. This is the mechanism that keeps it honest.
-{
-  const blocks = viaEsbuild.SIGNING_BLOCKS;
-  const fenced = [...doc.matchAll(/```gradle\n([\s\S]*?)```/g)].map((m) => m[1].replace(/\n$/, ''));
-
-  check('RELEASE-SIGNING.md §3 still carries exactly four gradle blocks', fenced.length, 4);
-
-  check('§3a preamble matches the plugin byte for byte', fenced[0], blocks.preamble);
-  check('§3b signingConfigs.release matches the plugin byte for byte', fenced[1], blocks.releaseSigningConfig);
-  check('§3c template anchor matches the plugin byte for byte', fenced[2], blocks.templateReleaseBuildType);
-  check('§3c replacement matches the plugin byte for byte', fenced[3], blocks.releaseBuildType);
-
-  ok('§3 is marked as a fallback rather than the mechanism',
-    /FALLBACK/.test(doc) && /withReleaseSigning/.test(doc),
-    'RELEASE-SIGNING.md §3 does not name the plugin as the live mechanism');
-
-  ok('the demotion states the condition that would retire §3',
-    doc.includes(AF42_BUILD_GRADLE_SHA256),
-    'RELEASE-SIGNING.md does not pin the hash that would retire §3');
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

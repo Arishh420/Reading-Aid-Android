@@ -146,9 +146,11 @@ jobs:
       # to preserve. That is not a departure from AD36 §7, whose --no-clean
       # exists to protect Gradle caches and hand edits on a developer machine.
       #
-      # THIS IS THE FIRST FROM-SCRATCH PREBUILD ANYWHERE -- the case
-      # RELEASE-SIGNING.md §3 exists to protect, and the one a prose recovery
-      # record can never reach (AF47, AF49).
+      # THE FROM-SCRATCH PREBUILD -- no android/ in the checkout, so the
+      # signing plugin generates the block from the stock template. This is the
+      # case a prose recovery record could never reach (AF47, AF49), and the
+      # one whose first green run retired RELEASE-SIGNING.md's prose fallback
+      # (AD44, AF55).
       - name: Prebuild the UAT variant
         env:
           READING_AID_UAT: '1'
