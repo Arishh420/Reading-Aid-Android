@@ -4087,6 +4087,207 @@
   date) — only that whichever form is used, the condition must be one a
   future reader can check against the world, not merely a promise to revisit.
 
+## Milestone: retiring the signing fallback
+
+- **AD44 · RELEASE-SIGNING.md §3 — the verbatim Gradle fallback — is RETIRED.
+  This supersedes AD39's "§3 and §4 are NOT retired" ruling and NOTHING ELSE in
+  AD39.** AD39 is not edited. Its workflow design, its five answered questions
+  and its own pending acceptance check stand exactly as written; only the hold
+  on §3 is discharged. **§4 survives, and the numbering is not closed up** — both
+  departures from the verbatim exit text are argued below rather than glossed.
+
+  **AD39's hold was a well-formed deferral, and this entry is what it was
+  waiting for.** It named a checkable trigger in one sentence, quoted verbatim
+  from `DECISIONS.md:3530`:
+
+  > **Retirement waits until a CI build has succeeded.**
+
+  That is exactly the shape AD43 later required of every deferral — a condition
+  a future reader can check against the world, not a promise to revisit. It is
+  now checkable and it checks as **met**: two `workflow_dispatch` runs of
+  `uat-build` have succeeded, **34350254968** (main, 2026-09-09) and
+  **34364814937** (dev, same day), all fourteen steps green in both, including
+  the positive certificate assertion. The measurements are **AF55**.
+
+  **THE ARGUMENT RESTS ON THOSE TWO RUNS AND ON NEITHER HALF OF AF52, WHICH IS
+  WORTH STATING BECAUSE AF52 IS THE ENTRY A READER WILL REACH FOR.** AF52
+  records the first dispatch, which **failed**, and its two halves are
+  different and must not be merged:
+  - **AF52 DOES record the from-scratch prebuild running** — *"The from-scratch
+    prebuild ran, for real, for the first time anywhere"*, step 9 against a
+    checkout with **no** `android/` directory, generating one from the stock
+    template with the plugin applying to it. That is genuine, and it is the
+    case AD38 and AD39 both named as the one a prose recovery record can never
+    reach.
+  - **AF52 establishes nothing whatsoever about signing.** Step 12 failed on an
+    `apksigner` output-parsing defect (AD40), so the certificate was never
+    read. AF52's own NOT ESTABLISHED says steps 13-14 never ran and that the
+    fix "has never run in CI".
+
+  Neither half is asked to carry weight it cannot. The first is not sufficient,
+  because AF49 established that a tree **lacking** the signing block also
+  prebuilds and assembles successfully — emitting a debug-signed "release" APK
+  — so a green prebuild plus a green `assembleRelease` does not discriminate
+  between an applied plugin and an unapplied one. The second is not evidence at
+  all. **What discriminates is the positive certificate assertion**, and that
+  is what the two successful runs add: a certificate matching
+  `EXPECTED_UAT_CERT_SHA256` and **not** `CN=Android Debug`, which under AF49's
+  finding is only reachable if the plugin generated the block from scratch.
+
+  **§3'S OWN EXIT TEXT SAYS TO RECORD THIS AS AN `AF`, AND THAT INSTRUCTION IS
+  NOT SUFFICIENT ON ITS OWN.** §3 read: *"When it happens, record it as an `AF`
+  entry, delete §3 and §4, and repoint §5 at the plugin."* That sentence was
+  written in **AD38**, and AD39 came **after** it and imposed an additional,
+  stricter condition. So the exit text is not the operative authority any more:
+  a finding records what was measured, and **an `AF` cannot supersede an `AD`
+  ruling** — only a later `AD` can, which is why this entry exists rather than
+  AF55 alone. Following §3's instruction literally would have deleted a section
+  that a subsequent decision had explicitly ruled must stay, on the strength of
+  a finding with no standing to overrule it. AF55 supplies the evidence; AD44
+  discharges the ruling.
+
+  **DEPARTURE 1 — §4 SURVIVES, where the exit text says "delete §3 and §4".**
+  That instruction described §4 as it stood when AD38 wrote it: a recovery
+  procedure whose payload was the hand edit. AD38 then **rewrote** §4 in the
+  same change into plugin-first guidance, and the two texts drifted apart — the
+  instruction was never updated to match the section it names. Of §4's five
+  steps, exactly one depended on §3: step 5, the hand-edit last resort pointing
+  at §3a/§3b/§3c. **Only that step is deleted.** Steps 1-4 (check `git status`
+  for a leaked keystore, confirm `keystore.properties`, confirm the plugin is
+  still in `app.json`'s `plugins` array, re-run prebuild) and the
+  "Fix the plugin's anchors" paragraph reference the plugin and nothing else,
+  and they are the most useful part of the document when a build comes out
+  debug-signed. Deleting them to honour the letter of an instruction whose own
+  author had already invalidated it would have removed working guidance for no
+  reason. §4's opening line went too, since it read "The hand edit is the last
+  resort, not the first" — a statement **this change itself negates**, which
+  makes it part of this change under AD32's boundary rule rather than a
+  separate edit.
+
+  **§5 needed no repointing**, the exit text's third instruction. AD38 had
+  already repointed it: it reads "Confirm the plugin's three blocks are present
+  in the generated file" and closes "the usual cause is the plugin missing from
+  `app.json`'s `plugins` array, not a lost hand edit." Verified rather than
+  assumed, and left untouched.
+
+  **DEPARTURE 2 — THE NUMBERING IS NOT CLOSED UP. §3 IS A DELIBERATE GAP: 1, 2,
+  4, 5, 6, 7.** `DECISIONS.md` and `FINDINGS.md` are append-only and between
+  them cite `RELEASE-SIGNING.md §3` **seventeen times** (10 in FINDINGS, 7 in
+  DECISIONS, counted for this entry 🧪) — and README.md and `uat-build.yml`
+  cite §4 and §7 by number. Renumbering would silently repoint every one of
+  those seventeen citations at surviving text they were never about, which is
+  strictly worse than a visible gap: a dangling reference announces itself,
+  whereas a **silently rehomed** one reads as correct and is wrong. The gap is
+  explained in the document's own header so it is not read as an accident and
+  not "tidied" later. This is the same reasoning AD31 applied to the fork
+  manifest's row numbers and AD18's anti-duplication rule applies to pointers
+  generally: a pointer's value is that it still points where it did.
+
+  **WHAT WAS REMOVED FROM THE SUITE, AND WHY IT IS NOT A WEAKENING.**
+  `plugins/withReleaseSigning-headless-test.mjs` loses its numbered block 7 —
+  seven assertions — and with it `RELEASE_SIGNING_DOC` and the `doc` binding
+  that read the document. **Every one of the seven had §3 as its subject:** four
+  compared §3's fenced `gradle` blocks byte for byte against the plugin's
+  constants, one counted the blocks, and two asserted prose properties of the
+  demotion (that §3 named the plugin as the live mechanism, and that it pinned
+  the retiring hash). With §3 gone their subject does not exist, so they are
+  removed rather than relaxed. **No surviving assertion was weakened**, and the
+  guard those seven existed to provide is not lost but rendered unnecessary:
+  they guarded a *second copy* of the Gradle text, and there is now only one
+  copy. `AF42_BUILD_GRADLE_SHA256` is **kept** — it is still the oracle for the
+  byte-identity assertion that the transform plus Expo's identity mods
+  reproduces AF42's `build.gradle` exactly, which is the assertion that
+  actually protects the release artifact.
+
+  **AF51's finding is spent, and that is the point.** AF51 recorded a suite that
+  read `RELEASE-SIGNING.md` — a repo file it does not live beside — and
+  therefore tested the **working tree** locally and the **commit** in CI, going
+  green locally and red in CI on nothing but the staging list. AF51 also found
+  that only the two *prose* assertions could see a stale framing, the four
+  byte-comparisons being structurally blind to it. Both observations stand as
+  history; the coupling that produced them is now gone, because the suite no
+  longer reads any document.
+
+  **`plugins/withReleaseSigning.ts` IS EDITED, AND THE BOUNDARY INSIDE IT IS
+  LOAD-BEARING.** The plugin's *behaviour* does not change and its generated
+  bytes are identical — but it carried six §3 references, one of them a
+  **runtime** string: `const DOC = 'See RELEASE-SIGNING.md §3 and DECISIONS.md
+  AD38.'`, interpolated into **four** thrown error messages. Left alone, a
+  prebuild failure would have told a developer to read a section that no longer
+  exists — an actively wrong instruction in the one output a person sees at the
+  moment they most need it, which is the failure class AD38 and AD43 both warn
+  about. So `DOC` drops `§3` and keeps `RELEASE-SIGNING.md`; the three
+  `/** §3a */`, `/** §3b */`, `/** §3c */` JSDoc labels become Edit 1/2/3; and
+  two docblocks describing §3 as holding a fallback copy now describe the
+  constants as the sole copy.
+
+  **What was deliberately NOT touched, and this is the boundary:** the
+  `RELEASE-SIGNING.md` mentions **inside** the `SIGNING_PREAMBLE` and
+  `RELEASE_BUILD_TYPE` template literals. Those are Gradle comment text
+  **emitted into the generated `build.gradle`**, so editing them would change
+  the generated bytes and break the AF42 hash assertion — spending AF42's
+  release-mode device evidence for a comment. One of them
+  (`SIGNING_PREAMBLE`'s "RELEASE-SIGNING.md holds the verbatim copy of this
+  block so it can be restored") is now **inaccurate as prose and is knowingly
+  left that way**, because it costs a hash to fix and the containing comment's
+  operative content — read `RELEASE-SIGNING.md`, never fall back to debug
+  signing — is still correct. Recorded here rather than deferred with a
+  trigger: it is not a deferral, it is a decision to leave a stale clause
+  standing, and the reason it is affordable is that those literals already name
+  the document with no section number. **Anyone regenerating that comment for
+  another reason should fix the clause in the same change** — and the AF42
+  assertion will tell them immediately that they have changed the bytes.
+
+  **THE COUNT RIPPLE, measured by running the suites rather than predicted 🧪.**
+  Removing seven assertions takes `withReleaseSigning-headless-test.mjs` from
+  **39 to 32**, `test:local` from **286 to 279**
+  (52 + **32** + 20 + 73 + 27 + 45 + 30), and the total from **411 to 404**.
+  `test:core` is **125**, untouched. **The suite count stays 15**, so AD31's
+  reporting form — "15 suites plus 1 baseline check", never "16 suites" — is
+  undisturbed, and `CORE-DIVERGENCE.md`, `static-and-suites.yml` and
+  `scripts/check-core-baseline.mjs` need no edit: every string in them counts
+  *suites*, not checks. Seven live figures moved, in two mutable documents:
+  `README.md` (the headline total, the `test:local` subtotal, the Jest note) and
+  `ARCHITECTURE.md` (the headline total, the `test:local` table row **including
+  its breakdown**, the `npm run check` comment, and the "84 of the N checks"
+  denominator — where the **84 itself stays**, those five being core suites).
+  Occurrences inside `DECISIONS.md` and `FINDINGS.md` are **deliberately
+  untouched**: both are append-only and every one was true when written.
+
+  That sweep is done this way because **AF54 is one PR old**. It exists because
+  a count moved and a scoped sweep chased only the axis that had just changed,
+  leaving `README.md` and `ARCHITECTURE.md` stating figures no suite had
+  produced for a milestone. AD43's rule and AF54's method are both applied here
+  deliberately: the figures were **re-measured by running `test:core` and
+  `test:local`**, not carried from a prediction, and every mutable document that
+  states one was swept rather than only the ones a task named.
+
+  **Alternatives rejected.** *(a) Keep §3 until a third or fourth CI run.*
+  Rejected, and it is worth recording why, because it was actually proposed
+  in conversation: "hold until the plugin has run a few more times" names **no
+  checkable condition** — no number, no date, no observable — which is exactly
+  what AD43 forbade, and AF55 records that it was offered on the same day AD43
+  was written. AD39's trigger was already the right shape and was already met;
+  substituting a vaguer one for a met one is how AD35's flag-and-leave survived
+  six milestones. *(b) Delete §4 as well, honouring the exit text literally.*
+  Rejected per Departure 1 — it would delete working plugin-first guidance
+  because a stale instruction named a section its own author had since
+  rewritten. *(c) Keep §3 but stop asserting it in the suite.* The worst option
+  available: it retains the second copy of the Gradle text and removes the only
+  mechanism keeping it honest, which is precisely the unguarded duplication
+  PORT-PLAN.md §5.1 diagnoses in F-PRESETS-5 and this repo has watched drift
+  three times (AD2, AF8, AD26). *(d) Renumber §4-§7 up.* Rejected per
+  Departure 2.
+
+  **What this does NOT do.** It does not touch the plugin's behaviour, the
+  generated bytes, `app.json`, `app.config.ts`, or anything under `src/` or
+  `android/`. It changes no `CORE-DIVERGENCE.md` row — **none of the files in
+  scope is manifest-pinned, confirmed rather than assumed** 🧪, and
+  `check:baseline` still reports 26 files, 20 under `src/core/`, 0 mismatches.
+  It does not discharge **AD40's** pending acceptance check as a decision — that
+  is a finding, and **AF55** records it. And it makes no claim about R8/Proguard
+  or the release APK's untested ABIs, which stand exactly as AF42 left them.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -4877,3 +5078,70 @@
   that building it will re-trip the exact "sixteenth suite" inversion AD37 and
   AD38 each hit independently, so it is not rediscovered as a surprise a third
   time. Measurements are **AF54**.
+- 2026-09-10 — appended **AD44** on `docs/retire-signing-fallback`, opening a
+  milestone for retiring the signing fallback and **superseding AD39's "§3 and
+  §4 are NOT retired" ruling and nothing else in AD39.** RELEASE-SIGNING.md §3
+  — the verbatim Gradle fallback — is deleted. AD39's hold was a **well-formed
+  deferral of exactly the shape AD43 later required**, naming a checkable
+  trigger in one sentence (`DECISIONS.md:3530`, quoted verbatim in the entry):
+  *"Retirement waits until a CI build has succeeded."* It is now met — two
+  `uat-build` dispatches have succeeded, **34350254968** (main) and
+  **34364814937** (dev), all fourteen steps green in both. **The argument rests
+  on those two runs and on neither half of AF52**, and the entry keeps AF52's
+  halves apart rather than merging them: AF52 **does** record the from-scratch
+  prebuild running for the first time anywhere (step 9, against a checkout with
+  no `android/`), and it establishes **nothing whatsoever about signing**, since
+  step 12 failed on an `apksigner` parsing defect (AD40) and the certificate was
+  never read. Neither half is asked to carry weight it cannot: a green prebuild
+  plus a green `assembleRelease` does **not** discriminate, because **AF49**
+  established that a tree *lacking* the signing block also succeeds and emits a
+  debug-signed APK — what discriminates is the **positive** certificate
+  assertion the two successful runs passed. **§3's own exit text says to record
+  this as an `AF`, and that is not sufficient authority:** that sentence was
+  written in AD38, AD39 came after it and imposed a stricter condition, and **an
+  `AF` cannot supersede an `AD` ruling** — only a later `AD` can, which is why
+  AF55 supplies the evidence and this entry discharges the ruling. **Two
+  departures from the verbatim exit text, both argued.** §4 **survives** where
+  the text says "delete §3 and §4": that instruction described §4 as AD38 found
+  it, AD38 then rewrote §4 into plugin-first guidance in the same change and
+  never updated the instruction, and only **step 5** (the hand-edit last resort
+  pointing at §3a/§3b/§3c) actually depended on §3 — so only step 5 goes, with
+  §4's opening line following it because **this change itself negates** it
+  (AD32's boundary rule). §5 needed no repointing, verified rather than assumed.
+  And **the numbering is NOT closed up — §3 is a deliberate gap (1, 2, 4, 5, 6,
+  7)** — because the append-only logs cite `RELEASE-SIGNING.md §3` **seventeen
+  times** 🧪 and renumbering would **silently rehome** every one of them onto
+  text they were never about, which is worse than a visible gap: a dangling
+  pointer announces itself, a silently rehomed one reads as correct and is
+  wrong. The suite loses its numbered block 7 — **seven assertions, every one
+  with §3 as its subject** (four byte-comparisons of its fenced blocks, one
+  block count, two prose properties of the demotion) — plus the orphaned
+  `RELEASE_SIGNING_DOC` and `doc` bindings; **nothing was weakened**, and
+  `AF42_BUILD_GRADLE_SHA256` is kept because it is still the oracle for the
+  byte-identity assertion that protects the release artifact. **AF51's
+  staging-list finding is spent** — the suite no longer reads any document.
+  `plugins/withReleaseSigning.ts` **is** edited, behaviour and generated bytes
+  unchanged, because it carried a **runtime** `DOC` string interpolated into
+  four thrown error messages that would have pointed a developer at a deleted
+  section; the boundary inside that file is load-bearing and is stated in full —
+  the `RELEASE-SIGNING.md` mentions **inside** the `SIGNING_BLOCKS` template
+  literals are Gradle comment text emitted into the generated file, so editing
+  them would change the bytes and break the AF42 hash, and one now-inaccurate
+  clause there is **knowingly left standing** rather than deferred with a
+  trigger. **Count ripple, measured by running rather than predicted** 🧪: the
+  suite **39 → 32**, `test:local` **286 → 279**, total **411 → 404**;
+  `test:core` **125** untouched; **suite count stays 15**, so AD31's reporting
+  form is undisturbed and `CORE-DIVERGENCE.md`,
+  `static-and-suites.yml` and `scripts/check-core-baseline.mjs` need no edit.
+  Seven live figures moved across `README.md` and `ARCHITECTURE.md` — including
+  ARCHITECTURE's table **breakdown**, and with the "84" preserved since those
+  five are core suites — while every occurrence in the two append-only logs is
+  left as true-when-written. That sweep is deliberate: **AF54 is one PR old**
+  and exists because a scoped sweep chased only the axis that had just moved.
+  Alternatives rejected: holding §3 "until the plugin has run a few more times"
+  (**no checkable condition** — precisely what AD43 forbade, and AF55 records
+  that it was proposed on the same day AD43 was written); deleting §4 too;
+  keeping §3 but stopping asserting it (the worst option — it keeps the second
+  copy and removes the only guard on it); and renumbering. No file under `src/`
+  or `android/` changed, no `CORE-DIVERGENCE.md` row changed, and the plugin's
+  behaviour is unchanged. Measurements are **AF55**.

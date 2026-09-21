@@ -9,20 +9,22 @@
 > `app.json` registers. That file is the single source of the signing block,
 > and it is tracked, typechecked, linted and tested.
 >
-> §2 is the credentials template. **§3 is now a FALLBACK, not the mechanism** —
-> a verbatim copy of what the plugin generates, kept only until the plugin has
-> been proven by a real prebuild; §3 names the exact condition that retires it.
-> §4 is what to do when the signing block is missing. §5 verifies a build. §7
-> is the full release sequence, which belongs here rather than in a separate
-> document because bumping `versionCode` drives the **same** prebuild that
-> regenerates signing (AD36).
+> §2 is the credentials template. §4 is what to do when the signing block is
+> missing. §5 verifies a build. §7 is the full release sequence, which belongs
+> here rather than in a separate document because bumping `versionCode` drives
+> the **same** prebuild that regenerates signing (AD36).
+>
+> **There is no prose fallback copy of the Gradle blocks, and deliberately so.**
+> One lived at §3 until **AD44** retired it. The plugin is the sole mechanism,
+> proven by generation locally (**AF51**) and from scratch in CI (**AF55**), and
+> a hand-restorable copy could never reach the case that actually needed it — a
+> fresh checkout or a CI runner, which has no `android/` at all (AF47, AF49).
+> **§3 is intentionally absent and the numbering is NOT closed up**, because the
+> append-only logs cite these section numbers seventeen times.
 >
 > This document is **mutable** — it must always describe the configuration and
 > procedure that are live right now. If either changes, change it here in the
-> same edit. **§3's blocks are checked, not merely written:**
-> `plugins/withReleaseSigning-headless-test.mjs` asserts them against the
-> plugin's own constants byte for byte inside `npm run check`, so the fallback
-> cannot silently stop describing what is generated.
+> same edit.
 >
 > **Why signing is a config plugin, and what that supersedes in AD30**, is
 > **AD38**; the measurements are **AF50**. **Why the hand edit was chosen
@@ -81,148 +83,10 @@ The keystore itself (`reading-aid-release.keystore`) is gitignored by
 future build is a different app identity that cannot upgrade an installed one.
 Back it up outside this repo.
 
-## 3. FALLBACK — the three edits, verbatim
-
-> **THIS IS NO LONGER THE MECHANISM.** These three blocks are what
-> [`plugins/withReleaseSigning.ts`](plugins/withReleaseSigning.ts) generates on
-> every prebuild. They are kept here as a fallback for one reason only: at the
-> time of writing, **the plugin has never run in a real prebuild in this repo**
-> — its output is proven by a string transform over a committed copy of the
-> stock template, not by generation on disk. Until that changes, a human needs
-> a way to put the block back by hand.
->
-> **THE EXIT CONDITION, stated so that "fallback only until proven" cannot
-> quietly become permanent.** §3 is deleted, and §4 with it, once **a real
-> `npx expo prebuild --platform android` has run in this repo and the
-> `android/app/build.gradle` it generates hashes to**
->
-> ```
-> 0b322188fa0661d91389c80c86a65c3d10dbd5996e8dc44d24031f539bdefcb9
-> ```
->
-> (`shasum -a 256 android/app/build.gradle`, with `versionCode` still `1` — a
-> bump per §7 changes this hash by design, so record the comparison against the
-> value in the plugin's suite rather than against a stale number). That single
-> run is the whole condition. When it happens, record it as an `AF` entry,
-> delete §3 and §4, and repoint §5 at the plugin.
->
-> **These blocks are CHECKED against the plugin, not merely written beside it.**
-> `plugins/withReleaseSigning-headless-test.mjs` parses the four fenced `gradle`
-> blocks below and asserts each byte for byte against the plugin's own
-> constants, inside `npm run check`. Two copies of the same text with no
-> mechanism keeping them in step is precisely the unguarded duplication this
-> repo has watched drift three times (AD2, AF8, AD26); that assertion is what
-> makes keeping them affordable. **If you edit a block below, the suite fails
-> until the plugin agrees — and the plugin is the one that is right.**
-
-Verbatim. Anchors are given as the surrounding template text so they can be
-relocated if line numbers shift.
-
-### 3a. Preamble — inserted immediately **before** the `android {` block
-
-Anchor: the line `def jscFlavor = '…'`, then a blank line, then `android {`.
-Insert between the blank line and `android {`.
-
-```gradle
-/* ---------------------------------------------------------------------------
- * Reading Aid release signing. See RELEASE-SIGNING.md and DECISIONS.md AD30.
- *
- * Credentials are read from keystore.properties at the REPO ROOT, which is
- * gitignored and must never be committed. This file lives inside the generated
- * android/ directory, which is ALSO gitignored -- RELEASE-SIGNING.md holds the
- * verbatim copy of this block so it can be restored after `npx expo prebuild`.
- *
- * There is deliberately NO fallback to debug signing. The Expo template shipped
- * `release { signingConfig signingConfigs.debug }`, which makes assembleRelease
- * succeed and emit an installable DEBUG-SIGNED "release" APK -- a wrong artifact
- * that surfaces only later, as an install-time signature mismatch.
- * ------------------------------------------------------------------------- */
-def keystorePropertiesFile = rootProject.file('../keystore.properties')
-def keystoreProperties = new Properties()
-def releaseSigningError = null
-
-if (!keystorePropertiesFile.exists()) {
-    releaseSigningError = "keystore.properties not found at ${keystorePropertiesFile.canonicalPath}"
-} else {
-    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
-    def missingKeys = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].findAll {
-        !keystoreProperties.getProperty(it)?.trim()
-    }
-    if (missingKeys) {
-        releaseSigningError = "keystore.properties is missing or has an empty value for: ${missingKeys.join(', ')}"
-    } else {
-        def resolvedStore = rootProject.file('../' + keystoreProperties.getProperty('storeFile').trim())
-        if (!resolvedStore.exists()) {
-            releaseSigningError = "keystore file not found at ${resolvedStore.canonicalPath} (storeFile in keystore.properties)"
-        }
-    }
-}
-
-// Hard-fail, but ONLY when a release task is actually in the task graph, so debug
-// builds still work on a machine with no keystore. Configuration-time throws would
-// break `npx expo run:android` too.
-gradle.taskGraph.whenReady { taskGraph ->
-    if (releaseSigningError != null && taskGraph.allTasks.any { it.name =~ /(?i)release/ }) {
-        throw new GradleException(
-            "Release signing is not configured: ${releaseSigningError}.\n" +
-            "See RELEASE-SIGNING.md for the keystore.properties template.\n" +
-            "Refusing to fall back to debug signing -- that would produce an installable but wrongly-signed APK."
-        )
-    }
-}
-```
-
-`rootProject` for this build is `<repo>/android`, because the settings file is
-`android/settings.gradle`. So `rootProject.file('../keystore.properties')`
-resolves to the repo root.
-
-### 3b. A `release` entry inside `signingConfigs`
-
-Anchor: the template's `signingConfigs { debug { … } }`. Add `release` after the
-closing brace of `debug`, still inside `signingConfigs`. **Leave `debug`
-untouched.**
-
-```gradle
-        release {
-            // Populated only when keystore.properties is present and complete.
-            // If it is not, this stays empty, the release buildType below gets NO
-            // signing config -- an UNSIGNED apk, never a debug-signed one -- and the
-            // taskGraph.whenReady guard above throws before execution regardless.
-            if (releaseSigningError == null) {
-                storeFile rootProject.file('../' + keystoreProperties.getProperty('storeFile').trim())
-                storePassword keystoreProperties.getProperty('storePassword')
-                keyAlias keystoreProperties.getProperty('keyAlias')
-                keyPassword keystoreProperties.getProperty('keyPassword')
-            }
-        }
-```
-
-### 3c. Repoint the `release` buildType
-
-Inside `buildTypes { release { … } }`, **replace** these three template lines:
-
-```gradle
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
-```
-
-**with:**
-
-```gradle
-            // Signed from keystore.properties via signingConfigs.release (AD30).
-            // NEVER point this at signingConfigs.debug -- that is the template default
-            // and it emits an installable debug-signed "release" APK. See RELEASE-SIGNING.md.
-            signingConfig releaseSigningError == null ? signingConfigs.release : null
-```
-
-Nothing else in `buildTypes.release` changes — `shrinkResources`,
-`minifyEnabled`, `proguardFiles` and `crunchPngs` keep their template values,
-and `buildTypes.debug` is not touched at all.
-
 ## 4. If the signing block is missing
 
-**Reach for the plugin first. The hand edit is the last resort, not the first.**
+**The plugin is the mechanism, and there is no hand edit to fall back on
+(AD44) — work this list instead.**
 
 1. `git status --porcelain` — confirm the keystore and `keystore.properties`
    do **not** appear. If either does, stop and fix `.gitignore` first.
@@ -231,11 +95,6 @@ and `buildTypes.debug` is not touched at all.
    `"./plugins/withReleaseSigning"`. If it does not, that is the whole bug.
 4. Run `npx expo prebuild --platform android --no-clean` (§7 step 2) and
    verify with §5. The plugin regenerates the block.
-5. **Only if the plugin itself is broken or absent** — and it should be fixed
-   rather than bypassed — open `android/app/build.gradle` and apply §3a, §3b,
-   §3c at their anchors, then verify with §5. A hand edit made here is invisible
-   to `npm run check` and will be overwritten by the next prebuild that runs
-   with a working plugin.
 
 If the prebuild fails with `withReleaseSigning: anchor "…" matched 0 time(s)`,
 the Expo template has changed shape. **Fix the plugin's anchors** — do not
