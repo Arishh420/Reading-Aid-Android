@@ -1,0 +1,38 @@
+#!/bin/sh
+# Refuse to push directly to `main` or `dev`. CLAUDE.md §1; reasoning in AD45.
+#
+# git feeds pre-push one line per ref being pushed, on stdin:
+#     <local ref> <local sha> <remote ref> <remote sha>
+# The third field is what the push would update on the remote, so that is what
+# is tested -- pushing a local branch named anything at all to refs/heads/main
+# is still a push to main.
+#
+# This does not obstruct the branching model: promotions (dev -> main) and
+# back-merges (main -> dev) happen as GitHub PR merges, never as local pushes.
+#
+# `git push --no-verify` skips this hook. CLAUDE.md §1 forbids that. Guardrail
+# against accident, not a security boundary (AD45).
+
+status=0
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+	case "$remote_ref" in
+	refs/heads/main|refs/heads/dev)
+		branch=${remote_ref#refs/heads/}
+		cat >&2 <<EOF
+pre-push: refusing to push to '$branch'.
+
+$branch moves only through a pull request on GitHub (CLAUDE.md §1):
+  - dev  <- a squashed PR from a feature/ fix/ docs/ chore/ branch
+  - main <- a MERGE-COMMIT promotion PR from dev, or a hotfix PR
+
+Push your work branch instead, then open the PR:
+
+    git push -u origin \$(git branch --show-current)
+EOF
+		status=1
+		;;
+	esac
+done
+
+exit $status

@@ -1,0 +1,40 @@
+#!/bin/sh
+# Refuse to commit on `main` or `dev`. CLAUDE.md §1; reasoning in AD45.
+#
+# POSIX sh, not Node, so this runs wherever a commit is made -- including a GUI
+# client whose PATH has no node. `sh` and `git` are both guaranteed present,
+# because git is what invoked this.
+#
+# A detached HEAD is deliberately NOT refused here: such a commit cannot
+# advance `main` or `dev`, which is the thing this hook exists to prevent.
+# .claude/hooks/guard-branch.mjs does refuse to EDIT on a detached HEAD, for a
+# different reason -- the edit is easy to lose.
+#
+# `git commit --no-verify` skips this hook. CLAUDE.md §1 forbids that. This is
+# a guardrail against accident, not a security boundary (AD45).
+
+branch=$(git symbolic-ref --quiet --short HEAD) || exit 0
+
+case "$branch" in
+main|dev)
+	cat >&2 <<EOF
+pre-commit: refusing to commit on '$branch'.
+
+Nobody commits directly on main or dev (CLAUDE.md §1). main moves only by a
+promotion PR from dev or a hotfix PR; dev moves only by a squashed PR from a
+work branch.
+
+Move this work onto its own branch:
+
+    git stash                 # if you have uncommitted changes
+    git checkout dev && git pull
+    git checkout -b <type>/<name>    # feature/ fix/ docs/ chore/
+    git stash pop
+
+A hotfix, and only a hotfix, is cut from main instead.
+EOF
+	exit 1
+	;;
+esac
+
+exit 0

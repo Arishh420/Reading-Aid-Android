@@ -4,12 +4,12 @@
  *
  * CommonJS on purpose: package.json declares no `"type": "module"`, so a `.js`
  * config is CJS. It is deliberately NOT named `eslint.config.mjs` — that would
- * fold a config file into AF14's tracked-`.mjs` framing and the "N suites plus
- * 1 baseline check" accounting AD31 protects. Those counts have since moved (16
- * tracked `.mjs`, 15 suites): each new one arrived as a behavioural suite —
- * `app.config-headless-test.mjs` (AD37) and
- * `plugins/withReleaseSigning-headless-test.mjs` (AD38) — which is what that
+ * fold a config file into AF14's tracked-`.mjs` framing and the suite-versus-
+ * static-check accounting AD31 protects. Every `.mjs` added since has arrived
+ * as a behavioural suite or a guard the suites exercise, which is what that
  * accounting is for. This file stays `.js` for the same reason it always was.
+ * No count is written here: a hard-coded one goes stale and, at worst, inverts
+ * into an instruction to state the wrong number (AF54, AD46).
  *
  * Three `files` overrides below are load-bearing rather than cosmetic. Each
  * exists because the alternative is editing a file pinned in
@@ -61,11 +61,12 @@ module.exports = [
     },
   },
 
-  // The 16 tracked .mjs files are Node CLI programs whose output IS their
-  // result: `console.log` prints every PASS/FAIL line and every tally that
-  // `npm run check` reports. Nine of the sixteen are manifest-pinned (rows
-  // 13-20 and 25), so a style rule they cannot satisfy is one that would be
-  // suppressed forever or would force an edit the manifest forbids.
+  // The tracked .mjs files are Node CLI programs whose output IS their result:
+  // `console.log` prints every PASS/FAIL line and every tally that
+  // `npm run check` reports, and the two .claude/hooks guards print the reason
+  // a tool call was blocked. Nine of them are manifest-pinned (rows 13-20 and
+  // 25), so a style rule they cannot satisfy is one that would be suppressed
+  // forever or would force an edit the manifest forbids.
   {
     files: ['**/*.mjs'],
     rules: {

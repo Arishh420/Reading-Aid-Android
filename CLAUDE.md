@@ -3,10 +3,27 @@
 Standing instruction. Follow every session without being re-asked.
 
 ## 1. Branch and issue context — confirm and report, always
-Never commit on `main`. Before ANY code change:
-- Confirm the branch (`git branch --show-current`). If on `main`, STOP and say so —
-  a new change needs its own branch off an up-to-date main
-  (`git checkout main && git pull && git checkout -b <name>`).
+
+**Three levels. Nobody commits on `main` or `dev`.**
+
+| Level | Branch | Cut from | Merges into | Merge type |
+|---|---|---|---|---|
+| 1 | `main` — release | — | — | receives a promotion PR from `dev`, or a `hotfix/*` PR |
+| 2 | `dev` — integration | `main` | `main`, by promotion | receives squashed PRs from level 3 |
+| 3 | `feature/<name>`, `fix/<name>`, `docs/<name>`, `chore/<name>` | **`dev`** | `dev` | **squash** |
+| — | `hotfix/<name>` | **`main`** | `main`, then `main` is back-merged into `dev` | **merge commit**, both ways |
+
+**Merge type is not cosmetic.** Level-3 PRs into `dev` are **squashed**.
+Promotions (`dev` → `main`) and back-merges (`main` → `dev`) are **merge
+commits and are never squashed** — a squashed sync (#32) already destroyed
+main→dev ancestry once, and a squash there makes every commit it was meant to
+reconcile look unmerged.
+
+Before ANY code change:
+- Confirm the branch (`git branch --show-current`). **If it is `main` or `dev`,
+  STOP and say so** — that work needs its own branch off an up-to-date `dev`
+  (`git checkout dev && git pull && git checkout -b <type>/<name>`). A hotfix,
+  and only a hotfix, is cut from `main` instead.
 - If the task references a GitHub issue, run `gh issue view <number>` (including
   comments) before doing anything else — a pasted summary may be stale.
 - State both confirmations explicitly at the top of your response — branch name,
@@ -14,9 +31,18 @@ Never commit on `main`. Before ANY code change:
   that isn't reported is indistinguishable from a check that didn't happen.
 
 If a change doesn't fit the current branch's purpose, STOP and flag it — it belongs
-on its own branch; don't pile unrelated work on. Never stage, commit, or push — I
-run all git-write operations myself in the terminal. Propose the change, show the
-diff, and stop there. Naming: `feature/<name>`, `fix/<name>`.
+on its own branch; don't pile unrelated work on. **Never stage, commit, push,
+merge, rebase, or open or merge a pull request** — I run every git-write operation
+myself in the terminal. Propose the change, show the diff, and stop there.
+`gh issue create` is the one exception: issues are filed through Claude Code by
+design. Read-only `git` and `gh` are always fine.
+
+**Never bypass a guard.** `--no-verify`, and anything else that routes around
+the hooks in `.githooks/` or `.claude/hooks/`, is off-limits. A guard that
+blocks something it should allow is a **bug to fix on its own branch**, not an
+obstacle to step over — a guard stepped over once is a guard nobody trusts
+again. AD45 records what each guard covers, and states plainly that they are
+guardrails against accident rather than a security boundary.
 
 ## 2. Docs are part of "done"
 A change isn't complete until the docs reflect it. Update the relevant one(s);
@@ -29,8 +55,10 @@ each documents its own purpose at its top:
   verified (unit / build / user-confirmed / derived / assumed). Be honest.
 - **CORE-DIVERGENCE.md** @CORE-DIVERGENCE.md  — the fork manifest. Changing a file it lists
   means updating that file's row in the SAME change; see its §3 for the procedure.
-- **RELEASE-SIGNING.md** @RELEASE-SIGNING.md  — how release signing is configured, and how to
-  restore it after a prebuild destroys it.
+- **RELEASE-SIGNING.md** @RELEASE-SIGNING.md  — the release build procedure: the credentials
+  template, the config plugin that generates the signing block on every prebuild, and how to
+  verify an APK is not debug-signed. There is nothing to restore by hand — AD38 made signing
+  generated and AD44 retired the prose fallback.
 **DECISIONS.md and FINDINGS.md are append-only**; every other document above is mutable and
 is rewritten in place to state current truth.
 If code and a doc disagree, fix one and flag the drift — never leave them at odds.

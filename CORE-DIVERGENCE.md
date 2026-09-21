@@ -113,7 +113,7 @@ manifest is scoped rather than exhaustive.
 | 23 | `src/storage/storage.ts` | port, platform-swapped to MMKV | `d354bb665358fa0b60255158c9d7a4a2907188f14182ced9514adea206e64315` | `d354bb665358fa0b60255158c9d7a4a2907188f14182ced9514adea206e64315` | n | AD6 |
 | 24 | `src/storage/readingPosition.ts` | port, byte-identical to web | `3385b12b1a6d8e4a6190bbbe53fed40505d028a7ec74794125fab5776a73e5fb` | `3385b12b1a6d8e4a6190bbbe53fed40505d028a7ec74794125fab5776a73e5fb` | n | AD25 |
 | 25 | `src/storage/headless-test.mjs` | adapted copy of web's suite | `2e35f2d20b79bc12c78af9728ed1a45ad7673386047315a1892c6121d784e692` | `2e35f2d20b79bc12c78af9728ed1a45ad7673386047315a1892c6121d784e692` | n | AD27 |
-| 26 | `CLAUDE.md` | working agreement, carried verbatim from web (AD12, AD14) | `407d965a93d176bc5da85922c7aef0965fd53749e5f2e63cd753490b7f30e8a6` | `0382990a3ec28028bb8a26bff73e3010c6c9d7bcf6cb9fcece2ad3aed3e95531` | y | AD32, AD33 |
+| 26 | `CLAUDE.md` | working agreement, carried verbatim from web (AD12, AD14) | `407d965a93d176bc5da85922c7aef0965fd53749e5f2e63cd753490b7f30e8a6` | `4832063a4e66dcc7ba04e3a1362813b352711c78cb5298545db621f7d2a4b4cf` | y | AD32, AD33, AD45 |
 
 <!-- END MANIFEST -->
 
@@ -158,10 +158,11 @@ expected. The fix is almost always "write the row", not "revert the edit".
 
 ```
 npm run check:baseline     # this check alone
-npm run check              # build, then this check, then all 15 suites
+npm run check              # build, this check, doc consistency, then all 16 suites
 ```
 
 It is pure Node — `node:crypto`, `node:fs/promises`, `node:path`, `node:url` —
 with no network, no web checkout, no esbuild and no dependencies. It is **not**
-a test suite and is not counted as one: the repo's tally is **15 suites plus 1
-baseline check**. See AD31 for why that distinction is kept.
+a test suite and is not counted as one: the repo's tally is **16 suites plus 2
+static checks** — this one and `scripts/check-doc-consistency.mjs`. See AD31
+for why that distinction is kept, and AD46 for the second static check.
