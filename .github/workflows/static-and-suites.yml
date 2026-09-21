@@ -3,11 +3,12 @@
 # why lint runs last.
 #
 # The name is deliberate and must not become `tests` or `build`. A green tick
-# here means tsc passed, the fork baseline matched, 15 headless suites passed
-# and lint was clean. It means NOTHING about the device behaviour this repo
-# depends on -- the highlight mechanism, the pacer clock, auto-scroll, MMKV,
-# release-mode Hermes. ARCHITECTURE.md §6 lists what has no automated coverage,
-# and none of it is reachable from a runner.
+# here means tsc passed, the fork baseline matched, the documented counts were
+# consistent, the headless suites passed and lint was clean. It means NOTHING
+# about the device behaviour this repo depends on -- the highlight mechanism,
+# the pacer clock, auto-scroll, MMKV, release-mode Hermes. ARCHITECTURE.md §6
+# lists what has no automated coverage, and none of it is reachable from a
+# runner.
 name: static-and-suites
 
 on:
@@ -53,15 +54,25 @@ jobs:
       - name: Typecheck and core portability guard
         run: npm run build
 
-      # Its own step to preserve AD31's reporting form: "15 suites plus 1
-      # baseline check", never "16 suites". This asserts nothing behavioural.
+      # Its own step, and deliberately NOT counted as a suite: a static check
+      # executes nothing and asserts nothing behavioural, so folding it into
+      # the suite tally would change what that tally means (AD31, AD46). No
+      # count is written here on purpose -- a hard-coded one goes stale and, at
+      # worst, inverts into an instruction to state the wrong number (AF54).
       - name: Core fork baseline
         run: npm run check:baseline
 
-      - name: Headless suites — src/core/ (8 suites)
+      # The other static check: every document's stated suite counts, check
+      # totals and AD/AF ranges must agree with what the repo actually
+      # contains. `npm run check` chains this one; CI runs each step
+      # separately, so it needs its own step or it would never run here.
+      - name: Doc consistency
+        run: npm run check:docs
+
+      - name: Headless suites — src/core/
         run: npm run test:core
 
-      - name: Headless suites — local (7 suites)
+      - name: Headless suites — local
         run: npm run test:local
 
       # Last on purpose: a lint failure must never mask a behavioural one.

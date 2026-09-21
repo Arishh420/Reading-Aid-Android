@@ -4107,6 +4107,246 @@
      This entry is the durable record; if it disagrees with a re-fetched log,
      the log has aged out and this is all there is.
 
+## The branching-model guards — a hot-reload that proved them, and a control that found the instrument
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, in this tree — against the live Claude Code hook
+> documentation, this repo's own files, the GitHub branch-protection API
+> (read-only GET), and real throwaway git repositories under a temp directory.
+> **No prebuild, Gradle build, emulator, device or install was run**, and none
+> is claimed, so this section carries **no 👁 at all**, like AF44/AF45/AF47/
+> AF48/AF50/AF51/AF52/AF53/AF54/AF55. Nothing here is behavioural evidence about
+> the app. **No git write of any kind was performed**: no add, commit, push,
+> merge, branch or tag, and `git config core.hooksPath` was never run on this
+> repository — only on throwaway repositories inside a temp directory that was
+> deleted. The decisions are **AD45** and **AD46**; neither is restated here
+> (AD18).
+
+- **AF56** 🧪📐 — **The hook contract was verified against the documentation
+  rather than from memory, and the single most important fact in it is one that
+  memory gets wrong: EXIT CODE 2 BLOCKS A TOOL CALL, AND EXIT 1 DOES NOT.**
+
+  Fetched `https://docs.claude.com/en/docs/claude-code/hooks`, which **301s** to
+  `https://code.claude.com/docs/en/hooks`, plus
+  `https://code.claude.com/docs/en/settings` 🧪. Four things that would have
+  been wrong if assumed:
+
+  | | What the documentation says |
+  |---|---|
+  | **Blocking exit code** | *"exit code 2 is the only exit code that blocks through the code alone… Claude Code treats exit code 1 as a non-blocking error and proceeds with the action, even though 1 is the conventional Unix failure code."* |
+  | **Matcher syntax** | a matcher containing only letters, digits, `_`, `-`, spaces, `,` and `\|` is an **exact string or pipe-separated list**; any other character silently makes it an unanchored JavaScript regex |
+  | **Structured decision** | stdout JSON `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"…"}}`; on exit 2 the reason comes from that JSON when present and from **stderr** when not |
+  | **What exit 0 with no output means** | *"no decision; the normal permission flow applies"* — **not** an approval |
+
+  **That last row is why an allow writes nothing.** Printing
+  `permissionDecision: "allow"` would *grant* permission, suppressing the
+  operator's own prompts for every call the guard did not object to — the
+  opposite of what a guardrail is for. A guard that emitted exit 1 with a
+  refusal message would be worse than no guard, because it would print a
+  refusal and then let the call through.
+
+  Also read, and load-bearing: `${CLAUDE_PROJECT_DIR}` is the documented
+  project-root placeholder and is exported into the hook process environment;
+  the payload carries `session_id`, `prompt_id`, `transcript_path`, `cwd`,
+  `scratchpad_dir`, `permission_mode`, `hook_event_name`, `tool_name`,
+  `tool_input` and `tool_use_id`; settings files are watched and reloaded
+  *"without a restart, including edits to `permissions`, `hooks`"*; project
+  hooks are subject to the **workspace-trust** step; and `/hooks` is a read-only
+  browser that shows which settings file each hook came from — which is the
+  manual probe for a fresh session.
+
+  ### THE HOT RELOAD, OBSERVED — this is the strongest single result here
+
+  **[ran]** Immediately after `.claude/settings.json` was written, a `Bash` call
+  in this same session was **blocked**, and the block message was the guard's
+  own reason text, verbatim:
+
+  ```
+  BLOCKED: all of `gh release` is blocked, reads included — a release is this
+  project's UAT distribution channel (AD39). Claude Code does not perform git or
+  GitHub writes in this repo (CLAUDE.md §1) — run it yourself in the terminal.
+  ```
+
+  The probe was chosen so that it would be **harmless if it executed**:
+  `gh release view uat` is a read, so a guard that was not live would simply
+  have printed release metadata. Instead it was refused. That single observation
+  establishes four things at once: the project settings file was **hot-reloaded
+  mid-session with no restart**; the `Bash` matcher fires; **exit 2 plus the
+  deny JSON genuinely blocks**; and `permissionDecisionReason` is what the
+  harness surfaces to the model. A subsequent `Write` to the session scratchpad
+  succeeded, confirming the `Edit|Write|NotebookEdit|MultiEdit` group also runs
+  and correctly **allows** a path outside any git work tree.
+
+  **What it does NOT establish**, stated so the result is not over-read: this is
+  **one session, on the machine that authored the file**. A fresh session, a
+  different clone, and the workspace-trust step a project hook is subject to are
+  all unexercised ❓, and no observation was made of a *denial* from
+  `guard-branch` — proving that would need a session on `main` or `dev`, which
+  the model forbids.
+
+  ### A NEGATIVE CONTROL THAT FOUND THE INSTRUMENT, NOT THE SUBJECT — the EIGHTH in this family
+
+  The control was designed to break `.githooks/pre-commit` alone (never a live
+  Claude Code hook, so it could not lock this session out of Bash or Edit).
+  Predicting its result exposed a flaw in the suite **before it was run**:
+  section 8 originally staged **one** file and then attempted three commits, so
+  once a broken hook let the first commit through, the later `git commit` calls
+  would have exited non-zero for *"nothing to commit"* — and the check *"git
+  commit on dev is refused too"* would have **passed for the wrong reason**,
+  while a different check failed. Each attempt now stages its own file, and the
+  suite gained a check asserting that the refusal text is the guard's rather
+  than an empty index.
+
+  With that fixed, the control was surgical 🧪 — baseline **160 passed, 6
+  failed**; broken **156 passed, 10 failed**; delta **exactly the four
+  pre-commit checks and nothing else**, with *"git commit on a work branch
+  SUCCEEDS"* still passing and every pre-push check untouched. `.githooks/pre-commit`
+  was restored and re-hashed
+  `ffa6e62372991701b054ac4279faca730d713e5f4a2511d8c6e440250fb7a345`, identical,
+  with `diff` silent.
+
+  **THE 160/6 BASELINE NEEDS EXPLAINING, because the final suite reports 174/0.**
+  Both numbers are real and neither is a failure. The control was run at the
+  point the sequence required — after the hooks and the suite existed but
+  **before `.claude/settings.json` was written**, which was deliberately last so
+  that no guard could go live until it had been proven. The suite's section 7
+  asserts that registration file, so **six** of its checks failed for the one
+  reason that was by design: the file did not exist yet. 160 + 6 = **166 checks
+  executed**. Writing the settings file did two things — those six became
+  passes, and **eight further checks ran that previously could not**, because
+  the per-matcher and per-handler assertions only execute when there are groups
+  to iterate over. Section 7 therefore runs **15** checks in the final suite
+  against 7 when the file was absent, and the suite total goes 166 → **174
+  passed, 0 failed** 🧪. The control was re-run against the final suite for this
+  entry and the delta is unchanged: **170 passed, 4 failed**, the same four
+  pre-commit checks, with `.githooks/pre-commit` reverted and re-hashed
+  identical again.
+
+  This is the **eighth** instance of the pattern this repo tracks — AF44's two,
+  AF48's one, AF50's one, AF51's two, AF53's one — and it differs from all of
+  them in a way worth recording: the previous seven were found *after* the
+  instrument had already produced a confident wrong answer. This one was found
+  **by the prescribed method working as intended**: predicting what a negative
+  control should fail, and noticing that the prediction did not match what the
+  instrument would actually do. The method is cheap and it caught this before
+  any wrong result was believed.
+
+  ### The doc-consistency check caught its own author on its first run
+
+  **[ran]** `scripts/check-doc-consistency.mjs` failed four ways on its first
+  execution, and only one of the four was a defect in the check itself:
+
+  ```
+  MISMATCH  ARCHITECTURE.md: no "ARCHITECTURE §7.1 denominator" claim found — the wording changed…
+  MISMATCH  README.md: AD range — states 46, derived 44 (README AD range)
+  MISMATCH  README.md: AF range — states 56, derived 55 (README AF range)
+  MISMATCH  ARCHITECTURE.md: tracked .mjs count — states 20, derived 21
+  ```
+
+  The first was my regex, which omitted the closing parenthesis in *"of the 578
+  checks) bundle modules"* — caught by the fail-closed rule, which reports a
+  pattern that matches nothing as an error rather than passing silently. The
+  middle two were correct: the `AD`/`AF` entries had not been written yet. The
+  fourth was correct too, and pleasingly self-referential — adding
+  `check-doc-consistency.mjs` itself took the tracked `.mjs` count from 20 to
+  21, and the check noticed.
+
+  ### Derivations, each measured rather than assumed
+
+  **ENTRY HEADINGS COME IN TWO FORMS, and a single pattern would have missed
+  one** 🧪. `DECISIONS.md` uses `- **AD<n> · ` for all 44 entries.
+  `FINDINGS.md` uses **both** `- **AF<n>** <tags> — ` (53 entries) and
+  `- **AF<n> · ` (2 entries: AF52 and AF54). The pattern
+  `/^- \*\*(AD|AF)(\d+)(?:\*\*)?(?=[ ·])/m` matches all of them and nothing
+  else, and it deliberately anchors at line start so the constant in-text
+  citations of entry numbers — which vastly outnumber the headings — cannot be
+  mistaken for entries. Measured against the logs before AD45/AD46/AF56 were
+  written: **AD 44 headings, max 44, no duplicates, no gaps**; **AF 55 headings,
+  max 55, no duplicates, no gaps** — so both logs were already contiguous from 1,
+  which the change log at the bottom of `DECISIONS.md` asserts in prose and
+  which is now checked.
+
+  **THE TRACKED `.mjs` COUNT MUST COME FROM GIT, NOT A FILESYSTEM WALK, and the
+  reason was demonstrated rather than argued** 🧪. A `.headless-probe-*.mjs`
+  file was created inside `src/core/model/` — the shape every suite writes beside
+  its subject while it runs (AF16) — and then:
+
+  ```
+  git ls-files --cached --others --exclude-standard '*.mjs'  ->  excluded it (.gitignore:40)
+  a filesystem walk                                          ->  counted it
+  ```
+
+  The `--others` half matters independently: a file added in the current pull
+  request is counted **before it is staged**, so the check cannot fail for a
+  reason unrelated to what it checks. The probe was deleted and the tree
+  confirmed clean.
+
+  **ESLint DOES lint files inside a dot-directory** 🧪 — which had to be
+  established before putting guards in `.claude/hooks/`, since a hook nobody
+  lints is a hook with no static analysis at all (AF14's gap in a new place). A
+  probe at `.claude/hooks/probe-lint-visibility.mjs` took `eslint .` from **44
+  to 45 files** and its deliberate `eqeqeq` violation fired. Probe deleted,
+  count back to 44, `git status --porcelain` empty. The four new `.mjs` files
+  are all linted, 0 errors and 0 warnings, and AD34's `**/*.mjs` override
+  applies to them, so `console.error` in a guard is not a lint error.
+
+  **Branch protection, read live rather than recalled** 🧪 (read-only GET on
+  `repos/{owner}/{repo}/branches/{main,dev}/protection`): both branches report
+  `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`,
+  required reviews, and `static-and-suites` as the **sole** required check.
+  `required_linear_history` is **false** on both — which is what permits the
+  merge-commit promotions the model requires, and would have to stay false.
+
+  **Runtime, which is what decided AD46's design** 🧪: `npm run test:all` is
+  **1.57 s** for all sixteen suites, of which `scripts/guards-headless-test.mjs`
+  alone is **1.11 s** — it spawns a process per protocol case and builds real
+  git repositories. Re-running the suites from inside a static check to obtain
+  real per-check totals would therefore roughly double the behavioural step of
+  every `npm run check`, which is why totals are held to agreement and
+  arithmetic instead.
+
+  ### The new tallies
+
+  `npm run check` is **16 suites and 578 checks**, 0 failures 🧪 — `test:core`
+  8 / **125** unchanged (17+18+14+9+15+14+12+26), `test:local` 8 / **453**
+  (52+32+**174**+20+73+27+45+30). The baseline check still reports **26 files
+  checked, 20 under `src/core/`, 0 mismatches**: **no manifest row's hashes
+  changed except row 26**, `CLAUDE.md`, whose `Current sha256` moved from
+  `0382990a3ec28028bb8a26bff73e3010c6c9d7bcf6cb9fcece2ad3aed3e95531` to
+  `4832063a4e66dcc7ba04e3a1362813b352711c78cb5298545db621f7d2a4b4cf` with
+  `Baseline` untouched and `Record` appended to `AD32, AD33, AD45`, per
+  CORE-DIVERGENCE.md §3. `npm run lint` is **49 files, 0 errors, 0 warnings**.
+  Tracked `.mjs` goes from 16 to **21**: three guards, two static checks minus
+  the one that already existed, and one suite —
+  `.claude/hooks/hook-io.mjs`, `guard-branch.mjs`, `guard-git.mjs`,
+  `scripts/guards-headless-test.mjs` and `scripts/check-doc-consistency.mjs`.
+
+  ### NOT ESTABLISHED
+
+  1. **Enforcement in any session but this one.** The hot-reload observation is
+     one session on the authoring machine. A fresh session, a different clone,
+     and the workspace-trust step are unexercised ❓, and no `guard-branch`
+     *denial* has been observed live — only its allow path.
+  2. **The `.githooks/` pair is inert in any clone until someone runs
+     `git config core.hooksPath .githooks`.** That was deliberately not run on
+     this repository. The suite proves the hooks behave correctly when git
+     invokes them, by setting `core.hooksPath` on throwaway repositories; it
+     cannot prove anyone configured this one.
+  3. **The added CI step has never run.** `npm run check:docs` is green locally;
+     whether GitHub Actions accepts the workflow with it is unproven until the
+     first pull request, the same shape AF44 recorded for the workflow itself.
+  4. **The guards are not a security boundary and this entry does not claim
+     they are.** `sh -c "git commit"`, `xargs -I{} git commit`, `--no-verify`
+     and a direct editor write all pass. Only the first word of each command
+     segment is inspected.
+  5. **Per-check totals are asserted for consistency, not correctness** (AD46).
+     Every document agreeing on a wrong figure whose addends still sum would
+     pass; the suites running two lines later is what shows it.
+  6. **Nothing here is behavioural evidence about the app.** Every 👁 limit
+     recorded in AF27-AF43, AF49, AF52 and AF53 stands untouched, and
+     ARCHITECTURE.md §6's list of what has no automated coverage is one item
+     **longer**, not shorter.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -4936,3 +5176,70 @@
   re-measured at **44** — which drifted on a **third axis** (file additions, not
   suite or check counts) and which a sweep scoped to this PR's own numbers would
   never have caught. Decisions are **AD44**.
+- 2026-09-21 — appended **AF56** on `chore/branching-model-guards`. **Measured
+  by me**; no prebuild, Gradle build, emulator or device was involved, so the
+  section carries **no 👁**, and **no git write of any kind** was performed —
+  `git config core.hooksPath` was never run on this repository, only on
+  throwaway repositories in a temp directory. Records that the Claude Code hook
+  contract was **verified against the documentation rather than memory**, and
+  that the most important fact in it is one memory gets wrong: **exit code 2
+  blocks a tool call and exit 1 does NOT** — *"Claude Code treats exit code 1 as
+  a non-blocking error and proceeds with the action"* — so a guard built on
+  exit 1 would print a refusal and then let the call through, which is worse
+  than no guard. Three more docs facts that were load-bearing: a matcher
+  containing anything beyond letters, digits, `_`, `-`, spaces, commas and pipes
+  silently becomes an unanchored **regex**; the deny reason travels as stdout
+  JSON *or* stderr depending on the path taken; and **exit 0 with no output
+  means "no decision", not approval** — which is why an allow writes **nothing**,
+  since printing `permissionDecision: "allow"` would *grant* permission and
+  suppress the operator's own prompts. **THE HOT RELOAD WAS OBSERVED [ran]**:
+  immediately after `.claude/settings.json` was written, a `Bash` call in the
+  same session was **blocked**, with the guard's own reason text surfacing
+  verbatim as the block message. The probe was chosen to be **harmless if it
+  executed** (`gh release view uat` is a read), so the refusal is the result.
+  That one observation establishes hot reload with no restart, that the `Bash`
+  matcher fires, that exit 2 plus the deny JSON genuinely blocks, and that
+  `permissionDecisionReason` is what reaches the model; a scratchpad `Write`
+  then confirmed the file-editing matcher group also runs and correctly allows
+  outside a work tree. Bounded honestly: **one session on the authoring
+  machine**, with a fresh session, another clone, the workspace-trust step, and
+  any `guard-branch` *denial* all unexercised ❓. **A negative control found the
+  INSTRUMENT rather than the subject — the eighth in this repo's family, and the
+  first found by the prescribed method working as intended**: predicting the
+  control's result exposed that section 8 staged one file for three commit
+  attempts, so a broken hook would have made a later commit fail for *"nothing
+  to commit"* and a check pass **for the wrong reason**. Fixed before the
+  control ran; each attempt now stages its own file and a new check asserts the
+  refusal text is the guard's. The control was then surgical 🧪 — 160/6 → 156/10,
+  **exactly the four pre-commit checks**, with the work-branch commit still
+  passing and every pre-push check untouched; reverted and re-hashed identical,
+  `diff` silent. **The 160/6 baseline is explained rather than left puzzling**:
+  it was taken before `.claude/settings.json` existed, deliberately, so that no
+  guard could go live until proven — the six failures were section 7 asserting
+  that very file. Writing it took the suite to **174/0**, and the control
+  re-run against the final suite gives **170/4**, the same four checks. Also
+  recorded: `scripts/check-doc-consistency.mjs` **caught its own author** on its
+  first run, failing four ways of which one was my regex omitting a closing
+  parenthesis — caught by the fail-closed rule — while the other three were
+  correct, including the self-referential one where adding the check itself took
+  the tracked `.mjs` count from 20 to 21. **Entry headings come in two forms**
+  (`- **AD<n> · ` for all 44 AD entries; both `- **AF<n>** <tags> — ` and
+  `- **AF<n> · ` in FINDINGS, 53 and 2), so a single naive pattern would have
+  missed one; anchored at line start, both logs measure **contiguous from 1 with
+  no gaps or duplicates**. **The tracked `.mjs` count must come from git, not a
+  filesystem walk**, demonstrated by creating a `.headless-probe-*.mjs` that
+  `git ls-files --cached --others --exclude-standard` correctly excluded via
+  `.gitignore:40` and a filesystem walk counted. **ESLint does lint
+  dot-directories** — a probe took `eslint .` from 44 to 45 files and its
+  `eqeqeq` violation fired — which is what made `.claude/hooks/` a safe home for
+  the guards. **Branch protection read live** 🧪: both branches
+  `enforce_admins: true`, no force pushes, no deletions, sole required check
+  `static-and-suites`, and `required_linear_history: false`, which is what
+  permits the merge-commit promotions the model needs. **Runtime decided AD46's
+  design** 🧪: `npm run test:all` is 1.57 s for sixteen suites, of which the new
+  guards suite alone is 1.11 s, so re-running the suites to obtain real totals
+  would roughly double every `npm run check`. New tallies: **16 suites, 578
+  checks** (`test:core` 8/125 unchanged, `test:local` 8/453), lint **49 files,
+  0 errors, 0 warnings**, tracked `.mjs` 16 → **21**, and the only manifest row
+  whose hashes moved is **26** (`CLAUDE.md`), `Baseline` untouched and `Record`
+  appended to `AD32, AD33, AD45`. Decisions are **AD45** and **AD46**.

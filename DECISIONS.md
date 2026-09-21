@@ -4288,6 +4288,286 @@
   is a finding, and **AF55** records it. And it makes no claim about R8/Proguard
   or the release APK's untested ABIs, which stand exactly as AF42 left them.
 
+## Milestone: branching model + mechanical guards
+
+- **AD45 · The three-level branching model is STATED in CLAUDE.md §1, and four
+  small programs make its two load-bearing rules mechanical: two Claude Code
+  `PreToolUse` hooks and two local git hooks. They are GUARDRAILS AGAINST
+  ACCIDENT, NOT A SECURITY BOUNDARY, and this entry says so in those words
+  rather than leaving it to be inferred.**
+
+  **The model, which existed in practice and nowhere in writing.** `main` is
+  the release branch and moves only by a promotion pull request from `dev` or
+  by a `hotfix/*` pull request. `dev` is integration and receives **squashed**
+  pull requests from work branches. Work branches — `feature/`, `fix/`,
+  `docs/`, `chore/` — are cut from **`dev`**; a `hotfix/` is the single
+  exception and is cut from `main`, after which `main` is back-merged into
+  `dev`. Promotions and back-merges are **merge commits and are never
+  squashed**.
+
+  **It was undocumented, and CLAUDE.md actively contradicted it.** Before this
+  change the only occurrence of the phrase "three-level branching model"
+  anywhere in the repo was a single mention in AF53's change-log entry, which
+  named it without defining it 🧪. Meanwhile CLAUDE.md §1 said *"Never commit on
+  `main`"* and instructed a new branch to be cut with
+  `git checkout main && git pull && git checkout -b <name>` — the wrong base
+  branch, stated as an instruction, in the file every session is told to follow
+  first. A working agreement that is wrong about the first thing it asks you to
+  do is worse than one that is silent.
+
+  **Why the no-squash rule is written down as a rule rather than a preference.**
+  PR #32, "Sync dev with main", was squashed, which destroyed main→dev
+  ancestry: after a squash the promoted commits are not reachable from `dev`'s
+  history, so git reports them as unmerged and the next sync re-lands them.
+  That already happened once, which is why it is stated as an invariant of the
+  model rather than as advice.
+
+  ### The four guards, and what each one actually covers
+
+  | File | Fires on | Blocks |
+  |---|---|---|
+  | `.claude/hooks/guard-branch.mjs` | a Claude Code file-editing tool | an edit whose target repository is on `main`/`dev`, or has a detached HEAD |
+  | `.claude/hooks/guard-git.mjs` | a Claude Code Bash call | a `git`/`gh` **write**; reads, `git fetch` and `gh issue create` pass |
+  | `.githooks/pre-commit` | the operator's `git commit` | a commit on `main` or `dev` |
+  | `.githooks/pre-push` | the operator's `git push` | a push whose **remote** ref is `refs/heads/main` or `refs/heads/dev` |
+
+  **ALLOWLIST, NOT DENYLIST, FOR BOTH `git` AND `gh`, AND THIS IS THE LOAD-
+  BEARING IMPLEMENTATION CHOICE.** A denylist fails **open** on everything
+  nobody thought of — `git update-ref`, `git fast-import`, `git replace`,
+  `git filter-branch`, and whatever git ships next — every one of which writes
+  refs. An allowlist fails **closed**: an unrecognised subcommand is denied with
+  a message saying exactly that, and the cost of a false denial is that the
+  operator runs the command themselves, which is what they were going to do
+  anyway. `gh`'s surface is far larger than `git`'s, so the argument is stronger
+  there. The conditional cases — `branch`, `tag`, `checkout`, `restore`,
+  `stash`, `config`, `remote`, `reflog`, `worktree`, `submodule`, `notes`,
+  `fetch` — exist because each has both a read form and a write form, and only
+  the read form is allowed through.
+
+  **`git stash` IS DENIED, and the ruling is recorded because it is the one
+  genuinely arguable case.** Bare `git stash` reverts the working tree and saves
+  index state, which is a silent removal of in-progress edits — the failure
+  class **AF37** records, where a `cat >` truncated a file that had no git
+  history to recover from. `pop`, `apply`, `drop` and `clear` mutate or destroy
+  the stash. Only `list` and `show` are reads, and only they are allowed.
+
+  **ALL OF `gh release` IS BLOCKED, READS INCLUDED, and the cost is recorded
+  rather than glossed.** `gh release view` and `gh release list` are harmless,
+  and blocking them is deliberate over-reach: a release is this project's UAT
+  distribution channel (AD39), the asset URL is the one permanent bookmark the
+  design depends on, and a read is cheap for the operator to run. The cost is a
+  real false denial on two commands; it is accepted for a category whose write
+  forms publish artifacts.
+
+  **`git fetch` is allowed, with one exception that is not obvious.** A refspec
+  argument — `git fetch origin main:main` — writes a **local** ref, so it is
+  denied, while `git fetch` and `git fetch origin` pass. The test is positional:
+  the first operand is the remote, and a colon in any operand after it is a
+  refspec. Checking every token for a colon would deny `git fetch
+  https://example.com/o/r.git`, which is a URL rather than a refspec.
+
+  **HEREDOC BODIES ARE DATA AND ARE SKIPPED.** `gh issue create --body "$(cat
+  <<'EOF' … EOF)"` routinely contains prose naming the very commands this guard
+  blocks — and an issue filed *about* git workflow is exactly when that happens.
+  Treating those lines as commands would block the one `gh` write the model
+  deliberately permits, precisely when it is most wanted. `<<<` is a here-string
+  and is not treated as a heredoc. One safety rule bounds a misdetection: a body
+  is stripped **only when its terminator is actually found**, so a false
+  positive cannot swallow a real command that follows.
+
+  **The deny protocol is docs-derived and lives in one file.** `hook-io.mjs`
+  emits the structured decision on stdout, the same reason on stderr, and exits
+  **2** — because exit 2 is what blocks a tool call and **exit 1 does not**,
+  which is the single most important thing to get right and the thing most
+  likely to be assumed wrong. An **allow writes nothing at all**: printing an
+  `allow` decision would *grant* permission and suppress the operator's own
+  prompts for every call the guard did not object to. Sharing one module rather
+  than duplicating the protocol follows AD18's anti-duplication rule; this repo
+  has recorded value-duplication drift four times (AD2, AF8, AD26, and AD32's
+  correction to AD26).
+
+  **Fail-open on an unparseable payload is a decision, not an oversight.** A
+  guard that hard-failed on an unrecognised payload shape would block every edit
+  or every Bash call the first time the harness renamed a field — a
+  self-inflicted outage bought with nothing, since these guards are not a
+  security boundary. The suite asserts the fail-open path so it cannot be
+  "fixed" by accident.
+
+  ### What is NOT covered, stated plainly
+
+  `guard-branch` sees only the file-editing tools. **A write performed through
+  Bash — `sed -i`, a heredoc redirect, `cp` — is invisible to it**, and no
+  attempt is made to parse shell redirections: `>`, `tee` and `dd` are
+  unbounded, and blocking `>` would break scratchpad writes for no gain. What
+  closes the gap is layering rather than parsing: `guard-git` denies
+  `add`/`commit`/`push` outright, so a Bash-mediated edit **cannot reach a
+  commit from Claude Code at all**, and `pre-commit` refuses it afterwards
+  whatever wrote the file.
+
+  `guard-git` inspects only the first word of each command segment, so
+  `sh -c "git commit"` and `xargs -I{} git commit` pass. `--no-verify` skips
+  both git hooks. A direct editor write bypasses everything. **Guards are
+  guardrails against accident, not a security boundary** — CLAUDE.md §1's
+  never-bypass rule is a rule about people, not a property of the code.
+
+  ### Alternatives rejected
+
+  **(a) Prose only — state the model in CLAUDE.md and stop.** Cheapest, and it
+  is what the repo had for every other rule. Rejected on this repo's own
+  measured record: **AF54** found the same prose-drift failure four times across
+  four pull requests, and **AD43** was written one milestone ago precisely
+  because a flagged-but-unenforced statement survived six milestones. A rule
+  that only a reader enforces is the category of rule this project has
+  repeatedly watched fail.
+
+  **(b) A shell-only implementation for all four guards.** Rejected for the two
+  Claude Code hooks and **accepted for the two git hooks**, because the two
+  halves have different constraints. The Bash guard has to segment a command
+  line on `&&`, `||`, `;`, `|` and subshells, respect quoting, strip heredoc
+  bodies, and walk option tables — doing that in `sh` would be unreadable,
+  untestable and almost certainly wrong, and it would be invisible to ESLint.
+  The git hooks are six lines of branch comparison each, and they must run
+  wherever a commit is made, including a GUI client whose `PATH` has no `node`;
+  `sh` and `git` are guaranteed present because git is what invoked them.
+
+  **(c) Rely on server-side branch protection alone.** Measured for this entry
+  rather than assumed 🧪: `main` and `dev` both carry `enforce_admins: true`,
+  no force pushes, no deletions, required reviews, and `static-and-suites` as
+  their sole required check. So a push to either is already refused by GitHub,
+  and `required_linear_history: false` is what permits the merge-commit
+  promotions the model needs. What protection cannot do is **stop a commit
+  landing on `main` in a working tree** — which then has to be rewound — or stop
+  a Claude Code session editing files while on a protected branch, which
+  produces work that has to be moved before it can be committed at all. The
+  guards catch the accident where it happens; protection catches it at the end.
+  The two are layers, not alternatives.
+
+  **(d) Put the Claude Code hooks in `.claude/settings.local.json`.** Rejected:
+  that file is ignored by the operator's global gitignore
+  (`~/.config/git/ignore`, pattern `**/.claude/settings.local.json` 🧪), so the
+  guards would exist on one machine and nowhere else — which is the opposite of
+  the point. `.claude/settings.json` is the shared, committed scope.
+
+  **PENDING ACCEPTANCE CHECK, partly discharged already.** The hooks were
+  observed working **in the session that wrote them**: `.claude/settings.json`
+  was hot-reloaded with no restart and `guard-git.mjs` blocked a real call with
+  its own reason text surfacing as the block message 🧪 (AF56). What that does
+  **not** establish is a fresh session, a different clone, or the workspace-trust
+  step a project hook is subject to; and the `.githooks/` pair is inert in any
+  clone until someone runs `git config core.hooksPath .githooks`, which no check
+  can do for them. Same shape as the pending checks AD21, AD22, AD28, AD30,
+  AD37, AD38, AD39 and AD40 each recorded.
+
+- **AD46 · `scripts/check-doc-consistency.mjs` ships as a SECOND STATIC CHECK,
+  not a seventeenth suite, and AD31's reporting form becomes "16 suites plus 2
+  static checks". This discharges AD43's named trigger, which had fired.**
+
+  **AD43's trigger fired in this change, and re-deferring it would have repeated
+  the failure AF55 owns.** AD43 authorised this follow-up and named its
+  condition in one sentence: *"the trigger is the next time `README.md`'s
+  `AD`/`AF` range needs a hand bump… the hand bump does not go in alone — the
+  suite goes in with it, and the range is never corrected by hand a second time
+  after this PR."* This change bumps that range, so the condition is met. AF55,
+  one milestone old, records the lesson that applies: **check whether an
+  existing trigger has already fired before proposing another deferral.**
+
+  **Why a static check rather than a suite, which is also what dissolves the
+  recursion problem.** A suite inside `test:local` that needed the suites' own
+  output would have to run `test:local`, which is recursive. The question does
+  not arise for a static check: it reads files and compares numbers, executing
+  nothing and asserting nothing behavioural — exactly what
+  `scripts/check-core-baseline.mjs` does. So it is chained into `check` after
+  `check:baseline`, and **the suite tally stays 16**, with "suite" still meaning
+  "executes real source and asserts what it computes". That is the distinction
+  AD31 protects; only the number of static checks beside it moved, from one to
+  two, and this entry records that change to AD31's form explicitly rather than
+  letting it drift.
+
+  **CI needs its own step, because the workflow does not run `npm run check`.**
+  `.github/workflows/static-and-suites.yml` runs each gate as a separate step —
+  AD34's design, so a failure is attributable — which means a check chained only
+  into `npm run check` would never execute in CI at all. One step, **Doc
+  consistency**, is added directly after **Core fork baseline**. The job key,
+  the triggers and every other step are unchanged, so the required check is
+  untouched.
+
+  ### What it derives, and what it deliberately does not
+
+  **Nothing stores an expected number.** Every figure is derived and the
+  documents are compared against the derivation, so the check cannot itself go
+  stale:
+
+  - **Suite counts** — parsed from the `.mjs` paths in `package.json`'s
+    `test:core` and `test:local` scripts, which is the list npm actually runs.
+  - **`AD`/`AF` maxima** — from **entry-heading lines only**, never from a
+    mention in body text, because both logs cite their own entry numbers
+    constantly and a looser pattern would measure the prose instead of the
+    entries. Entries are additionally asserted **contiguous from 1**, with no
+    gaps and no duplicates.
+  - **The tracked `.mjs` count** — from `git ls-files --cached --others
+    --exclude-standard`. Not a filesystem walk: `.gitignore:40` ignores the
+    `.headless-*.mjs` bundles a suite writes beside its subject while it runs,
+    and a walk during a suite run would count one. The `--others` half matters
+    too — a file added in the current pull request counts before it is staged,
+    so the check does not fail for a reason unrelated to what it checks.
+
+  **PER-CHECK TOTALS ARE NOT DERIVED, AND THE ALTERNATIVE IS ARGUABLY THE
+  BETTER CHECK.** The only ground truth for "578 checks" is running the suites,
+  and running them from inside the check would roughly double the behavioural
+  step of every `npm run check` — measured at 1.57 s for all sixteen (AF56). So
+  the totals are held to **agreement** and to **arithmetic** instead: every
+  document must state the same headline and subtotals; each subtotal's
+  parenthesised breakdown must sum to it; **the number of addends must equal the
+  suite count derived from `package.json`**, which is what ties the prose to
+  something real; and core + local must equal the headline. That would have
+  caught AF54's actual defect, where README said 271 while ARCHITECTURE said
+  286 — the two disagreed with each other. What it cannot catch is every
+  document agreeing on a wrong figure whose addends still sum; the next thing
+  `npm run check` does is run the suites, which shows it.
+
+  **It fails closed.** A claim whose pattern matches nothing is an error, not a
+  silent pass, so deleting or rewording a sentence cannot quietly disable the
+  check — it makes the check part of the same change. That is deliberate and it
+  has a cost: prose in three documents is now coupled to regexes in a script.
+  The cost is accepted because the alternative is the one this repo has measured
+  failing four times.
+
+  **THE REAL FIX WAS TO STOP ENCODING LIVE COUNTS WHERE NOTHING CAN CHECK THEM,
+  and that is done here.** AD42 named it — *"The right fix is to stop encoding a
+  live count in that file at all"* — and deferred it as its own decision. This
+  is that decision. Counts are **removed entirely** from
+  `.github/workflows/static-and-suites.yml` (including both step names, which
+  now read `Headless suites — src/core/` and `Headless suites — local`),
+  `eslint.config.js`, and `scripts/check-core-baseline.mjs`, whose comment was
+  not merely stale but **inverted** — it forbade the number that had been
+  correct since AD38, an instruction to a future reader to state the wrong
+  thing (AF54). Each now states its principle without a number, so none of them
+  can invert again. Live counts survive only in `README.md`, `ARCHITECTURE.md`
+  and `CORE-DIVERGENCE.md` §4 — the three places a reader actually wants a
+  figure — and those are exactly what this check asserts.
+
+  **ARCHITECTURE.md's lint file count is DELETED rather than verified.** It read
+  "44 files", and AF55 corrected that same string from 39 one milestone earlier.
+  Verifying it would mean running ESLint inside the check; the sentence's
+  meaning — 0 errors, 0 warnings — survives without the number. Removing a drift
+  site beats verifying one.
+
+  **Alternatives rejected.** *(a) A seventeenth suite in `test:local`* —
+  rejected because it would make "suite" stop meaning "executes real source",
+  and because the recursion question only exists in that placement. *(b) Running
+  the other suites to obtain real totals* — non-recursive if it excludes itself,
+  but it doubles the behavioural step of every run for a number the very next
+  command produces anyway. *(c) Asserting nothing about totals* — rejected
+  because totals are three of AF54's seven corrected sites. *(d) A hand-
+  maintained manifest of expected counts* — rejected outright: that is a second
+  copy requiring the same discipline it exists to remove, which is AD2/AF8's
+  duplication trap in a new place.
+
+  **PENDING: this check has never run in CI.** It is green locally; whether
+  GitHub Actions accepts the added step is unproven until the first pull request
+  runs it, the same shape of pending check AD34 recorded for the workflow
+  itself.
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -5145,3 +5425,84 @@
   copy and removes the only guard on it); and renumbering. No file under `src/`
   or `android/` changed, no `CORE-DIVERGENCE.md` row changed, and the plugin's
   behaviour is unchanged. Measurements are **AF55**.
+- 2026-09-21 — appended **AD45-AD46** on `chore/branching-model-guards`,
+  opening a branching-model milestone. **AD45** states the three-level model in
+  CLAUDE.md §1 — `main` release, `dev` integration, `feature/ fix/ docs/ chore/`
+  cut from **dev**, `hotfix/` the one exception cut from `main`, promotions and
+  back-merges as **merge commits, never squashed** — and makes its two
+  load-bearing rules mechanical with four guards. It was undocumented and
+  CLAUDE.md actively contradicted it: the only occurrence of "three-level
+  branching model" in the repo was one undefined mention in AF53's change-log
+  row 🧪, while §1 said "Never commit on `main`" and told you to cut a branch
+  off **main** — the wrong base, as an instruction, in the file every session
+  reads first. The no-squash rule is an invariant rather than advice because
+  PR #32 squashed a sync and destroyed main→dev ancestry. Two Claude Code
+  `PreToolUse` hooks (`.claude/hooks/guard-branch.mjs`,
+  `.claude/hooks/guard-git.mjs`, sharing `hook-io.mjs`) and two POSIX-`sh` local
+  hooks (`.githooks/pre-commit`, `.githooks/pre-push`) implement it. **The
+  load-bearing implementation choice is ALLOWLIST, NOT DENYLIST, for both `git`
+  and `gh`:** a denylist fails **open** on `update-ref`, `fast-import`,
+  `replace`, `filter-branch` and whatever git ships next, every one of which
+  writes refs, while an allowlist fails **closed** and the cost of a false
+  denial is that the operator runs it themselves. Rulings recorded rather than
+  left implicit: **`git stash` is denied** (bare `stash` reverts the working
+  tree — AF37's silent-loss class; only `list`/`show` are reads); **all of
+  `gh release` is blocked, reads included**, a deliberate over-reach whose cost
+  is recorded (AD39's distribution channel); **`git fetch` is allowed except
+  with a refspec**, tested positionally so a URL's colon is not mistaken for
+  one; and **heredoc bodies are data**, so a `gh issue create --body "$(cat
+  <<'EOF' …)"` naming `git push` is allowed — with a bounding rule that a body
+  is stripped only when its terminator is actually found, so a misdetection
+  cannot swallow a real command. The deny protocol is docs-derived and lives in
+  one module: stdout JSON **plus** stderr **plus exit 2**, because **exit 2
+  blocks and exit 1 does not**, and an **allow writes nothing**, since printing
+  an `allow` decision would *grant* permission and suppress the operator's own
+  prompts. Fail-open on an unparseable payload is a decision, suite-asserted.
+  **What is NOT covered is stated plainly:** `guard-branch` sees only the
+  file-editing tools, so a Bash-mediated `sed -i` is invisible to it and no
+  shell-redirection parsing is attempted; the gap is closed by **layering** —
+  `guard-git` denies `add`/`commit`/`push`, so such an edit cannot reach a
+  commit from Claude Code at all, and `pre-commit` refuses it afterwards. Only
+  the first word of each segment is inspected, so `sh -c "git commit"` passes;
+  `--no-verify` skips both git hooks. **Guards are guardrails against accident,
+  not a security boundary**, in those words. Alternatives rejected: **prose
+  only** (AF54 measured that exact drift four times; AD43 exists because a
+  flagged statement survived six milestones), **shell-only** (rejected for the
+  Bash guard, which must segment on `&&`/`;`/`|`/subshells, respect quoting and
+  strip heredocs; **accepted** for the git hooks, six lines each that must run
+  where `node` may be absent), **server protection alone** (measured 🧪: both
+  branches carry `enforce_admins`, no force pushes, no deletions, sole required
+  check `static-and-suites`, and `required_linear_history: false` is what
+  permits the merge-commit promotions — but protection cannot stop a commit
+  landing in a working tree or an edit made on a protected branch; the two are
+  layers), and **`settings.local.json`** (ignored by the operator's global
+  gitignore, so the guards would exist on one machine only). **AD46** discharges
+  **AD43's trigger, which fired in this change** — README's `AD`/`AF` range
+  needed a hand bump, and AD43 said the follow-up goes in with it; AF55's lesson
+  (check whether an existing trigger has already fired before deferring again)
+  is applied rather than repeated. `scripts/check-doc-consistency.mjs` ships as
+  a **second static check**, not a seventeenth suite, which is also what
+  dissolves the recursion question — a static check needs no suite output — and
+  **AD31's reporting form becomes "16 suites plus 2 static checks"**, recorded
+  explicitly. CI gets **one** new step, `Doc consistency`, directly after
+  `Core fork baseline`, because the workflow runs each gate separately and a
+  check chained only into `npm run check` would never run there; job key,
+  triggers and every other step are unchanged. It **derives** rather than
+  stores: suite counts from `package.json`'s script lists, `AD`/`AF` maxima from
+  **entry-heading lines only** plus a contiguity assertion, and the tracked
+  `.mjs` count from `git ls-files --cached --others --exclude-standard` — not a
+  filesystem walk, which `.gitignore:40`'s `.headless-*.mjs` rule would make
+  flaky. **Per-check totals are deliberately not derived**: the only ground
+  truth is running the suites, which would double the behavioural step of every
+  run (1.57 s measured), so totals are held to **agreement plus arithmetic** —
+  every document states the same figures, each breakdown sums to its subtotal,
+  the addend count equals the package.json-derived suite count, and core + local
+  equals the headline. That would have caught AF54's real defect, where README
+  said 271 and ARCHITECTURE said 286. It **fails closed**, so rewording a
+  checked sentence makes the script part of the same change. **AD42's named fix
+  is finally done**: live counts are removed entirely from the workflow (both
+  step names included), `eslint.config.js` and
+  `scripts/check-core-baseline.mjs`, whose comment was **inverted** rather than
+  stale; ARCHITECTURE's lint file count is **deleted** rather than verified.
+  Zero files under `src/` changed; `CLAUDE.md` is manifest row 26 and its
+  `Record` becomes `AD32, AD33, AD45`. Measurements are **AF56**.

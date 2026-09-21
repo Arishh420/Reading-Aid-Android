@@ -427,11 +427,12 @@ Two consequences of the fork that are easy to trip over:
   `PORT-PLAN.md`/`PORT-AUDIT.md` reference are **back-references for someone
   who has that repo, not live pointers**. Local identifiers are `AD#` and
   `AF#`.
-- **The count is "15 suites plus 1 baseline check", never "16 suites."** The
-  baseline check executes nothing and asserts nothing about behaviour; folding
-  it into the suite tally would change what that number means. AD31 records why
-  the distinction is kept — the *number* moved again when AD38 added the
-  fifteenth suite, the *rule* did not.
+- **The count is "16 suites plus 2 static checks", never "18 suites."** The
+  baseline check and `scripts/check-doc-consistency.mjs` each execute nothing
+  and assert nothing about behaviour; folding either into the suite tally would
+  change what that number means. AD31 records why the distinction is kept and
+  AD46 records the second static check joining it — the *number* has moved
+  repeatedly, the *rule* has not.
 
 `ARCHITECTURE.md` — this file — is **not** manifest-listed. It is
 Android-original, so there is no baseline that would mean anything, and the
@@ -442,26 +443,32 @@ completeness walk covers `src/core/` only.
 ## 6. What has no automated coverage — read this before you trust a green check
 
 `npm run check` runs `tsc --noEmit`, then the core portability guard, then the
-baseline check, then **15 headless suites totalling 404 checks** 🧪:
+baseline check, then the doc-consistency check, then **16 headless suites
+totalling 578 checks** 🧪:
 
 | | Suites | Checks |
 |---|---|---|
 | `test:core` — `src/core/` | 8 | 125 (17 + 18 + 14 + 9 + 15 + 14 + 12 + 26) |
-| `test:local` — everything else | 7 | 279 (52 + 32 + 20 + 73 + 27 + 45 + 30) |
+| `test:local` — everything else | 8 | 453 (52 + 32 + 174 + 20 + 73 + 27 + 45 + 30) |
 
-Every suite esbuild-bundles **real source** and asserts what it computes, which
-is what makes them worth having. But they are **Node-only by construction**:
+Every suite but one esbuild-bundles **real source** and asserts what it
+computes, which is what makes them worth having; the exception is
+`scripts/guards-headless-test.mjs`, whose subjects are already executable
+`.mjs` and POSIX `sh`, so it runs them as real processes instead (AD45). They
+are all **Node-only by construction**:
 they `import node:assert/strict`, `node:path`, `node:url` and use `esbuild` as a
 library, so they cannot run on a device (AD24 `D-N`). That boundary decides what
 they can and cannot see.
 
 **Lint is a SEPARATE command and is deliberately not part of `npm run check`**
 (AD34). `npm run lint` is `eslint . --max-warnings 0`, and it is clean — 0
-errors, 0 warnings across 44 files 🧪. So **the local pre-push sequence is two
-commands, not one**:
+errors, 0 warnings 🧪. The file count it reports is deliberately not quoted
+here: it moves whenever a file is added, it has drifted twice already (AF55
+corrected 39 to 44), and nothing cheap can verify it (AD46). So **the local
+pre-push sequence is two commands, not one**:
 
 ```
-npm run check     # tsc, core guard, baseline, 15 suites / 404 checks
+npm run check     # tsc, core guard, baseline, doc consistency, 16 suites / 578 checks
 npm run lint      # eslint, 0 errors 0 warnings
 ```
 
@@ -474,10 +481,11 @@ and has been green since it first ran** — PR #23's run, whose measurements are
 AF45 (AF44 records the file as parsed locally and nothing more, which was true
 when written).
 
-**ESLint is the only static analysis that sees the 16 tracked `.mjs` files.**
+**ESLint is the only static analysis that sees the 21 tracked `.mjs` files.**
 `tsc` covers `.ts`/`.tsx` only — the main `tsconfig.json` includes just those
-two globs and `tsconfig.core.json` sets no `allowJs` 📐 — so the 15 suites and
-`scripts/check-core-baseline.mjs` were covered by nothing at all (AF14). That
+two globs and `tsconfig.core.json` sets no `allowJs` 📐 — so the 16 suites, the
+two static checks and the two `.claude/hooks/` guards were covered by nothing
+at all (AF14). That
 gap is **narrowed, not closed**: AD34's `**/*.mjs` override turns off
 `no-console` and `import/order` there, because printing is those programs'
 output mechanism and 9 of the 15 are pinned in
@@ -579,6 +587,16 @@ line of this list.
 - **Three of the four shipped ABIs.** The release APK is universal across
   `armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64` and exactly one was exercised
   (**AF42**).
+- **Whether Claude Code ENFORCES the two `.claude/hooks/` guards in a session
+  other than the one that wrote them** (§8). The suite proves what each guard
+  decides and that it exits 2, which is what blocks a tool call — it cannot
+  prove the harness consulted it. **AF56** records one direct observation: the
+  settings file was hot-reloaded mid-session and `guard-git.mjs` blocked a real
+  call with its own reason text surfacing as the block message 🧪. That is one
+  session, on the machine that authored it; a fresh session, a different clone,
+  and the workspace-trust step a project hook is subject to are all unexercised
+  ❓. The `.githooks/` pair is separately unexercised in any clone until someone
+  runs `git config core.hooksPath .githooks`, which no check can do for them.
 
 ---
 
@@ -627,7 +645,7 @@ them as abandoned:
 | `ui/theme.ts` | **AD19** ships one theme; all four ids are already declared here | **none** — no suite bundles it 🧪 |
 | `model/blocks.ts` | **Nothing gates it** — see below | **none**, and no importer either 🧪 |
 
-Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 404 checks) bundle modules
+Five suites (18 + 14 + 14 + 12 + 26 = **84** of the 578 checks) bundle modules
 the app never reaches, `spine-integrity` spanning both categories.
 
 **`model/blocks.ts` is the exception and is worth calling out honestly.** It is
@@ -650,3 +668,68 @@ precondition actually has to hold.
 `src/`** 🧪. It was a genuine candidate for click-to-jump and was rejected
 because wrapping each word in a `GestureDetector` would add a view per word,
 which `Text.onPress` avoids (AD28). It is a live dependency of nothing here.
+
+---
+
+## 8. The branching-model guards — where they live and what enforces what
+
+`src/` is the app. This section is about the repository's own working
+practice: CLAUDE.md §1 states a three-level branching model, and four small
+programs make the two rules that matter mechanical rather than remembered. The
+reasoning is **AD45**; the measurements are **AF56**; neither is restated here
+(AD18).
+
+**Numbering note:** this is §8 rather than a section inserted after §5, because
+`DECISIONS.md` and `FINDINGS.md` are append-only and cite "ARCHITECTURE.md §6"
+and "§7" by number. Renumbering would silently repoint those citations at text
+they were never about — the same reasoning AD44 used to leave a gap in
+RELEASE-SIGNING.md's numbering.
+
+| File | Runs when | Blocks |
+|---|---|---|
+| `.claude/hooks/guard-branch.mjs` | Claude Code is about to use a file-editing tool | an edit whose target repository is on `main`/`dev`, or has a detached HEAD |
+| `.claude/hooks/guard-git.mjs` | Claude Code is about to run Bash | a `git` or `gh` **write**; reads, `git fetch` and `gh issue create` pass |
+| `.githooks/pre-commit` | the operator runs `git commit` | a commit on `main` or `dev` |
+| `.githooks/pre-push` | the operator runs `git push` | a push whose **remote** ref is `refs/heads/main` or `refs/heads/dev` |
+
+The first two are registered in `.claude/settings.json` as `PreToolUse` hooks
+and share `.claude/hooks/hook-io.mjs`, which owns the wire protocol in one
+place: deny is stdout JSON **plus** stderr **plus exit 2** — exit 1 does not
+block — and allow is exit 0 with **no output**, because printing an `allow`
+decision would grant permission and suppress the operator's own prompts. The
+last two are POSIX `sh` so they run wherever a commit is made, including a GUI
+client with no `node` on `PATH`, and they need **one-time local setup**:
+
+```
+git config core.hooksPath .githooks
+```
+
+**The two halves are layered, and each covers the other's gap.** `guard-branch`
+sees only the file-editing tools, so a write performed through Bash — `sed -i`,
+a heredoc redirect — is invisible to it; no attempt is made to parse shell
+redirections, because `>`, `tee` and `dd` are unbounded and blocking `>` would
+break scratchpad writes. What closes it is that `guard-git` denies
+`add`/`commit`/`push` outright, so such an edit cannot reach a commit from
+Claude Code at all, and `pre-commit` then refuses it whatever wrote the file.
+Conversely the git hooks cannot see an edit at all, only a commit.
+
+**They are guardrails against accident, not a security boundary**, and AD45
+says so in those words. `--no-verify` skips both git hooks; `sh -c "git
+commit"` and `xargs -I{} git commit` pass the Bash guard, which inspects only
+the first word of each command segment; a direct editor write bypasses
+everything. CLAUDE.md §1 forbids stepping around them, which is a rule about
+people rather than a property of the code.
+
+**Server-side branch protection is the outer layer and does a different job.**
+`main` and `dev` both carry `enforce_admins`, no force pushes, no deletions,
+and `static-and-suites` as their sole required check 🧪 — so a push to either
+is refused by GitHub regardless. What that cannot do is stop a commit landing
+on `main` in a working tree, which then has to be rewound, or stop a Claude
+Code session editing files while on a protected branch. The guards catch the
+accident where it happens; protection catches it at the end.
+
+`scripts/guards-headless-test.mjs` covers all five files — importing the two
+hook modules for their decision tables, spawning them as real processes for the
+wire protocol and exit codes, and running the git hooks **as git invokes them**
+against a throwaway repository with a local bare remote. It is the one suite
+that bundles nothing, because its subjects are already executable.

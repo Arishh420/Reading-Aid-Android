@@ -1,11 +1,20 @@
 /**
  * The core-fork baseline check (AD31).
  *
- * NOT a test suite. The fifteen `*-headless-test.mjs` suites esbuild-bundle
- * real source and assert what it computes; this executes nothing and asserts
- * nothing about behaviour. It is a static check of the same kind as `tsc`, and
- * it is reported separately for that reason — "15 suites plus 1 baseline
- * check", never "16 suites".
+ * NOT a test suite. The `*-headless-test.mjs` suites execute real source and
+ * assert what it computes; this executes nothing and asserts nothing about
+ * behaviour. It is a static check of the same kind as `tsc`, and it is
+ * reported separately for that reason — a static check is never folded into
+ * the suite tally, because doing so would change what that tally means (AD31).
+ *
+ * NO COUNT IS WRITTEN HERE, AND THAT IS THE POINT. This comment previously
+ * carried one, and it did not merely go stale: it ended up forbidding the
+ * number that had been correct for five milestones — an instruction to a
+ * future reader to state the wrong thing, which nothing in `npm run check`
+ * could catch because no check reads a comment (AF54). The counts that must be
+ * stated in prose now live in README.md, ARCHITECTURE.md and
+ * CORE-DIVERGENCE.md, and `scripts/check-doc-consistency.mjs` asserts them
+ * against what the repo actually contains (AD46).
  *
  * WHAT IT IS FOR. AD31 settles `D-D` by forking `src/core/`: byte-identity to
  * the web repo is abandoned, and byte-identity to a RECORDED BASELINE is
