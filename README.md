@@ -127,8 +127,7 @@ or copy the APK to the phone and open it there.
 > too. If the Expo template ever changes shape the plugin **throws and stops the
 > prebuild**, because the quiet alternative is an installable debug-signed
 > "release" APK. Read [RELEASE-SIGNING.md](RELEASE-SIGNING.md) for the release
-> sequence, the verbatim Gradle fallback, and what to do when the block is
-> missing.
+> sequence and what to do when the block is missing.
 
 ## Getting a UAT build on your phone
 
@@ -202,6 +201,33 @@ and build time.
 *Run workflow* for files on the default branch, so a change to the workflow
 itself has to be merged before it can be run.
 
+## Working on this repo
+
+**Three levels, and nobody commits on `main` or `dev`.** `main` is the release
+branch and moves only by a promotion pull request from `dev` or by a `hotfix/*`
+pull request. `dev` is integration and receives squashed pull requests from work
+branches. Work branches — `feature/`, `fix/`, `docs/`, `chore/` — are cut from
+**`dev`**; a `hotfix/` is the one exception and is cut from `main`. Promotions
+and back-merges are **merge commits, never squashed**: a squashed sync (#32)
+destroyed main→dev ancestry once already. [CLAUDE.md](CLAUDE.md) §1 is the full
+statement of the model.
+
+**One-time setup, and it is not optional if you want the local guards:**
+
+```sh
+git config core.hooksPath .githooks
+```
+
+That points git at this repo's tracked hooks, which refuse a commit on `main` or
+`dev` and refuse a push whose remote ref is `refs/heads/main` or
+`refs/heads/dev`. It is per-clone: git will not read `.githooks/` until you run
+it, and nothing in `npm run check` can do it for you. `.claude/hooks/` holds the
+matching pair for Claude Code sessions — they refuse an edit made while on a
+protected branch, and refuse `git`/`gh` write commands. [ARCHITECTURE.md](ARCHITECTURE.md)
+§8 describes all four and is explicit that they are guardrails against accident
+rather than a security boundary; server-side branch protection is the outer
+layer.
+
 ## Verifying a change
 
 ```sh
@@ -210,11 +236,14 @@ npm run check
 
 That runs, in order: `tsc --noEmit` over the app; `tsc -p tsconfig.core.json`,
 the portability guard that typechecks `src/core/` in isolation with no DOM;
-`scripts/check-core-baseline.mjs`, the fork baseline check; and then **15
-headless suites — 396 checks** 🧪. Every suite esbuild-bundles real source and
-asserts what it computes. Individual pieces: `npm run build`,
-`npm run check:baseline`, `npm run test:core` (8 suites, 125 checks),
-`npm run test:local` (7 suites, 271 checks).
+`scripts/check-core-baseline.mjs`, the fork baseline check;
+`scripts/check-doc-consistency.mjs`, which asserts that the counts and `AD`/`AF`
+ranges stated in these documents match what the repo actually contains; and then
+**16 headless suites — 578 checks** 🧪. Every suite but one esbuild-bundles real
+source and asserts what it computes. Individual pieces: `npm run build`,
+`npm run check:baseline`, `npm run check:docs`,
+`npm run test:core` (8 suites, 125 checks),
+`npm run test:local` (8 suites, 453 checks).
 
 **If you changed a file listed in [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md), the
 baseline check will fail until you update its row — in the same pull request.**
@@ -253,11 +282,11 @@ alarms — it is documented here as such.
 |---|---|---|
 | [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | **Scope.** What the app is, what was deliberately cut and what gates each return, the open spikes, known defects, and the decision index | mutable |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structure.** Directory layout and what enforces each boundary, the end-to-end data flow, the two invariants and their blast radius, the per-tick hot path, the fork, and what has no test coverage | mutable |
-| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD39` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
-| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF51` | **APPEND-ONLY** |
+| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD46` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
+| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF56` | **APPEND-ONLY** |
 | [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) | The fork manifest — 26 baseline-pinned files, enforced by `npm run check` | mutable |
-| [RELEASE-SIGNING.md](RELEASE-SIGNING.md) | The release build procedure: the credentials template, the config plugin that generates signing, the verbatim Gradle fallback, and how to verify an APK is not debug-signed | mutable |
-| [CLAUDE.md](CLAUDE.md) | The working agreement — branch discipline, docs-are-part-of-done, honest verification, and the two invariants that must never break | mutable |
+| [RELEASE-SIGNING.md](RELEASE-SIGNING.md) | The release build procedure: the credentials template, the config plugin that generates signing, and how to verify an APK is not debug-signed | mutable |
+| [CLAUDE.md](CLAUDE.md) | The working agreement — the three-level branching model, docs-are-part-of-done, honest verification, and the two invariants that must never break | mutable |
 
 Start with `PROJECT_CONTEXT.md` if you want to know **what** this is, and
 `ARCHITECTURE.md` if you want to know **how** it works. `DECISIONS.md` and
@@ -276,11 +305,11 @@ teaches that are wrong here:
 
 - **There is no `app/` directory.** Routes are at **`src/app/`** 🧪 — two files,
   a `Stack` layout and the reader screen.
-- **There is no `reset-project` script.** The twelve scripts are `start`,
+- **There is no `reset-project` script.** The thirteen scripts are `start`,
   `android`, `ios`, `web`, `build`, `build:core`, `test:core`, `test:local`,
-  `test:all`, `check:baseline`, `check`, `lint` 🧪. Running it would have wiped
-  the app.
-- **Do not set up Jest.** There are already 15 suites and 396 checks behind
+  `test:all`, `check:baseline`, `check:docs`, `check`, `lint` 🧪. Running it
+  would have wiped the app.
+- **Do not set up Jest.** There are already 16 suites and 578 checks behind
   `npm run check` 🧪; they are plain `.mjs` files run by Node.
 - **`app.json` is not the whole config.** A root **`app.config.ts`** overlays
   it, and Expo resolves the dynamic one first 🧪. It returns `app.json`

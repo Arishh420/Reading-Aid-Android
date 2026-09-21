@@ -3488,6 +3488,865 @@
   4. **Nothing here touches `src/`, `android/`, or any CORE-DIVERGENCE.md
      row.** Only `.github/workflows/uat-build.yml` changed.
 
+## The word-index readout, a reachable zero-word document, and the same dotfile trap twice
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, in this tree — against the installed
+> `react-native-reanimated@4.5.1`, the real parser over the real seeded sample,
+> Node's own TypeScript stripper, and a functional replay of the UAT workflow's
+> identity step against synthetic Gradle files. **No prebuild, Gradle build,
+> emulator, device or install was run**, and none is claimed. This section
+> therefore carries **no 👁 at all**, like AF45/AF47/AF48/AF50/AF51/AF52, and
+> nothing in it is behavioural evidence about the app on hardware. The decisions
+> are **AD41** and **AD42**; neither is restated here (AD18).
+
+- **AF53** 🧪📐 — **`useAnimatedProps` is the SAME machinery as the highlight
+  AF32 proved on hardware, so the readout needs no second mechanism proof — and
+  a zero-word document turns out to be reachable, which the readout had to be
+  designed around.**
+
+  ### The mechanism, established by reading the pinned library rather than its docs
+
+  Three measurements, and the second is the load-bearing one:
+
+  1. **Reanimated 4.5.1 ships this exact pattern itself.**
+     `node_modules/react-native-reanimated/lib/module/component/PerformanceMonitor.js:42`
+     is `createAnimatedComponent(TextInput)`, driving a live FPS number through
+     `useAnimatedProps(() => ({ text, defaultValue: text }))` with
+     `editable: false` 🧪. Reanimated 4.x supports only the New Architecture
+     (AD21), so this is **first-party use of the mechanism in the version this
+     app pins, on the architecture it ships** — not a community pattern and not
+     vendor prose.
+  2. **`useAnimatedProps` IS `useAnimatedStyle`.**
+     `lib/module/hook/useAnimatedProps.js:8` is, in full,
+     `useAnimatedStyle(updater, deps, adapters, true)` 📐. On native both then
+     land on the same `global.UpdatePropsManager.update(viewDescriptors, ...)`
+     (`lib/module/updateProps/updateProps.js`), the `isAnimatedProps` flag only
+     skipping the style-props builder — correctly, since `text` is not a style
+     prop 📐. **So the readout travels the identical UI-thread path AF32 measured
+     on physical hardware for the highlight** (1339 frames, 66 advances, zero
+     spontaneous renders). That equivalence is why AD42 does not need its own
+     device proof of the *mechanism*, only of the *display*.
+  3. **It is not `setNativeProps`.** The `setNativeProps` that appears in
+     Reanimated's tree is Reanimated's own platform function, not React Native's
+     instance method — the one AD21 established as unavailable under the New
+     Architecture 📐. Nothing on this path calls the latter.
+
+  **The erasability/worklet toolchain needed no configuration, and that was
+  checked rather than assumed.** There is no `babel.config.*` at the repo root
+  at all; `babel-preset-expo` **auto-adds** `react-native-worklets/plugin` when
+  the package is installed — `build/configs/expo.js:96-102`, and
+  `react-native-worklets@0.10.1` is installed 🧪. That is why the existing
+  `useAnimatedStyle`/`useAnimatedReaction` worklets work, and why a
+  `'worklet'`-directive function in `prepareDocument.ts` will be processed too.
+
+  **It typechecks and lints here, verified against a negative control.** The
+  component gives `tsc --noEmit` exit 0 and `eslint --max-warnings 0` exit 0;
+  injecting a deliberate type error gave **TS2322 and exit 2**, and reverting it
+  returned exit 0 🧪. `tsc --listFilesOnly` confirms the file is genuinely in the
+  program (see the instrument note below for why that check was necessary).
+
+  ### Invariant 1, re-measured rather than inherited
+
+  Bundling the real `parseMarkdown` and `flattenWords` over the real seeded
+  sample 🧪:
+
+  ```
+  sample: blocks = 12  words = 176
+  word[0]    = {"id":"0","text":"The","isWordlike":true,"spaceBefore":true}
+  word[last] = {"id":"175","text":"text.","isWordlike":true,"spaceBefore":true}
+  INVARIANT 1 (Number(Word.id) === flat position): HOLDS for all 176 words
+  typeof word[0].id = string
+  firstWordlikeFrom(sample, 0) = 0
+  ```
+
+  So the number the readout shows **is** the flat word index, and the sample
+  reads `Word 0 / 175` before playback. `Word.id` being a **string** is why the
+  readout must read the numeric shared value: `number === string` is always
+  false in JS, the trap ARCHITECTURE.md §3.1 already names for the highlight.
+
+  ### A ZERO-WORD DOCUMENT IS REACHABLE — the finding the readout was designed around
+
+  This was not anticipated and it changed the design. Measured across degenerate
+  sources 🧪:
+
+  ```
+  a horizontal rule only   blocks=0   words=0    firstWordlike=-1  Math.max(0,f)=0
+  whitespace only          blocks=0   words=0    firstWordlike=-1  Math.max(0,f)=0
+  a fence only             blocks=0   words=0    firstWordlike=-1  Math.max(0,f)=0
+  punctuation only         blocks=1   words=1    firstWordlike=-1  Math.max(0,f)=0
+  one word                 blocks=1   words=1    firstWordlike=0   Math.max(0,f)=0
+  ```
+
+  **Three of those produce a document with no words at all, and it is reachable
+  through the shipped UI:** `applyPaste` guards only on `draft.trim()`, and
+  `'---'` trims to `'---'`. `usePacer` then seeds its index with
+  `Math.max(0, firstWordlikeFrom(words, 0))`, which **clamps -1 to 0** — at
+  `usePacer.ts`'s `indexRef` initialiser, in its `[words]` reset effect, and in
+  `restart` 📐. So the shared value the readout reads is **0** for a document
+  containing no word, and a readout that trusted it would have printed
+  `Word 0 / -1`: a confident claim about a word that does not exist. Hence the
+  dash branch, which is a correctness requirement rather than a nicety.
+
+  The punctuation-only row is deliberately **not** in that branch: `...` is one
+  real token, so `Word 0 / 0` is truthful even though the token is not
+  word-like.
+
+  ### The versionName derivation, and the once-only property
+
+  Measured on the real overlay through **both** loader paths 🧪:
+
+  ```
+  ERASABLE (node stripTypeScriptTypes): yes (7431 -> 7431 bytes)
+  shape (pinned 29814999):  versionName = "1.0.0-UAT-29814999"  versionCode = 29814999
+  straddling clock: Date.now() called 1 time(s)
+    versionName = "1.0.0-UAT-30000000"  versionCode = 30000000
+    AGREE? YES — computed once
+  both loader paths agree: YES
+  UNSET returns same reference (Expo marker kept): YES
+  UNSET versionName untouched (absent): YES
+  UNSET root version untouched: 1.0.0
+  ```
+
+  **The straddling clock is the instrument worth keeping.** `Date.now` advances
+  a **full minute on every call**, so a second read inside the overlay would
+  provably push the counter and desync the two fields. Equal length on the
+  stripper is the expected result, not a null one: Node blanks type syntax to
+  whitespace rather than deleting it, exactly as AF48 records.
+
+  **Negative control, run before the green result was believed** (AF21, AD29,
+  AD31, AD37 precedent): splitting the single `uatVersionCode()` call back into
+  two gave **50 passed, 2 failed** — failing *"the clock is read EXACTLY ONCE"*
+  and *"versionName and versionCode AGREE under a clock that straddles a minute
+  per call"* **and no others** 🧪. `app.config.ts` was restored and confirmed
+  byte-identical by `diff`.
+
+  Two further controls on the readout formatter, each failing exactly its own
+  check 🧪: dropping the zero-word branch → **43 passed, 2 failed** (both
+  zero-word checks); adding a clamp → **44 passed, 1 failed** (the unclamped
+  check alone). Restored byte-identical after each.
+
+  ### The workflow identity step, replayed functionally rather than only parsed
+
+  AF51 established that parsing a workflow and `bash -n`-ing its scripts proves
+  shape and nothing more. So the identity step's **actual body** was extracted
+  and executed against synthetic `android/app/build.gradle` files in a sandbox,
+  with `GITHUB_ENV` pointed at a temp file 🧪:
+
+  | Case | Result |
+  |---|---|
+  | matching name and code | **exit 0**, exports both `UAT_RESOLVED_VERSION_CODE` and `UAT_RESOLVED_VERSION_NAME` |
+  | mismatched code | **exit 1**, `::error::` naming expected and actual |
+  | the old `1.0.0-uat` literal | **exit 1** |
+  | prefix-only `1.0.0-UAT-` with no code | **exit 1** |
+
+  **That last row is the one that justifies the exact assertion over a prefix
+  grep**, which is otherwise the obvious minimal fix: a prefix grep passes a
+  build in which the name and the code disagree, which is the single failure the
+  once-only computation exists to prevent. YAML still parses, the trigger is
+  still `workflow_dispatch` alone, the job key is still `uat-build`, and all ten
+  `run:` scripts pass `bash -n` 🧪.
+
+  ### A SEVENTH instance of the instrument family — and the first straight RECURRENCE
+
+  The first probe written to test whether the animated-text mechanism typechecks
+  was **`src/.probe-animated-text.tsx`** — a dotfile. `tsc --noEmit` returned
+  **exit 0**, which reads as a pass. `tsc --noEmit --listFilesOnly` matched it
+  **zero times** 🧪: **TypeScript's `include` globs do not match dotfiles**, so
+  the probe was never in the program and measured nothing. Renamed undotted it
+  was in the program (1 file) and the negative control then behaved correctly.
+
+  **This is AF48's third invalid instrument, verbatim.** AF48 recorded exactly
+  this — `.probe-env.ts`, "a dotfile TypeScript's `include` globs never match,
+  which measured its own filename." The repo has now hit the **identical**
+  failure twice, in two sessions, for the same reason.
+
+  **That recurrence is itself the finding, and it is why this entry is filed
+  differently from its six predecessors.** The family so far — AF44's two, AF48's
+  one, AF50's one, AF51's two — was six *distinct shapes*, each a new way to
+  measure the wrong thing, and the lesson drawn each time was the general one:
+  check the instrument against a known-in-advance outcome. **A repeat says
+  something the six did not: the general lesson was recorded and did not
+  prevent the specific trap.** A prose finding is not a guard. The concrete,
+  mechanical rule — *never name a TypeScript probe with a leading dot, and
+  confirm any `tsc` probe with `--listFilesOnly` before trusting its exit
+  code* — is what would have caught it, and it is stated here in those terms so
+  a reader has a check rather than a principle.
+
+  **A second, smaller instrument slip in the same session, recorded because the
+  mechanism is worth knowing.** A cleanup step chained after `grep -c` never
+  ran: **`grep -c` exits 1 when the count is 0**, so `grep -c … && rm …` breaks
+  the `&&` chain precisely when the count is the one being asserted, and a probe
+  file was left in the tree until the next `git status` 🧪. Caught by checking
+  `git status --porcelain`, which is why AD16's practice of confirming a clean
+  tree after probe work is worth keeping.
+
+  ### Tallies
+
+  `npm run check` is **15 suites and 411 checks**, 0 failures 🧪 — `test:core`
+  8 / **125** unchanged, `test:local` 7 / **286** (52 + 39 + 20 + 73 + 27 + 45
+  + 30). The baseline check still reports **26 files checked, 20 under
+  `src/core/`, 0 mismatches**: no manifest row changed. `npm run lint` is 0
+  errors, 0 warnings. Tracked `.mjs` files stay at **16** — no suite was added,
+  for the reason AD42 records.
+
+  **Also measured, and it is what killed two candidate designs:** there is **no
+  `memo(` or `React.memo` anywhere in `src/`** 🧪. So a re-render of the reader
+  screen re-reconciles `ReaderSurface` → `BlockView` → every `WordBox`;
+  `ReaderSurface`'s `useMemo`s save the per-document computation, not the
+  reconciliation. AD42 rests on this.
+
+  ### NOT ESTABLISHED
+
+  1. **The readout has never been seen.** Nothing here was prebuilt, built,
+     installed or run. That it updates at all, that it updates with **no** React
+     render — the property AF32 measured for the highlight and which is
+     *inferred* here from the shared code path, not observed for this component
+     — how it looks above the button, and how it announces to TalkBack are all
+     unverified ❓. AD42 carries the pending check.
+  2. **The versionName has not been produced by a prebuild.** Every result above
+     comes from calling the overlay directly and from replaying the workflow's
+     shell in a sandbox. No `expo prebuild` ran and no `workflow_dispatch` was
+     dispatched; AD41's pending check is the next UAT build.
+  3. **The accessibility mitigation is a structural read**,
+     `accessibilityRole="header"` on the wrapper and `="text"` on the input. No
+     screen reader was run. A `TextInput` announcing as an editable field is the
+     known cost; whether the mitigation changes that on Android is untested ❓.
+  4. **The allocation added to the tick path is unmeasured.** The worklet builds
+     one string per tick. That it is negligible against the existing per-word
+     comparisons is a judgement, not a measurement — and per **AF35** any
+     frame-timing claim about it would have to be made on hardware, never on the
+     emulator ❓.
+  5. **Nothing here is behavioural evidence about the app on hardware.** Every
+     👁 limit recorded in AF27–AF43, AF49 and AF52 stands untouched, and
+     ARCHITECTURE.md §6's list of what has no automated coverage is one file
+     **longer**, not shorter.
+  6. **AF42's R8/Proguard half and its untested ABIs are untouched**, and the
+     raw-`.ts`-evaluation path remains unexercised, exactly as AF48 and AF50
+     left it ❓.
+
+## The baseline-check comment wasn't stale, it was inverted — and a scoped sweep missed it on two different axes
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, by reading the tracked files directly and by **running the
+> real suites** (`npm run test:core`, `npm run test:local`) rather than trusting
+> any prior document's stated count. No prebuild, Gradle build, emulator, device
+> or install was run, so this section carries **no 👁 at all**, like
+> AF44/AF47/AF48/AF50/AF51/AF52/AF53. The decision taken in response is **AD43**;
+> nothing from that entry is restated here (AD18).
+
+- **AF54 · `scripts/check-core-baseline.mjs`'s header comment was not stale, it
+  was INVERTED — it forbade the exact string that has been correct since
+  AD38.** Its docblock read "The fourteen `*-headless-test.mjs` suites... it is
+  reported separately for that reason — '14 suites plus 1 baseline check', never
+  '15 suites'." **Fifteen is the count, and has been since AD38** — the entry
+  that added the signing-config-plugin suite and, in the same change, inverted
+  `ARCHITECTURE.md`'s equivalent wording from "14, never 15" to "15, never 16."
+  This file's own docblock was not updated in that change and so was left
+  reading the opposite of true: not a fact that aged, an instruction that was
+  wrong from the moment it was written and stayed wrong through AD39, AD40,
+  AD41 and AD42 — five milestones during which `npm run check` ran green every
+  time, because the comment asserts nothing the check verifies. **Stale is a
+  gap in the record. This was an instruction to be wrong**, and nothing short
+  of a person reading the file against the real count would ever have caught
+  it — which is exactly what happened here, and only here, this session.
+
+  **The pattern, and it is the substance of this entry more than any one
+  string: two different sweeps, on two different axes, each scoped to
+  whichever number had just moved, and each blind to the other axis.**
+  - **Axis 1 — how many suites exist.** This count moved 13 (AD31) → 14 (AD37)
+    → 15 (AD38). Every sweep that followed one of those moves updated
+    `ARCHITECTURE.md`'s prose (AD37, AD38 both record inverting it) and the
+    workflow's own "15 suites... never 16" comment (also caught). What it
+    missed, on **both** of the last two moves, was `scripts/check-core-baseline.mjs`'s
+    identical claim in its own docblock, and the workflow's step name at
+    `static-and-suites.yml:64` and header comment at `:6` — flagged as wrong in
+    AD37, flagged again in AD38, flagged a **third** time in AF51 (which also
+    found the line-6 instance nobody had recorded until then), and never
+    actually fixed until this session.
+  - **Axis 2 — how many individual checks the suites assert.** This count moved
+    396 → 411 in the very next milestone after AD38 (AD41/AD42, adding checks
+    to two existing suites rather than a sixteenth). That sweep, being scoped
+    to the check-count axis, correctly updated `ARCHITECTURE.md`'s per-tier
+    table at §6 (`125 (17+18+14+9+15+14+12+26)` / `286 (52+39+20+73+27+45+30)`
+    — **re-verified live this session by actually running both suite sets**,
+    matching exactly) — but missed two **prose** mentions of the same numbers
+    elsewhere: `README.md`'s `` `npm run test:local` (7 suites, 271 checks) ``,
+    where the **suite count (7) was already correct** and only the check count
+    was the pre-AD42 figure (396 − 125 = 271, current is 411 − 125 = **286**);
+    and `ARCHITECTURE.md`'s own §3.1, `` `prepareDocument-headless-test.mjs`
+    (35 checks) ``, where AD42's own change added ten checks to that exact
+    suite and the §6 table three hundred lines below picked it up while this
+    isolated citation of the same suite did not — live run confirms
+    **45 checks**, not 35.
+  - **Axis 3 — how many decisions/findings exist.** README's document table
+    stating `AD1`–`AD39` / `AF1`–`AF51` was flagged once, by AD35, as already
+    stale and "left for its own edit" with no condition named for when that
+    edit would happen. It never came due on its own and was found again here
+    only because this session re-measured the true maxima directly —
+    `grep -oE "AD[0-9]+" DECISIONS.md | sort ... | tail` and the equivalent for
+    `AF`, rather than reading the README's own claim — and found **AD42** and
+    **AF53** as the live maxima, not AD39/AF51.
+
+  **The generalisable lesson is the method that surfaced axis 2's two sites,
+  because neither was named in the task that started this session.** A keyword
+  sweep for a string already suspected of being wrong (`"14 suites"`, a stale
+  `AD`/`AF` range) only ever catches that string. It was **running the actual
+  suites and diffing every prose mention of a suite or check count against the
+  live result** — not grepping for an already-known-bad pattern — that
+  surfaced the README and ARCHITECTURE check-count sites, which nobody had
+  flagged, in this same session, on the first pass. Four separate PRs
+  (spanning AD35, AD37, AD38, and AF51) each fixed or flagged the specific
+  string their own change had just made newly wrong, and none of them re-ran
+  the suites to check whether some *other* number, moved by an *earlier*
+  change, was also still wrong.
+
+  **All seven corrected sites, listed for completeness — rationale for each is
+  AD43 and is not restated here (AD18):**
+  1. `scripts/check-core-baseline.mjs:4,7,8` — "fourteen" → "fifteen"; "14
+     suites" → "15 suites"; never-"15 suites" → never-"16 suites". **The
+     inverted one**, and the one this entry leads with.
+  2. `.github/workflows/static-and-suites.yml:6` — "14 headless suites" → 15.
+  3. `.github/workflows/static-and-suites.yml:64` — step name `(5 suites)` →
+     `(7 suites)`, closing the flag AD37 opened and AD38 and AF51 each
+     repeated without resolving.
+  4. `README.md:256-257` — `` `AD1`–`AD39` `` / `` `AF1`–`AF51` `` →
+     `` `AD1`–`AD43` `` / `` `AF1`–`AF54` ``, closing the flag AD35 opened
+     with no trigger.
+  5. `README.md:217` — test:local subtotal, `271 checks` → `286 checks` —
+     found in this session, not named in the originating task.
+  6. `ARCHITECTURE.md:281` — `prepareDocument-headless-test.mjs` suite count,
+     `35 checks` → `45 checks` — found in this session, not named in the
+     originating task.
+  7. `ARCHITECTURE.md:472` — "That workflow has run, once, green" reworded to
+     "runs on every pull request and has been green since it first ran," an
+     evergreen form that does not require a future edit merely because the
+     workflow ran again.
+
+  **Verification, run rather than trusted.** `npm run test:core`:
+  17+18+14+9+15+14+12+26 = **125**, unchanged. `npm run test:local`:
+  52+39+20+73+27+45+30 = **286**, unchanged — this is the live figure that
+  exposed sites 5 and 6 above, since it disagreed with what both README and
+  ARCHITECTURE's §3.1 stated before this session's edits. Total **411**,
+  matching `ARCHITECTURE.md` §6's table and `README.md`'s top-line figure,
+  both of which were already correct and needed no edit. `npm run check` and
+  `npm run lint` were re-run clean after all edits (see this session's
+  verification output). No file under `src/`, `android/` or `plugins/`
+  changed; no `CORE-DIVERGENCE.md` row changed; `DECISIONS.md` and
+  `FINDINGS.md` were only appended to, never rewritten.
+
+  **What this does NOT do.** It does not build the self-correcting range-check
+  suite AD43 authorizes as a named follow-up — that stays out of scope for
+  this PR, by direction, with its own trigger recorded in AD43 rather than
+  here (AD18). It does not re-audit every other cross-document count or range
+  claim in either log's historical entries — those are append-only and
+  correctly frozen as true-when-written; only the **mutable** documents
+  (README.md, ARCHITECTURE.md, the workflow file, the baseline script) were in
+  scope, because only they claim to describe **current** state.
+
+## Two green UAT dispatches nobody had recorded, and the fallback they retire
+
+> Scope note that governs this section, in AF52's shape: **the two CI runs were
+> dispatched by the project owner; every run ID, timestamp, step conclusion and
+> log line below was read by me**, in this session, with `gh run list` and
+> `gh run view`. **No CI run, prebuild, Gradle build, emulator, device or
+> install was performed by me**, and **no secret was read, decoded or printed** —
+> the certificate SHA-256 digests were redacted at the point of capture and
+> appear nowhere in this repo. This section carries **no 👁 at all**, like
+> AF45/AF47/AF48/AF50/AF51/AF52/AF53/AF54: nothing here was observed on a
+> running device, and nothing here is behavioural evidence about the app.
+> **None of it is reproducible from a clone** — it lives in GitHub's run logs,
+> which expire, which is the reason for recording it at this length. The
+> decision taken in response is **AD44**; nothing from that entry is restated
+> here (AD18).
+
+- **AF55** 🧪📐 — **TWO `uat-build` DISPATCHES HAVE SUCCEEDED, AND UNTIL THIS
+  ENTRY NEITHER WAS RECORDED IN EITHER LOG.** They are now the sole evidentiary
+  basis for retiring RELEASE-SIGNING.md §3, so they are written down in full
+  rather than cited.
+
+  `gh run list --workflow=uat-build.yml` returns three runs, total 🧪:
+
+  | Run ID | Branch | Started (UTC) | Duration | Conclusion |
+  |---|---|---|---|---|
+  | 34275986703 | `main` | 2026-09-08 20:38:26Z | 14m48s | **failure** — this is AF52's run |
+  | **34350254968** | `main` | **2026-09-09 12:18:25Z** | 12m43s | **success** |
+  | **34364814937** | `dev` | **2026-09-09 14:37:16Z** | 13m20s | **success** |
+
+  **All fourteen steps are `success` in both**, read from the jobs API per step
+  rather than inferred from the log text 🧪 — `Set up job`, `checkout@v7`,
+  `setup-java@v5`, `setup-node@v7`, `Install dependencies`,
+  `Repo gate — npm run check`, `Install the pinned NDK and CMake`,
+  `Materialise UAT signing credentials`, `Prebuild the UAT variant`,
+  `Confirm the UAT identity resolved`, `Assemble the release APK`,
+  **`Assert the APK carries the UAT certificate`**, `Stage the APK under its
+  stable name`, `Publish to the` `uat` `release`. Steps 13 and 14 running at all
+  is itself new: **AF52 item 3** records both as never having run successfully.
+
+  ### AD40's pinned build-tools selection, and its diagnostic, both working
+
+  **AD40's fix is confirmed in CI, which closes its own pending check.** Both
+  successful runs print, identically 🧪:
+
+  ```
+  Using apksigner from build-tools 36.0.0: /usr/local/lib/android/sdk/build-tools/36.0.0/apksigner
+  ```
+
+  **36.0.0 is the version AGP resolved for the build**, read from
+  `node_modules/react-native/gradle/libs.versions.toml` exactly as AD40
+  designed — not the runner's highest available, which is what the old
+  `sort -V | tail -1` glob reached for and which AF52 diagnosed as the
+  never-exercised 37.0.0. So the two disagreeing opinions AF52 found are now one
+  opinion, and it is AGP's.
+
+  **AD40's permanent, unconditional diagnostic also works**, and it is what
+  makes the rest of this entry auditable rather than inferred. AF52 recorded
+  that the raw `apksigner` output had never once been visible in a run log; it
+  now is, in both runs 🧪 (SHA-256, SHA-1 and MD5 digests redacted here at
+  capture):
+
+  ```
+  --- raw apksigner verify --print-certs output ---
+  Signer #1 certificate DN: CN=Arish Khan, OU=Self, O=Self, L=India, ST=MP, C=IN
+  Signer #1 certificate SHA-256 digest: <64 hex, redacted>
+  Signer #1 certificate SHA-1 digest: <redacted>
+  Signer #1 certificate MD5 digest: <redacted>
+  --- end raw apksigner output ---
+  ```
+
+  **That also settles AF52's open item 2 for 36.0.0** — the format is
+  `Signer #<N> certificate SHA-256 digest: <hex>`, exactly what AOSP's current
+  source predicted and what AD40's hardened anchor keys on. **It settles nothing
+  about 37.0.0**, which remains unobserved by this repo; AD40's selection now
+  makes reaching it accidental rather than default.
+
+  ### Step 12 is a POSITIVE assertion, and that is what carries the retirement
+
+  Step 12 passed, and what it asserts is **equality** against the workflow's
+  `EXPECTED_UAT_CERT_SHA256` literal — not the absence of a debug certificate.
+  AD39 chose positive equality deliberately, because a "not `CN=Android Debug`"
+  check would pass a build signed with any other key. The DN above corroborates
+  it independently: the signer is **the project owner's own release key, and is
+  not `CN=Android Debug`**.
+
+  **THE INFERENCE CHAIN TO THE PLUGIN, stated step by step, because it is the
+  whole argument and each link is separately recorded.**
+  1. The CI checkout has **no `android/`** at all — `git ls-files android`
+     returns 0 (AF47, re-confirmed in AF51's session), so prebuild generates the
+     tree from the stock `expo-template-bare-minimum` template.
+  2. The stock template ships `release { signingConfig signingConfigs.debug }`
+     with **no guard of any kind** (AF47, read from the published tarball).
+  3. **AF49 established, as an executed build rather than a source read, that a
+     tree in that state SUCCEEDS and emits a `CN=Android Debug`-signed "release"
+     APK.** That is the fail-open case.
+  4. These runs produced an APK whose certificate **matches the expected UAT
+     fingerprint** and is not the debug key.
+  5. Therefore the signing block **was present in the CI-generated
+     `android/app/build.gradle`**, and since nothing put it there by hand, the
+     config plugin generated it — **in the from-scratch case**.
+
+  Link 3 is what makes this an argument rather than an assumption. Without
+  AF49, a green `assembleRelease` would be consistent with the plugin having
+  been skipped entirely, which is exactly why **AF52's from-scratch prebuild,
+  on its own, proves nothing about signing** — its step 12 failed and the
+  certificate was never read.
+
+  **A residual worth stating precisely, so this entry is not read as claiming
+  more than it measures.** No step greps the generated `build.gradle` for
+  `signingConfigs.release`, and no run hashes it, so the signing block's
+  presence in CI is established **by the artifact's certificate**, via the chain
+  above, rather than by direct inspection of the generated file. That is
+  stronger evidence than a grep for the property that matters — a grep can pass
+  while the build signs with the wrong key — but it is indirect about the file
+  itself, and the distinction is recorded rather than smoothed over.
+
+  ### AD40's pending acceptance check is DISCHARGED
+
+  **AD40 closed with "PENDING ACCEPTANCE CHECK. Nothing here has run in CI. No
+  `workflow_dispatch` has exercised the pinned selection, the hardened
+  extraction, or the relaxed multi-signer check against a real runner."** All
+  three have now run, twice, green: the pinned selection resolved 36.0.0 (above),
+  the hardened extraction returned a digest that satisfied the equality check,
+  and the multi-signer check found no `Signer #2` — which is only observable at
+  all because the run reached the equality assertion. **AD40 is not edited**;
+  this entry discharges its pending check by cross-reference, the way AF42 did
+  for AD30 and AF40 for AD28, and the cross-reference runs in this direction
+  only.
+
+  ### The retirement as executed
+
+  **RELEASE-SIGNING.md §3 is deleted** — the heading, the demotion preamble, the
+  exit-condition block, the "Verbatim. Anchors are given as…" line, subsections
+  3a/3b/3c and all **four** fenced `gradle` blocks: 139 lines, taking the
+  document from **337 to 198** 🧪. **§4 survives minus its step 5**, and the
+  numbering is **not** closed up — the document now runs §1, §2, §4, §5, §6, §7,
+  with the gap explained in its own header. Rationale for both is AD44.
+
+  **Seven suite assertions were removed from
+  `plugins/withReleaseSigning-headless-test.mjs`, and every one had §3 as its
+  subject** — listed individually so a future reader can confirm none was a
+  live guard on the plugin 🧪:
+
+  | Assertion | Subject |
+  |---|---|
+  | `RELEASE-SIGNING.md §3 still carries exactly four gradle blocks` | §3's block count |
+  | `§3a preamble matches the plugin byte for byte` | §3a's fenced block |
+  | `§3b signingConfigs.release matches the plugin byte for byte` | §3b's fenced block |
+  | `§3c template anchor matches the plugin byte for byte` | §3c's first fenced block |
+  | `§3c replacement matches the plugin byte for byte` | §3c's second fenced block |
+  | `§3 is marked as a fallback rather than the mechanism` | §3's framing prose |
+  | `the demotion states the condition that would retire §3` | §3's pinned hash |
+
+  With §3 gone their subject does not exist, so they were **removed, not
+  relaxed**. The orphaned `RELEASE_SIGNING_DOC` path constant and the `doc`
+  binding that read the document went with them — `npm run lint` runs
+  `--max-warnings 0`, so an unused binding fails the run. **`AF42_BUILD_GRADLE_SHA256`
+  was kept**: it is still the oracle at the byte-identity assertion, which is
+  the check that actually protects the release artifact, and which **passed
+  after every edit** 🧪 —
+  `PASS  transform(stock) + Expo's identity mods reproduces AF42's build.gradle EXACTLY`.
+  That assertion is also what proves the edits to `plugins/withReleaseSigning.ts`
+  touched no block constant and changed no generated byte.
+
+  **Measured counts, before and after, by running the suites rather than
+  predicting them** 🧪:
+
+  | | Before | After |
+  |---|---|---|
+  | `withReleaseSigning-headless-test.mjs` | 39 | **32** |
+  | `test:local` (7 suites) | 286 | **279** (52 + **32** + 20 + 73 + 27 + 45 + 30) |
+  | `test:core` (8 suites) | 125 | **125** — unchanged |
+  | **Total** | 411 | **404** |
+  | Suites | 15 | **15** — unchanged |
+  | Tracked `.mjs` | 16 | **16** — unchanged |
+
+  **`npm run check` exits 0** — `26 files checked, 20 under src/core/, 0
+  mismatches`, then 17+18+14+9+15+14+12+26 = 125 and 52+32+20+73+27+45+30 =
+  279, **404 checks across 15 suites, 0 failures** 🧪. **`npm run lint` exits 0**
+  with no ESLint output at all, which is ESLint being silent on success exactly
+  as **AF45** records — so the clean run means "eslint exited 0", and the
+  coverage behind that remains AF44's negative controls, not this run.
+  **`check:baseline` is green and no `CORE-DIVERGENCE.md` row changed:** none of
+  the files in scope is manifest-pinned, checked file by file rather than
+  assumed 🧪.
+
+  **ONE FURTHER STALE FIGURE, FOUND BY MEASURING AND FIXED HERE RATHER THAN
+  LEFT.** `ARCHITECTURE.md` claimed lint was clean "across **39** files" 🧪.
+  Re-measured with `npx eslint . --format json`: **44 files, 0 errors, 0
+  warnings** 🧪. The 39 was true when **AF44** measured it on 2026-09-04 and
+  drifted as AD37, AD38 and AD42 each added files — so it is **not** something
+  this change negates, and under AD32's boundary rule it was strictly its own
+  edit. It is fixed anyway, because this PR is already correcting that same
+  document's verification figures, and **AF54 is one PR old**: leaving a known
+  false 🧪 claim in a document whose count strings you are actively editing is
+  precisely the drift AF54 exists to stop. The three occurrences in
+  `FINDINGS.md` are **left untouched** — append-only, and each was true when
+  written. Worth noting it is a **different axis** from the check count: no
+  suite moved it, file *additions* did, which is why a sweep scoped to check
+  counts would never have caught it — AF54's exact lesson, recurring one PR
+  later on a third axis.
+
+  ### A DEFERRAL WITH NO TRIGGER, PROPOSED THE SAME DAY AD43 REQUIRED ONE
+
+  Recorded rather than quietly dropped, because it is the exact failure AD43
+  was written to stop and it happened immediately after — which is a stronger
+  observation than AD43 itself could make.
+
+  **In conversation, I advised holding §3 "until the plugin has run a few more
+  times."** That names **no checkable condition**: not a number of runs, not a
+  branch, not an observable state of the world. It is AD35's flag-and-leave
+  shape — the one AD43 traces through six milestones of README staleness — and
+  it was offered on **2026-09-09**, the same day AD43 was appended
+  (commit `d5c85d2`, PR #34) establishing that "a deferral must carry a NAMED,
+  CHECKABLE revisit trigger, or it is not a deferral — it is drift with a note
+  attached."
+
+  **The sharper part is that a correct trigger already existed and I proposed
+  replacing it with a vague one.** AD39 had already written "Retirement waits
+  until a CI build has succeeded" — checkable, and by then **already satisfied
+  twice over**. So the advice was not merely unfalsifiable, it would have
+  reset a met condition to an unmeetable one, and §3 would have survived on
+  nobody's stated criterion.
+
+  **The generalisable lesson, and it is not the one AD43 states.** AD43's rule
+  is about *writing* triggers. This is about *reading* them: before proposing
+  any further deferral, **check whether the existing trigger has already
+  fired**. A well-formed trigger is worthless if the next person to touch the
+  question substitutes their own intuition for it — and intuition reaches for
+  "a bit longer" precisely when the recorded condition is already met and the
+  change therefore feels abrupt. **AF54's method applies here too**: it was
+  re-measuring against the world, rather than re-reading a prior claim, that
+  settled this — `gh run list` took one command and turned "hold a while
+  longer" into "the condition was met yesterday, twice."
+
+  ### NOT ESTABLISHED
+
+  1. **Nothing here is behavioural evidence about the app.** A runner cannot
+     execute a worklet, a shared value, a `ScrollView`, MMKV or the reading
+     surface. Every 👁 limit recorded in AF27–AF43, AF49 and AF53 stands
+     untouched, and ARCHITECTURE.md §6's list of what has no automated coverage
+     is not shortened by one line.
+  2. **The APK these runs published was never installed or opened.** Steps 13
+     and 14 staged and published it; **no device or emulator ran it**, and the
+     word-index readout AD42 added remains unseen (AF53's pending check is
+     untouched by this entry).
+  3. **No secret was read, decoded, printed or verified.** The certificate
+     digests were redacted at capture. That the two UAT secrets decode to a
+     keystore with the expected alias is evidenced only by step 8's `keytool`
+     pre-flight passing, as AF51 left it.
+  4. **Build-tools 37.0.0's `apksigner` output is still unobserved**, exactly as
+     AF52 item 2 left it. AD40's pinned selection means a future runner reaches
+     it only if `react-native`'s catalog moves there.
+  5. **The signing block's presence in the CI-generated file was not directly
+     inspected** — see the residual above; it is established through the
+     certificate and AF49's fail-open finding.
+  6. **AF42's R8/Proguard half and its untested ABIs are untouched.**
+     `minifyEnabled` is still `false`, and the UAT artifact narrows ABI coverage
+     further by design — arm64-v8a only (AD39).
+  7. **These runs are not reproducible from a clone**, and GitHub's logs expire.
+     This entry is the durable record; if it disagrees with a re-fetched log,
+     the log has aged out and this is all there is.
+
+## The branching-model guards — a hot-reload that proved them, and a control that found the instrument
+
+> Scope note that governs this section: **everything below was measured by me**,
+> in this session, in this tree — against the live Claude Code hook
+> documentation, this repo's own files, the GitHub branch-protection API
+> (read-only GET), and real throwaway git repositories under a temp directory.
+> **No prebuild, Gradle build, emulator, device or install was run**, and none
+> is claimed, so this section carries **no 👁 at all**, like AF44/AF45/AF47/
+> AF48/AF50/AF51/AF52/AF53/AF54/AF55. Nothing here is behavioural evidence about
+> the app. **No git write of any kind was performed**: no add, commit, push,
+> merge, branch or tag, and `git config core.hooksPath` was never run on this
+> repository — only on throwaway repositories inside a temp directory that was
+> deleted. The decisions are **AD45** and **AD46**; neither is restated here
+> (AD18).
+
+- **AF56** 🧪📐 — **The hook contract was verified against the documentation
+  rather than from memory, and the single most important fact in it is one that
+  memory gets wrong: EXIT CODE 2 BLOCKS A TOOL CALL, AND EXIT 1 DOES NOT.**
+
+  Fetched `https://docs.claude.com/en/docs/claude-code/hooks`, which **301s** to
+  `https://code.claude.com/docs/en/hooks`, plus
+  `https://code.claude.com/docs/en/settings` 🧪. Four things that would have
+  been wrong if assumed:
+
+  | | What the documentation says |
+  |---|---|
+  | **Blocking exit code** | *"exit code 2 is the only exit code that blocks through the code alone… Claude Code treats exit code 1 as a non-blocking error and proceeds with the action, even though 1 is the conventional Unix failure code."* |
+  | **Matcher syntax** | a matcher containing only letters, digits, `_`, `-`, spaces, `,` and `\|` is an **exact string or pipe-separated list**; any other character silently makes it an unanchored JavaScript regex |
+  | **Structured decision** | stdout JSON `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"…"}}`; on exit 2 the reason comes from that JSON when present and from **stderr** when not |
+  | **What exit 0 with no output means** | *"no decision; the normal permission flow applies"* — **not** an approval |
+
+  **That last row is why an allow writes nothing.** Printing
+  `permissionDecision: "allow"` would *grant* permission, suppressing the
+  operator's own prompts for every call the guard did not object to — the
+  opposite of what a guardrail is for. A guard that emitted exit 1 with a
+  refusal message would be worse than no guard, because it would print a
+  refusal and then let the call through.
+
+  Also read, and load-bearing: `${CLAUDE_PROJECT_DIR}` is the documented
+  project-root placeholder and is exported into the hook process environment;
+  the payload carries `session_id`, `prompt_id`, `transcript_path`, `cwd`,
+  `scratchpad_dir`, `permission_mode`, `hook_event_name`, `tool_name`,
+  `tool_input` and `tool_use_id`; settings files are watched and reloaded
+  *"without a restart, including edits to `permissions`, `hooks`"*; project
+  hooks are subject to the **workspace-trust** step; and `/hooks` is a read-only
+  browser that shows which settings file each hook came from — which is the
+  manual probe for a fresh session.
+
+  ### THE HOT RELOAD, OBSERVED — this is the strongest single result here
+
+  **[ran]** Immediately after `.claude/settings.json` was written, a `Bash` call
+  in this same session was **blocked**, and the block message was the guard's
+  own reason text, verbatim:
+
+  ```
+  BLOCKED: all of `gh release` is blocked, reads included — a release is this
+  project's UAT distribution channel (AD39). Claude Code does not perform git or
+  GitHub writes in this repo (CLAUDE.md §1) — run it yourself in the terminal.
+  ```
+
+  The probe was chosen so that it would be **harmless if it executed**:
+  `gh release view uat` is a read, so a guard that was not live would simply
+  have printed release metadata. Instead it was refused. That single observation
+  establishes four things at once: the project settings file was **hot-reloaded
+  mid-session with no restart**; the `Bash` matcher fires; **exit 2 plus the
+  deny JSON genuinely blocks**; and `permissionDecisionReason` is what the
+  harness surfaces to the model. A subsequent `Write` to the session scratchpad
+  succeeded, confirming the `Edit|Write|NotebookEdit|MultiEdit` group also runs
+  and correctly **allows** a path outside any git work tree.
+
+  **What it does NOT establish**, stated so the result is not over-read: this is
+  **one session, on the machine that authored the file**. A fresh session, a
+  different clone, and the workspace-trust step a project hook is subject to are
+  all unexercised ❓, and no observation was made of a *denial* from
+  `guard-branch` — proving that would need a session on `main` or `dev`, which
+  the model forbids.
+
+  ### A NEGATIVE CONTROL THAT FOUND THE INSTRUMENT, NOT THE SUBJECT — the EIGHTH in this family
+
+  The control was designed to break `.githooks/pre-commit` alone (never a live
+  Claude Code hook, so it could not lock this session out of Bash or Edit).
+  Predicting its result exposed a flaw in the suite **before it was run**:
+  section 8 originally staged **one** file and then attempted three commits, so
+  once a broken hook let the first commit through, the later `git commit` calls
+  would have exited non-zero for *"nothing to commit"* — and the check *"git
+  commit on dev is refused too"* would have **passed for the wrong reason**,
+  while a different check failed. Each attempt now stages its own file, and the
+  suite gained a check asserting that the refusal text is the guard's rather
+  than an empty index.
+
+  With that fixed, the control was surgical 🧪 — baseline **160 passed, 6
+  failed**; broken **156 passed, 10 failed**; delta **exactly the four
+  pre-commit checks and nothing else**, with *"git commit on a work branch
+  SUCCEEDS"* still passing and every pre-push check untouched. `.githooks/pre-commit`
+  was restored and re-hashed
+  `ffa6e62372991701b054ac4279faca730d713e5f4a2511d8c6e440250fb7a345`, identical,
+  with `diff` silent.
+
+  **THE 160/6 BASELINE NEEDS EXPLAINING, because the final suite reports 174/0.**
+  Both numbers are real and neither is a failure. The control was run at the
+  point the sequence required — after the hooks and the suite existed but
+  **before `.claude/settings.json` was written**, which was deliberately last so
+  that no guard could go live until it had been proven. The suite's section 7
+  asserts that registration file, so **six** of its checks failed for the one
+  reason that was by design: the file did not exist yet. 160 + 6 = **166 checks
+  executed**. Writing the settings file did two things — those six became
+  passes, and **eight further checks ran that previously could not**, because
+  the per-matcher and per-handler assertions only execute when there are groups
+  to iterate over. Section 7 therefore runs **15** checks in the final suite
+  against 7 when the file was absent, and the suite total goes 166 → **174
+  passed, 0 failed** 🧪. The control was re-run against the final suite for this
+  entry and the delta is unchanged: **170 passed, 4 failed**, the same four
+  pre-commit checks, with `.githooks/pre-commit` reverted and re-hashed
+  identical again.
+
+  This is the **eighth** instance of the pattern this repo tracks — AF44's two,
+  AF48's one, AF50's one, AF51's two, AF53's one — and it differs from all of
+  them in a way worth recording: the previous seven were found *after* the
+  instrument had already produced a confident wrong answer. This one was found
+  **by the prescribed method working as intended**: predicting what a negative
+  control should fail, and noticing that the prediction did not match what the
+  instrument would actually do. The method is cheap and it caught this before
+  any wrong result was believed.
+
+  ### The doc-consistency check caught its own author on its first run
+
+  **[ran]** `scripts/check-doc-consistency.mjs` failed four ways on its first
+  execution, and only one of the four was a defect in the check itself:
+
+  ```
+  MISMATCH  ARCHITECTURE.md: no "ARCHITECTURE §7.1 denominator" claim found — the wording changed…
+  MISMATCH  README.md: AD range — states 46, derived 44 (README AD range)
+  MISMATCH  README.md: AF range — states 56, derived 55 (README AF range)
+  MISMATCH  ARCHITECTURE.md: tracked .mjs count — states 20, derived 21
+  ```
+
+  The first was my regex, which omitted the closing parenthesis in *"of the 578
+  checks) bundle modules"* — caught by the fail-closed rule, which reports a
+  pattern that matches nothing as an error rather than passing silently. The
+  middle two were correct: the `AD`/`AF` entries had not been written yet. The
+  fourth was correct too, and pleasingly self-referential — adding
+  `check-doc-consistency.mjs` itself took the tracked `.mjs` count from 20 to
+  21, and the check noticed.
+
+  ### Derivations, each measured rather than assumed
+
+  **ENTRY HEADINGS COME IN TWO FORMS, and a single pattern would have missed
+  one** 🧪. `DECISIONS.md` uses `- **AD<n> · ` for all 44 entries.
+  `FINDINGS.md` uses **both** `- **AF<n>** <tags> — ` (53 entries) and
+  `- **AF<n> · ` (2 entries: AF52 and AF54). The pattern
+  `/^- \*\*(AD|AF)(\d+)(?:\*\*)?(?=[ ·])/m` matches all of them and nothing
+  else, and it deliberately anchors at line start so the constant in-text
+  citations of entry numbers — which vastly outnumber the headings — cannot be
+  mistaken for entries. Measured against the logs before AD45/AD46/AF56 were
+  written: **AD 44 headings, max 44, no duplicates, no gaps**; **AF 55 headings,
+  max 55, no duplicates, no gaps** — so both logs were already contiguous from 1,
+  which the change log at the bottom of `DECISIONS.md` asserts in prose and
+  which is now checked.
+
+  **THE TRACKED `.mjs` COUNT MUST COME FROM GIT, NOT A FILESYSTEM WALK, and the
+  reason was demonstrated rather than argued** 🧪. A `.headless-probe-*.mjs`
+  file was created inside `src/core/model/` — the shape every suite writes beside
+  its subject while it runs (AF16) — and then:
+
+  ```
+  git ls-files --cached --others --exclude-standard '*.mjs'  ->  excluded it (.gitignore:40)
+  a filesystem walk                                          ->  counted it
+  ```
+
+  The `--others` half matters independently: a file added in the current pull
+  request is counted **before it is staged**, so the check cannot fail for a
+  reason unrelated to what it checks. The probe was deleted and the tree
+  confirmed clean.
+
+  **ESLint DOES lint files inside a dot-directory** 🧪 — which had to be
+  established before putting guards in `.claude/hooks/`, since a hook nobody
+  lints is a hook with no static analysis at all (AF14's gap in a new place). A
+  probe at `.claude/hooks/probe-lint-visibility.mjs` took `eslint .` from **44
+  to 45 files** and its deliberate `eqeqeq` violation fired. Probe deleted,
+  count back to 44, `git status --porcelain` empty. The four new `.mjs` files
+  are all linted, 0 errors and 0 warnings, and AD34's `**/*.mjs` override
+  applies to them, so `console.error` in a guard is not a lint error.
+
+  **Branch protection, read live rather than recalled** 🧪 (read-only GET on
+  `repos/{owner}/{repo}/branches/{main,dev}/protection`): both branches report
+  `enforce_admins: true`, `allow_force_pushes: false`, `allow_deletions: false`,
+  required reviews, and `static-and-suites` as the **sole** required check.
+  `required_linear_history` is **false** on both — which is what permits the
+  merge-commit promotions the model requires, and would have to stay false.
+
+  **Runtime, which is what decided AD46's design** 🧪: `npm run test:all` is
+  **1.57 s** for all sixteen suites, of which `scripts/guards-headless-test.mjs`
+  alone is **1.11 s** — it spawns a process per protocol case and builds real
+  git repositories. Re-running the suites from inside a static check to obtain
+  real per-check totals would therefore roughly double the behavioural step of
+  every `npm run check`, which is why totals are held to agreement and
+  arithmetic instead.
+
+  ### The new tallies
+
+  `npm run check` is **16 suites and 578 checks**, 0 failures 🧪 — `test:core`
+  8 / **125** unchanged (17+18+14+9+15+14+12+26), `test:local` 8 / **453**
+  (52+32+**174**+20+73+27+45+30). The baseline check still reports **26 files
+  checked, 20 under `src/core/`, 0 mismatches**: **no manifest row's hashes
+  changed except row 26**, `CLAUDE.md`, whose `Current sha256` moved from
+  `0382990a3ec28028bb8a26bff73e3010c6c9d7bcf6cb9fcece2ad3aed3e95531` to
+  `4832063a4e66dcc7ba04e3a1362813b352711c78cb5298545db621f7d2a4b4cf` with
+  `Baseline` untouched and `Record` appended to `AD32, AD33, AD45`, per
+  CORE-DIVERGENCE.md §3. `npm run lint` is **49 files, 0 errors, 0 warnings**.
+  Tracked `.mjs` goes from 16 to **21**: three guards, two static checks minus
+  the one that already existed, and one suite —
+  `.claude/hooks/hook-io.mjs`, `guard-branch.mjs`, `guard-git.mjs`,
+  `scripts/guards-headless-test.mjs` and `scripts/check-doc-consistency.mjs`.
+
+  ### NOT ESTABLISHED
+
+  1. **Enforcement in any session but this one.** The hot-reload observation is
+     one session on the authoring machine. A fresh session, a different clone,
+     and the workspace-trust step are unexercised ❓, and no `guard-branch`
+     *denial* has been observed live — only its allow path.
+  2. **The `.githooks/` pair is inert in any clone until someone runs
+     `git config core.hooksPath .githooks`.** That was deliberately not run on
+     this repository. The suite proves the hooks behave correctly when git
+     invokes them, by setting `core.hooksPath` on throwaway repositories; it
+     cannot prove anyone configured this one.
+  3. **The added CI step has never run.** `npm run check:docs` is green locally;
+     whether GitHub Actions accepts the workflow with it is unproven until the
+     first pull request, the same shape AF44 recorded for the workflow itself.
+  4. **The guards are not a security boundary and this entry does not claim
+     they are.** `sh -c "git commit"`, `xargs -I{} git commit`, `--no-verify`
+     and a direct editor write all pass. Only the first word of each command
+     segment is inspected.
+  5. **Per-check totals are asserted for consistency, not correctness** (AD46).
+     Every document agreeing on a wrong figure whose addends still sum would
+     pass; the suites running two lines later is what shows it.
+  6. **Nothing here is behavioural evidence about the app.** Every 👁 limit
+     recorded in AF27-AF43, AF49, AF52 and AF53 stands untouched, and
+     ARCHITECTURE.md §6's list of what has no automated coverage is one item
+     **longer**, not shorter.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -4175,3 +5034,212 @@
   correct against every apksigner build available on this machine. The fix
   has not run in CI; that remains a pending acceptance check. Decisions are
   **AD40**.
+- 2026-09-09 — appended **AF53** on `feature/uat-version-and-word-index`, the
+  first branch cut from `dev` under the three-level branching model. **Measured
+  by me**; no prebuild, Gradle build, emulator or device was involved, so the
+  section carries **no 👁**. Establishes that **`useAnimatedProps` is the same
+  machinery as the highlight AF32 proved on hardware**, which is what lets the
+  new word-index readout ship without its own device proof of mechanism:
+  `hook/useAnimatedProps.js:8` is literally `useAnimatedStyle(updater, deps,
+  adapters, true)`, and on native both land on the same
+  `global.UpdatePropsManager.update(...)`, the `isAnimatedProps` flag only
+  skipping the style-props builder. Corroborated in the **pinned** version
+  rather than from documentation: Reanimated 4.5.1's own `PerformanceMonitor`
+  drives a live FPS counter with `createAnimatedComponent(TextInput)` and
+  `useAnimatedProps(() => ({ text, defaultValue: text }))`, and 4.x is
+  New-Architecture-only. Also measured: the worklet toolchain needs **no**
+  config — there is no `babel.config.*` at all, and `babel-preset-expo`
+  auto-adds `react-native-worklets/plugin` when the package is installed. **A
+  ZERO-WORD DOCUMENT IS REACHABLE, and it changed the design**: a pasted `---`,
+  a bare fence and whitespace alone all parse to **zero** words, `applyPaste`
+  guards only on `draft.trim()` (and `'---'` trims to `'---'`), and `usePacer`
+  seeds its index with `Math.max(0, firstWordlikeFrom(...))` which **clamps -1
+  to 0** — so a readout trusting the shared value would have printed
+  `Word 0 / -1`, claiming a word that does not exist. Invariant 1 was
+  **re-measured** rather than inherited: `Number(Word.id)` equals the flat array
+  position for **all 176** sample words, and `Word.id` is a string, which is why
+  the readout reads the numeric shared value. The versionName derivation is
+  measured through **both** loader paths, with a **straddling clock** that
+  advances a full minute per call proving `Date.now` is read **exactly once**;
+  three negative controls each failed exactly their own checks and nothing else
+  (two clock reads → the two agreement checks; no zero-word branch → the two
+  zero-word checks; a clamp → the unclamped check), with byte-identical restores
+  after each. The workflow identity step was **replayed functionally**, not
+  merely parsed — its real body executed against synthetic `build.gradle` files,
+  passing on agreement and failing on a mismatch, on the old literal, **and on a
+  prefix-only match**, which is the row that justifies an exact assertion over
+  the obvious prefix grep. **A SEVENTH instance of the invalid-instrument
+  family, and the first straight RECURRENCE**: the first typecheck probe was
+  named `src/.probe-animated-text.tsx`, a **dotfile**, so `tsc` returned exit 0
+  while `--listFilesOnly` matched it **zero** times — TypeScript's `include`
+  globs do not match dotfiles. That is **AF48's third instrument, verbatim**,
+  hit again in a second session. The entry argues the recurrence is itself the
+  finding: the previous six were six distinct shapes and each drew the same
+  general lesson, whereas a repeat shows the general lesson was recorded and did
+  not prevent the specific trap — so a **mechanical** rule is stated instead
+  (never dot-prefix a TypeScript probe; confirm any `tsc` probe with
+  `--listFilesOnly` before trusting its exit code). A second, smaller slip in
+  the same session is recorded for its mechanism: **`grep -c` exits 1 when the
+  count is 0**, so a cleanup chained after it with `&&` never ran and left a
+  probe file in the tree. Tallies: **15 suites / 411 checks**, 0 failures;
+  baseline 26 files / 0 mismatches, no row changed; lint 0/0; tracked `.mjs`
+  stays at **16**, since no suite was added (AD42 records why). Also measured,
+  and it is what killed two candidate designs: **no `memo(` or `React.memo`
+  anywhere in `src/`**, so any re-render of the reader screen re-reconciles
+  every `WordBox`. Not established: the readout **has never been seen** —
+  including that it updates with no React render, which is *inferred* from the
+  shared code path and **not** observed for this component — the versionName has
+  not been produced by a prebuild, the accessibility mitigation is a structural
+  read with no screen reader run, and the string the worklet allocates per tick
+  is unmeasured. Decisions are **AD41** and **AD42**.
+- 2026-09-09 — appended **AF54** on `docs/count-and-range-drift`. Leads with
+  `scripts/check-core-baseline.mjs`'s header comment: not stale, **INVERTED** —
+  it forbade "15 suites" while fifteen has been the correct count since AD38,
+  an instruction to say the wrong thing rather than a fact that aged, and it
+  survived that way through AD39-AD42 because nothing behavioural depends on a
+  comment. Frames the wider finding as **two sweeps missing two different
+  axes**: the suite-count axis (13→14→15 across AD31/AD37/AD38) was chased
+  through `ARCHITECTURE.md` and the workflow's own "never 16 suites" line each
+  time, but missed this script's docblock on both moves and left the
+  workflow's step name flagged three separate times (AD37, AD38, AF51) without
+  ever being fixed; the check-count axis (396→411 at AD41/AD42) was chased
+  through `ARCHITECTURE.md` §6's table correctly but missed two **prose**
+  citations of the same numbers — `README.md`'s test:local subtotal (271,
+  should be 286) and `ARCHITECTURE.md` §3.1's citation of
+  `prepareDocument-headless-test.mjs`'s own count (35, should be 45) — **found
+  independently in this session by running the real suites and diffing every
+  prose mention against the live result**, rather than by grepping for an
+  already-suspected string. A third axis, the `AD`/`AF` range, was flagged
+  once by AD35 with no trigger named and stayed wrong for six milestones.
+  Corrects all seven sites. Verification: `npm run test:core` **125**
+  (17+18+14+9+15+14+12+26), `npm run test:local` **286**
+  (52+39+20+73+27+45+30), total **411** — matching every figure that was
+  already correct and none that was not. Decisions are **AD43**.
+- 2026-09-10 — appended **AF55** on `docs/retire-signing-fallback`. **Measured
+  by me** from `gh run list`/`gh run view`; the two CI runs were dispatched by
+  the project owner, and no prebuild, Gradle build, emulator, device or install
+  was run by me, so the section carries **no 👁**. **No secret was read, decoded
+  or printed** — certificate digests were redacted at capture. Records that
+  **two `uat-build` dispatches have SUCCEEDED and until this entry neither was
+  recorded in either log**: **34350254968** (`main`, 2026-09-09 12:18:25Z,
+  12m43s) and **34364814937** (`dev`, 14:37:16Z, 13m20s), **all fourteen steps
+  `success` in both**, read per step from the jobs API. Steps 13-14 running at
+  all is new — **AF52 item 3** records both as never having run successfully.
+  **AD40's fix is confirmed in CI and its pending check is DISCHARGED**: both
+  runs print `Using apksigner from build-tools 36.0.0`, the version AGP resolved
+  from `libs.versions.toml`, not the runner's highest — so the two disagreeing
+  opinions AF52 diagnosed are now one, and it is AGP's. AD40's **permanent
+  diagnostic** works too, making the rest auditable rather than inferred: the
+  raw `apksigner` block is visible for the first time, in the format
+  `Signer #<N> certificate SHA-256 digest: <hex>` that AOSP's source predicted,
+  which **settles AF52's open item 2 for 36.0.0 and nothing about 37.0.0**.
+  **Step 12 is a POSITIVE equality assertion** against
+  `EXPECTED_UAT_CERT_SHA256`, corroborated by a DN that is the project owner's
+  own release key and **not** `CN=Android Debug`. **The inference chain to the
+  plugin is set out link by link**, because it is the whole argument: a CI
+  checkout has no `android/` (AF47), so prebuild generates from the stock
+  template, whose guardless `signingConfigs.debug` **AF49 proved as an executed
+  build** yields a `CN=Android Debug` APK — therefore a matching UAT
+  certificate is only reachable if the plugin generated the block **in the
+  from-scratch case**. Link 3 is what makes it an argument rather than an
+  assumption, and it is why **AF52's from-scratch prebuild proves nothing about
+  signing on its own** — its step 12 failed and the certificate was never read.
+  **One residual is stated rather than smoothed over:** no step greps the
+  generated `build.gradle` for the signing block or hashes it, so its presence
+  in CI is established **through the artifact's certificate**, not by inspecting
+  the file — stronger for the property that matters, indirect about the file.
+  Also records **the retirement as executed**: §3 deleted entire (139 lines,
+  document **337 → 198**), §4 surviving minus step 5, numbering **not** closed
+  up; the **seven** removed suite assertions **listed individually** so a reader
+  can confirm none was a live guard on the plugin, all seven having §3 as their
+  subject and therefore **removed, not relaxed**; `AF42_BUILD_GRADLE_SHA256`
+  kept, and its byte-identity assertion **passing after every edit**, which is
+  what proves the `plugins/withReleaseSigning.ts` edits touched no block
+  constant and changed no generated byte. Counts **measured by running, not
+  predicted**: suite **39 → 32**, `test:local` **286 → 279**, `test:core`
+  **125** unchanged, total **411 → 404**, suites **15** and tracked `.mjs`
+  **16** unchanged. `npm run check` exit **0** (26 files, 0 mismatches; 404
+  checks, 0 failures); `npm run lint` exit **0** with no ESLint output at all,
+  which per **AF45** means "eslint exited 0" and not that coverage was
+  demonstrated. Closes by owning a **deferral with no trigger that I proposed
+  the same day AD43 required one**: advising that §3 be held "until the plugin
+  has run a few more times" names no checkable condition — AD35's
+  flag-and-leave shape — and the sharper half is that **a correct trigger
+  already existed and was already satisfied twice**, so the advice would have
+  reset a met condition to an unmeetable one. The lesson drawn is **not**
+  AD43's: AD43 is about *writing* triggers, this is about *reading* them —
+  check whether the existing trigger has already fired before proposing another
+  deferral, since intuition reaches for "a bit longer" precisely when the
+  recorded condition is already met. One `gh run list` settled it. Also fixes
+  one further stale 🧪 figure found by measuring rather than by grepping a
+  suspected string — `ARCHITECTURE.md`'s lint claim of "across **39** files",
+  re-measured at **44** — which drifted on a **third axis** (file additions, not
+  suite or check counts) and which a sweep scoped to this PR's own numbers would
+  never have caught. Decisions are **AD44**.
+- 2026-09-21 — appended **AF56** on `chore/branching-model-guards`. **Measured
+  by me**; no prebuild, Gradle build, emulator or device was involved, so the
+  section carries **no 👁**, and **no git write of any kind** was performed —
+  `git config core.hooksPath` was never run on this repository, only on
+  throwaway repositories in a temp directory. Records that the Claude Code hook
+  contract was **verified against the documentation rather than memory**, and
+  that the most important fact in it is one memory gets wrong: **exit code 2
+  blocks a tool call and exit 1 does NOT** — *"Claude Code treats exit code 1 as
+  a non-blocking error and proceeds with the action"* — so a guard built on
+  exit 1 would print a refusal and then let the call through, which is worse
+  than no guard. Three more docs facts that were load-bearing: a matcher
+  containing anything beyond letters, digits, `_`, `-`, spaces, commas and pipes
+  silently becomes an unanchored **regex**; the deny reason travels as stdout
+  JSON *or* stderr depending on the path taken; and **exit 0 with no output
+  means "no decision", not approval** — which is why an allow writes **nothing**,
+  since printing `permissionDecision: "allow"` would *grant* permission and
+  suppress the operator's own prompts. **THE HOT RELOAD WAS OBSERVED [ran]**:
+  immediately after `.claude/settings.json` was written, a `Bash` call in the
+  same session was **blocked**, with the guard's own reason text surfacing
+  verbatim as the block message. The probe was chosen to be **harmless if it
+  executed** (`gh release view uat` is a read), so the refusal is the result.
+  That one observation establishes hot reload with no restart, that the `Bash`
+  matcher fires, that exit 2 plus the deny JSON genuinely blocks, and that
+  `permissionDecisionReason` is what reaches the model; a scratchpad `Write`
+  then confirmed the file-editing matcher group also runs and correctly allows
+  outside a work tree. Bounded honestly: **one session on the authoring
+  machine**, with a fresh session, another clone, the workspace-trust step, and
+  any `guard-branch` *denial* all unexercised ❓. **A negative control found the
+  INSTRUMENT rather than the subject — the eighth in this repo's family, and the
+  first found by the prescribed method working as intended**: predicting the
+  control's result exposed that section 8 staged one file for three commit
+  attempts, so a broken hook would have made a later commit fail for *"nothing
+  to commit"* and a check pass **for the wrong reason**. Fixed before the
+  control ran; each attempt now stages its own file and a new check asserts the
+  refusal text is the guard's. The control was then surgical 🧪 — 160/6 → 156/10,
+  **exactly the four pre-commit checks**, with the work-branch commit still
+  passing and every pre-push check untouched; reverted and re-hashed identical,
+  `diff` silent. **The 160/6 baseline is explained rather than left puzzling**:
+  it was taken before `.claude/settings.json` existed, deliberately, so that no
+  guard could go live until proven — the six failures were section 7 asserting
+  that very file. Writing it took the suite to **174/0**, and the control
+  re-run against the final suite gives **170/4**, the same four checks. Also
+  recorded: `scripts/check-doc-consistency.mjs` **caught its own author** on its
+  first run, failing four ways of which one was my regex omitting a closing
+  parenthesis — caught by the fail-closed rule — while the other three were
+  correct, including the self-referential one where adding the check itself took
+  the tracked `.mjs` count from 20 to 21. **Entry headings come in two forms**
+  (`- **AD<n> · ` for all 44 AD entries; both `- **AF<n>** <tags> — ` and
+  `- **AF<n> · ` in FINDINGS, 53 and 2), so a single naive pattern would have
+  missed one; anchored at line start, both logs measure **contiguous from 1 with
+  no gaps or duplicates**. **The tracked `.mjs` count must come from git, not a
+  filesystem walk**, demonstrated by creating a `.headless-probe-*.mjs` that
+  `git ls-files --cached --others --exclude-standard` correctly excluded via
+  `.gitignore:40` and a filesystem walk counted. **ESLint does lint
+  dot-directories** — a probe took `eslint .` from 44 to 45 files and its
+  `eqeqeq` violation fired — which is what made `.claude/hooks/` a safe home for
+  the guards. **Branch protection read live** 🧪: both branches
+  `enforce_admins: true`, no force pushes, no deletions, sole required check
+  `static-and-suites`, and `required_linear_history: false`, which is what
+  permits the merge-commit promotions the model needs. **Runtime decided AD46's
+  design** 🧪: `npm run test:all` is 1.57 s for sixteen suites, of which the new
+  guards suite alone is 1.11 s, so re-running the suites to obtain real totals
+  would roughly double every `npm run check`. New tallies: **16 suites, 578
+  checks** (`test:core` 8/125 unchanged, `test:local` 8/453), lint **49 files,
+  0 errors, 0 warnings**, tracked `.mjs` 16 → **21**, and the only manifest row
+  whose hashes moved is **26** (`CLAUDE.md`), `Baseline` untouched and `Record`
+  appended to `AD32, AD33, AD45`. Decisions are **AD45** and **AD46**.

@@ -217,7 +217,7 @@ console.log('\napp.config UAT overlay — headless checks\n');
   check('UAT: name', result.name, 'BETA Reading Aid');
   check('UAT: scheme', result.scheme, 'readingaiduat');
   check('UAT: android.package', result.android.package, 'com.arishh.readingaid.uat');
-  check('UAT: android.version (versionName)', result.android.version, '1.0.0-uat');
+  check('UAT: android.version (versionName) embeds the resolved versionCode', result.android.version, '1.0.0-UAT-424242');
   check('UAT: adaptiveIcon.backgroundColor is yellow', result.android.adaptiveIcon.backgroundColor, '#FFEB3B');
 
   // The Q1 guard. While backgroundImage is present it IS the adaptive icon's
@@ -307,6 +307,60 @@ console.log('\napp.config UAT overlay — headless checks\n');
   } finally {
     Date.now = realNow;
   }
+}
+
+// ─── 6. The versionName carries the build number (AD41) ─────────────────────
+//
+// Every UAT build used to report the literal `1.0.0-uat`, so a tester could not
+// tell one build from another in Settings -> App info. It now derives from the
+// versionCode THAT BUILD RESOLVED.
+{
+  check(
+    'versionName is base + -UAT- + the resolved versionCode',
+    resolve({ READING_AID_UAT: '1', UAT_VERSION_CODE: '29814999' }).result.android.version,
+    '1.0.0-UAT-29814999',
+  );
+
+  // THE LOAD-BEARING CHECK IN THIS SECTION. `Date.now` advances a FULL MINUTE on
+  // every call, so a second read of the clock inside the overlay would push the
+  // minute counter on and the two fields would disagree. That failure is worse
+  // than the static string it replaces: it would look precise while lying.
+  const realNow = Date.now;
+  let calls = 0;
+  let straddled;
+  try {
+    Date.now = () => {
+      calls += 1;
+      return 1_800_000_000_000 + (calls - 1) * 60_000;
+    };
+    straddled = resolve(UAT_ON).result;
+  } finally {
+    Date.now = realNow;
+  }
+
+  check('the clock is read EXACTLY ONCE per resolution', calls, 1);
+  check(
+    'versionName and versionCode AGREE under a clock that straddles a minute per call',
+    straddled.android.version,
+    `1.0.0-UAT-${straddled.android.versionCode}`,
+  );
+
+  // The base is READ from the static config, not re-literalled in the overlay,
+  // so `expo.version` and the UAT versionName cannot drift apart.
+  const rebased = structuredClone(PRISTINE);
+  rebased.version = '2.7.3';
+  check(
+    'the base version is DERIVED from config.version, not a second literal',
+    resolve(UAT_PINNED, { base: rebased }).result.android.version,
+    '2.7.3-UAT-424242',
+  );
+
+  // The release identity is untouched: the overlay writes android.version only.
+  ok(
+    'UNSET: android.version stays absent and root version is untouched',
+    resolve({}).result.android.version === undefined && resolve({}).result.version === '1.0.0',
+    'the unset path grew a versionName',
+  );
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

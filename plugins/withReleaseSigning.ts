@@ -6,13 +6,14 @@
  * (AD18). This file states only what the code does.
  *
  * WHAT IT REPLACES. The signing configuration used to be a hand edit applied to
- * the generated, gitignored android/app/build.gradle, with RELEASE-SIGNING.md
- * §3 holding a prose copy so a human could put it back. That works on a machine
- * where someone has already done it once. It does not work anywhere else: a
- * fresh checkout has no android/ at all, so prebuild regenerates from the stock
- * template, whose `release { signingConfig signingConfigs.debug }` makes
- * assembleRelease SUCCEED and emit a debug-signed "release" APK (AF47, AF49).
- * Generation, not restoration, is what makes that unreachable.
+ * the generated, gitignored android/app/build.gradle, with a prose copy kept in
+ * RELEASE-SIGNING.md so a human could put it back — since retired (AD44). That
+ * works on a machine where someone has already done it once. It does not work
+ * anywhere else: a fresh checkout has no android/ at all, so prebuild
+ * regenerates from the stock template, whose
+ * `release { signingConfig signingConfigs.debug }` makes assembleRelease
+ * SUCCEED and emit a debug-signed "release" APK (AF47, AF49). Generation, not
+ * restoration, is what makes that unreachable.
  *
  * THE GRADLE SEMANTICS ARE UNCHANGED — AD30's design is preserved byte for
  * byte, and that is the point rather than a coincidence. The three constants
@@ -73,13 +74,13 @@ const withAppBuildGradleTyped = withAppBuildGradle as unknown as WithAppBuildGra
 
 /* ─── The three edits, verbatim ──────────────────────────────────────────────
  *
- * These reproduce RELEASE-SIGNING.md §3a/§3b/§3c byte for byte, and the suite
- * asserts exactly that against a committed copy of the stock template.
+ * These are the sole source of the three edits. The suite asserts the transform
+ * they drive against a committed copy of the stock template, byte for byte.
  * Backticks and dollar-brace sequences inside the Gradle text are escaped for
  * the TypeScript template literal and are NOT part of the emitted bytes.
  */
 
-/** §3a — inserted immediately before the top-level `android {` block. */
+/** Edit 1 — inserted immediately before the top-level `android {` block. */
 const SIGNING_PREAMBLE = `/* ---------------------------------------------------------------------------
  * Reading Aid release signing. See RELEASE-SIGNING.md and DECISIONS.md AD30.
  *
@@ -127,7 +128,7 @@ gradle.taskGraph.whenReady { taskGraph ->
     }
 }`;
 
-/** §3b — appended inside `signingConfigs`, after the template's `debug` block. */
+/** Edit 2 — appended inside `signingConfigs`, after the template's `debug` block. */
 const RELEASE_SIGNING_CONFIG = `        release {
             // Populated only when keystore.properties is present and complete.
             // If it is not, this stays empty, the release buildType below gets NO
@@ -141,7 +142,7 @@ const RELEASE_SIGNING_CONFIG = `        release {
             }
         }`;
 
-/** §3c — replaces the template's three-line release signingConfig. */
+/** Edit 3 — replaces the template's three-line release signingConfig. */
 const RELEASE_BUILD_TYPE = `            // Signed from keystore.properties via signingConfigs.release (AD30).
             // NEVER point this at signingConfigs.debug -- that is the template default
             // and it emits an installable debug-signed "release" APK. See RELEASE-SIGNING.md.
@@ -194,7 +195,7 @@ const ANCHOR_RELEASE_BUILD_TYPE = [
   '',
 ].join('\n');
 
-const DOC = 'See RELEASE-SIGNING.md §3 and DECISIONS.md AD38.';
+const DOC = 'See RELEASE-SIGNING.md and DECISIONS.md AD38.';
 
 function replaceExactlyOnce(
   contents: string,
@@ -298,12 +299,12 @@ export default withReleaseSigning;
  * The four Gradle blocks, exported for the suite alone — nothing in the plugin
  * path reads this.
  *
- * RELEASE-SIGNING.md §3 keeps a prose copy of these blocks as a fallback, which
- * is a second copy of the same text with no mechanism keeping the two in step —
- * exactly the unguarded duplication PORT-PLAN.md §5.1 diagnoses in F-PRESETS-5,
- * and which this repo has recorded drifting three times (AD2, AF8, AD26). The
- * suite closes that by asserting the document's fenced blocks against these
- * constants, so the fallback cannot quietly stop describing what is generated.
+ * These constants are now the ONLY copy of this Gradle text in the repo. AD44
+ * retired the prose duplicate RELEASE-SIGNING.md used to hold, which removes the
+ * unguarded duplication PORT-PLAN.md §5.1 diagnoses in F-PRESETS-5 and which
+ * this repo has recorded drifting three times (AD2, AF8, AD26) — there is no
+ * second copy left to drift. What the suite asserts instead is the transform
+ * itself, against a committed copy of the stock template (AF42's hash).
  */
 export const SIGNING_BLOCKS = {
   preamble: SIGNING_PREAMBLE,
