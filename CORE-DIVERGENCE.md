@@ -113,7 +113,7 @@ manifest is scoped rather than exhaustive.
 | 23 | `src/storage/storage.ts` | port, platform-swapped to MMKV | `d354bb665358fa0b60255158c9d7a4a2907188f14182ced9514adea206e64315` | `d354bb665358fa0b60255158c9d7a4a2907188f14182ced9514adea206e64315` | n | AD6 |
 | 24 | `src/storage/readingPosition.ts` | port, byte-identical to web | `3385b12b1a6d8e4a6190bbbe53fed40505d028a7ec74794125fab5776a73e5fb` | `3385b12b1a6d8e4a6190bbbe53fed40505d028a7ec74794125fab5776a73e5fb` | n | AD25 |
 | 25 | `src/storage/headless-test.mjs` | adapted copy of web's suite | `2e35f2d20b79bc12c78af9728ed1a45ad7673386047315a1892c6121d784e692` | `2e35f2d20b79bc12c78af9728ed1a45ad7673386047315a1892c6121d784e692` | n | AD27 |
-| 26 | `CLAUDE.md` | working agreement, carried verbatim from web (AD12, AD14) | `407d965a93d176bc5da85922c7aef0965fd53749e5f2e63cd753490b7f30e8a6` | `4832063a4e66dcc7ba04e3a1362813b352711c78cb5298545db621f7d2a4b4cf` | y | AD32, AD33, AD45 |
+| 26 | `CLAUDE.md` | working agreement, carried verbatim from web (AD12, AD14) | `407d965a93d176bc5da85922c7aef0965fd53749e5f2e63cd753490b7f30e8a6` | `671c9da390eadfbbe79f3b5ba1bd7e0a00499110657f0abb6660cd3799cd15d0` | y | AD32, AD33, AD45, AD52 |
 
 <!-- END MANIFEST -->
 

@@ -4347,6 +4347,99 @@
      ARCHITECTURE.md §6's list of what has no automated coverage is one item
      **longer**, not shorter.
 
+## The web parity exercise — the map is on disk, the triage is not
+
+> Scope note that governs this section: the feature map was written in an
+> earlier session and the triage was done in discussion with the project owner;
+> **neither is mine**. What is mine is what I re-ran in this session, read-only,
+> against the map file and the web clone — tagged 🧪 — and what I read in them —
+> tagged 📐. What reached me only as a report is tagged ❓. No device, emulator
+> or build was involved, so this section carries **no 👁**, and nothing in it is
+> behavioural evidence about either app. The decision taken in response is
+> **AD47**; nothing from it is restated here (AD18).
+
+- **AF57** 🧪📐❓ — **The parity exercise behind AD47: the feature map was
+  taken at web `15b6ca3` and holds 136 feature rows; one row derived from its
+  keyboard reference brings the triage to 137; and all twelve spot-checked rows
+  match — re-checked against the web clone for this entry.**
+
+  **Where the map is, and that no repository tracks it.** It is
+  `Reading Aid Tool/Feature map — Reading Aid Tool (web).md`, beside this repo
+  on the authoring machine: 265 lines, 33,233 bytes, modified 2026-09-22 11:18
+  🧪. Its header states branch `main`, commit `15b6ca3`, a clean tree, and a date
+  taken of 2026-09-22 📐. The web clone's HEAD is
+  `15b6ca34e050f28eb1aacacaeaeabc8ef7584e28` (2026-08-31, web #107) — the same
+  fork point CORE-DIVERGENCE.md §1 records — and its only working-tree change is
+  the map itself, untracked 🧪. **So the map is tracked in neither repository**;
+  it survives only as a file on one machine. Its method note says no browser was
+  run and that each row is tagged `[read]` or `[inferred]` from code 📐.
+
+  **The count: 136 mapped + 1 derived = 137.** The map's §1 holds **136**
+  feature rows across twelve subsections — 22 + 8 + 12 + 20 + 15 + 14 + 12 + 7
+  + 6 + 7 + 9 + 4 — counted by parsing its tab-separated tables and excluding
+  each table's header row 🧪. Its §2–§5 are reference tables (settings,
+  keyboard input, themes, doc-versus-code drift), not feature rows 📐. **The
+  triage matrix adds one row derived from the map's §3 keyboard reference —
+  "Keyboard shortcuts (Space, ←/→, Home)" — for 137 in all**, and triages that
+  row Drop ❓ (relayed). Recorded explicitly because a count of the map alone
+  gives 136, which would otherwise read as a disagreement with the triage.
+
+  **The triage totals — relayed, and NOT reproducible from here.** 137 web rows:
+  **66 alpha, 60 later, 11 drop**; plus **16 new Android-only rows** ❓. The
+  three web figures close on the total, 66 + 60 + 11 = 137 🧪 — arithmetic only.
+  **The triage table lives outside this repo**: it was done in discussion, and a
+  search of the project folders and this machine's session scratchpads for it
+  found nothing 🧪. So which row landed in which epic, and what the 16
+  Android-only rows are, cannot be checked from a clone. What the triage left in
+  the repo is AD47's epic list and PROJECT_CONTEXT.md §5's tables.
+
+  **The twelve spot-checks — relayed as all matching, RE-RUN here, all
+  matching.** The earlier check, against a web clone at `15b6ca3`, is relayed ❓.
+  Every one of the twelve was re-run for this entry against the clone, read-only,
+  by reading the cited lines and sweeping for callers 🧪:
+
+  | # | Row | What the web source says at `15b6ca3` |
+  |---|---|---|
+  | 1 | Dwell multipliers | `src/pacer/dwell.ts:25-27` — clause **1.75**, sentence **2.5**, paragraph **3** |
+  | 2 | The ASCII-hyphen doc drift | web `ARCHITECTURE.md:198` lists `, ; : – —` for 1.75×; `dwell.ts:54` also matches the ASCII `-` |
+  | 3 | Bionic intensity ratios | `src/reader/bionic.ts:16-20` — low **0.3**, medium **0.5**, high **0.6** |
+  | 4 | The WPM range | `src/pacer/PacerControls.tsx:25-26` — **50** to **1000** |
+  | 5 | Lead-words and chunk-size limits | `src/pacer/ModeSettings.tsx:69` `clampInt(…, 0, 5)`; `:129` `clampInt(…, 2, 4)` |
+  | 6 | The 9 preset names | `src/presets/presets.ts:69-212` — Deep Current, Nightshift, First Contact, Afterburner, Laser, Steady Gaze, Ironclad, Onboarding Ramp, Open Access |
+  | 7 | The storage key prefix | `src/storage/storage.ts:14` — `readingaid_v1:` |
+  | 8 | The resume-history gate and cap | `src/storage/readingPosition.ts:78-79` — moved **> 0.02**, then `.slice(0, 5)` |
+  | 9 | Light theme colours | `src/index.css:10-19` — the seven values AD26 transcribed, `#faf9f7` through `#c0392b` |
+  | 10 | The 300-word PDF paragraph split | `src/parsers/pdfText.ts:166` — `splitOversizedParagraphs(…, maxWords = 300)` |
+  | 11 | "Settings do not persist" | `storageSet` has exactly two callers: `readingPosition.ts:83` and `presets.ts:230` |
+  | 12 | "`play()`/`pause()` unreachable" | no `.play(` or `.pause(` call site anywhere in `src/**/*.ts{,x}` |
+
+  **What twelve of 136 does and does not show.** It shows the map describes the
+  code accurately **on these twelve rows**, which span constants, a doc drift,
+  persistence and dead code 📐. It does not show the other 124 are right, and the
+  map's own honest-limits note says that anything visual or pdf.js-dependent in
+  it is `[inferred]` from code, with no browser run 📐. Two of the twelve bear
+  directly on alpha decisions: row 11 is the evidence behind AD49's rejected
+  alternative, and row 10 is a PDF heuristic E2 inherits — its `pdfText.ts` is
+  seeded here, byte-identical to web at the fork (CORE-DIVERGENCE.md row 9) 📐.
+
+  **The row-level triage has no home in this repo yet — deferred with a trigger
+  (AD43).** *Before the first epic's implementation branch is cut, that epic's
+  row list lands in the repo as GitHub issues* — AD18 already names issues as
+  the home for queued work with a discrete finish line. Until then, AD47's epic
+  names are the triage's only record here, and those issues are also what makes
+  the loss of the untracked map survivable.
+
+  ### NOT ESTABLISHED
+
+  1. **The triage split, the 16 Android-only rows, and the derived keyboard
+     row's Drop verdict are relayed** ❓. None is on disk.
+  2. **The earlier spot-check's method is unknown**; only this session's re-run
+     is measured.
+  3. **Nothing here is evidence about either app at runtime.** Every row
+     re-checked is a reading of source, exactly as the map's rows are.
+  4. **The map file is untracked and could be lost.** This change does not copy
+     it into the repo; the per-epic issues above are the named mitigation.
+
 ## Change log
 - Created 2026-08-31, alongside [DECISIONS.md](DECISIONS.md), to make
   CLAUDE.md §2 satisfiable for this repo. Seeded with AF1–AF8, covering what
@@ -5243,3 +5336,18 @@
   0 errors, 0 warnings**, tracked `.mjs` 16 → **21**, and the only manifest row
   whose hashes moved is **26** (`CLAUDE.md`), `Baseline` untouched and `Record`
   appended to `AD32, AD33, AD45`. Decisions are **AD45** and **AD46**.
+- 2026-09-30 — appended **AF57** on `docs/alpha-scope-decisions`, recording the
+  web parity exercise behind AD47. The feature map sits beside this repo,
+  **untracked in the web clone and in no git history**; its header states web
+  `15b6ca3`, and the clone's HEAD was confirmed as `15b6ca3` with the map as its
+  only working-tree change. It holds **136** feature rows, counted by parsing
+  its tables; the triage adds **one derived row**, "Keyboard shortcuts (Space,
+  ←/→, Home)", from its keyboard reference, triaged Drop, to reach **137** — so
+  136 + 1 is recorded rather than left to read as a disagreement. The triage
+  split, **66 alpha / 60 later / 11 drop plus 16 Android-only rows**, is
+  relayed: the triage lives outside the repo and was found nowhere on disk. The
+  **twelve spot-checked rows are named**, and were **re-run for this entry
+  against the clone, read-only — all twelve match** — while the earlier check
+  stays relayed. Records what twelve of 136 does and does not show, and defers
+  the row-level triage with a trigger: before an epic's implementation branch is
+  cut, its row list lands as GitHub issues. Decisions are **AD47–AD52**.
