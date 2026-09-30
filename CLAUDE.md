@@ -72,6 +72,16 @@ When a prompt asks for a command's output, paste the output verbatim — a summa
 what it said is not a substitute, because the point of the step is that the reader
 can check it independently. If a command produced no output, say so explicitly.
 
+**The testing ladder** (AD52 is the full statement). Per feature: the suites plus
+an emulator check, on the work branch. Per batch, once several features have
+merged: an emulator integration pass on `dev`. Then an annotated
+`sit-YYYY-MM-DD.N` tag on the tested `dev` commit (`N` from 1 each day, always
+present), a UAT build dispatched from that tag and read on a physical device,
+and only then the promotion PR to `main` — and only if `dev`'s tip is still the
+tagged commit; if it is not, re-run the batch pass and re-tag. The tag is a git
+write, so I make it (§1). There is no SIT branch. Feel and frame timing are
+judged at the device rung, never on the emulator (AF35).
+
 ## 4. Two invariants that must never break
 Both cause silent, hard-to-trace corruption. Each is stated in full below because
 this file is Android-owned (AD32) and must stand alone. The originals —

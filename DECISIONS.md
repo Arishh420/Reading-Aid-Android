@@ -4568,6 +4568,381 @@
   runs it, the same shape of pending check AD34 recorded for the workflow
   itself.
 
+## Milestone: alpha scope
+
+> **Provenance, stated once for the six entries below.** Each ruling was made
+> in discussion with the project owner and reached this repo as a written brief
+> on 2026-09-30; the discussion itself is not in the repo. The rulings are the
+> project owner's and are recorded as theirs. Where an entry cites a fact about
+> the code, that fact was read or measured for the entry and is tagged; where an
+> entry says **"none was named"**, nothing was invented to fill the gap.
+> **Documentation only**: no source file, dependency or workflow changed with
+> these entries. The parity exercise the scope came from is **AF57**.
+
+- **AD47 · The ALPHA is defined: the user can import their own PDF and
+  Markdown documents, find them again in a library, read them comfortably,
+  keep their place, and see what they have read. Everything else is later. It
+  is organised as seven alpha epics and four deferred ones, and it RETIRES
+  AD23's post-MVP ladder AS A PRIORITY LIST while PRESERVING EVERY ONE OF ITS
+  GATES — the gates are evidence, not priorities. AD23 is not edited.**
+
+  **The epics.** Alpha: **E1** Library & import · **E2** PDF reading · **E3**
+  Reader comfort & settings · **E4** Place & progress · **E5** Reading stats ·
+  **E6** Scale & performance · **E7** Quality (accessibility, error states).
+  Deferred: **E8** Modes (flowing polish, chunk) · **E9** RSVP & presets ·
+  **E10** EPUB · **E11** post-alpha odds and ends.
+  [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) §5 holds the table, with each gate
+  folded into its epic; it is not restated here (AD18).
+
+  **Where the scope came from.** A feature map of the frozen web app, taken at
+  web `15b6ca3`, was compared against this repo at `9c78645`; its rows were
+  triaged alpha, later or drop, and Android-only rows were added. **AF57**
+  records that exercise — what was re-checked for it, and what is only
+  relayed.
+
+  **Why the ladder cannot be the alpha's priority list.** AD23 ordered its nine
+  rungs **cheapest first** and said so. That is a sound order for returning cut
+  features one at a time to a finished MVP. It is the wrong order for a release
+  defined by what a reader needs, and PDF is the clearest case: rung **8 of 9**,
+  behind chunk mode (3) and presets (5), because it is gated on a spike
+  (`D-O`) — while "import their own PDF … documents" is half of the alpha's
+  first clause. Climbing the ladder as written would build two deferred epics
+  before the alpha's second one.
+
+  **Why the gates survive the reordering.** Each rung named what has to be true
+  before its feature returns: a package that is not installed 🧪, a regex that
+  has never run on a device 📐, a spike not yet started. Those are facts about
+  the repo, and a change of priorities changes none of them. So each is carried
+  word for word into the epic that now owns it, and PROJECT_CONTEXT.md §5.3
+  traces all nine rungs so the carrying can be checked rather than trusted.
+  The mapping: rung 1 → E1, 4 → E3, 6 → E3, 8 → E2, 9 → E6 (alpha); 3 → E8,
+  2 → E9, 5 → E9, 7 → E10 (deferred). **Rungs 4 and 6 go to E3 by the project
+  owner's ruling**: dark reading on a phone and per-book pacing controls are
+  both alpha, and both rows were triaged Alpha. **E11 absorbs no rung.** It
+  collects rows triaged Later that belong to no deferred theme — drag-and-drop,
+  the format selector dropdown, the word-number field, minimal-HUD/compact
+  transport, the resume interstitial, session-log growth capping.
+
+  **EPUB is deferred behind PDF DELIBERATELY.** Both formats need the same new
+  pipeline: a file picked, copied into app storage (AD48), fingerprinted,
+  parsed, and found again in a library. The point is to prove that pipeline
+  once, with one format; proving it twice at once doubles the surface while
+  neither half is known to work. EPUB then arrives on a pipeline that already
+  works, with only its container layer left to answer (`D-P`) — its pure
+  structure half already runs under the Hermes CLI (AF23).
+
+  **Supersessions IN PART, recorded as pointers. None of these entries is
+  edited.**
+  - **AD20** (Markdown only; PDF and EPUB cut) — PDF returns as E2; EPUB stays
+    cut until E10. AD20's reasons for doubting pdf.js on Metro — the `?url`
+    worker import, the worker's URL semantics, the `DOMMatrix` stub — are not
+    overturned. They are what `D-O` must answer, and `D-O` is now on the
+    alpha's path.
+  - **AD19 and AD23's single-control scope** (WPM is the only user control) —
+    E3 brings a settings surface, and AD49 is how it persists. Presets stay
+    deferred (E9).
+  - **AD23's ladder** — as a priority list only; its gates are kept, above.
+  - **AD24 `D-H`** (no file picker; the seeded sample plus a paste box) — E1
+    and AD48 replace it. The bend PROJECT_CONTEXT.md §2 records — "open a
+    document" met in spirit, not letter — is what E1 closes.
+  - **AD24 `D-I`** (reading position only; not WPM, not settings) — AD49
+    persists settings and AD51 persists reading time. `D-I`'s asymmetry
+    argument (WPM resetting costs one gesture; position resetting costs the
+    product) was about the MVP's scope and is not refuted — it is outgrown.
+  - **AD24 `D-J`** (one screen) — its own text names its trigger: *"A picker
+    screen arrives when a picker does."* E1 is that picker, so `D-J`'s revisit
+    fires on its own terms. **This entry does not decide how many screens the
+    alpha has**; the wireframes will.
+
+  **Not superseded:** AD24 `D-G`. Its revisit trigger — *"the first document
+  that visibly stutters on scroll, or takes more than a moment to mount"* — and
+  AF35's rule that it be judged on hardware move intact into E6. `D-L`, `D-M`
+  and `D-N` are untouched.
+
+  **Alternatives rejected.** *(a) Keep the ladder and climb it* — it is ordered
+  by cost, so it would build chunk mode and presets before PDF. *(b) Rewrite
+  AD23 in place* — not available: this file is append-only, and a reordered
+  AD23 would misstate what was decided on 2026-09-01. *(c) Drop the gates along
+  with the order* — each gate is a measured or structural fact, and discarding
+  one buys a rediscovery.
+
+  **What would overturn it.** None was named. One condition is visible from the
+  repo, and it is an inference rather than a ruling: if spike `D-O` finds that
+  pdf.js cannot run under Metro and Hermes at an acceptable cost, E2 cannot ship
+  as scoped and the pipeline loses the format it was to be proven with. That
+  would need a new decision — not a quiet substitution of EPUB.
+
+  **What this does NOT do.** It sets no dates, no sizes, and no order among
+  E1–E7. It builds nothing and changes no source file. And the row-level
+  triage — which row sits in which epic — is not in this repo; AF57 records
+  that, and the trigger for landing it.
+
+- **AD48 · Import COPIES the file into app storage; the app never holds a
+  `content://` URI. Once the copy is verified readable and the user has named
+  the book, the app MAY offer to delete the original — never by default, and
+  never where the source provider cannot delete. "Save a copy to…" exports the
+  app's copy back out through the system picker, so import is never
+  one-way.**
+
+  **Why a copy.** A book must reopen from the library (E1) without depending on
+  anything outside the app. A held URI depends on a permission grant the user
+  can revoke, and on the file staying where it was; when either fails, the
+  library holds an entry that points at nothing, and the failure surfaces at the
+  moment the user tries to read. A copy has neither dependency. Its cost is
+  storage — the book exists twice until the original goes — which is the reason
+  the delete offer exists at all.
+
+  **Why the delete offer is fenced three ways.** Deleting the original is the
+  one irreversible step in the flow. (1) **The copy is verified readable
+  first**, so the only readable copy of a file whose import failed can never be
+  the one deleted. (2) **The user has named the book**, so the offer comes at
+  the end of an import the user has accepted, not in the middle of one. (3)
+  **Never by default.** And the offer **must not appear when the source
+  provider cannot delete** — **if that capability cannot be detected, the offer
+  never appears** (the project owner's ruling): an offer the app cannot know
+  will work is worse than no offer. Whether the capability *can* be detected is
+  unknown: neither `expo-document-picker` nor `expo-file-system` is installed
+  🧪, so neither package's API has been read here ❓.
+
+  **Why export.** A library the user cannot get a file back out of turns the
+  app into a sink. "Save a copy to…" writes the app's copy out through the
+  system picker, so a user who accepted the delete offer has not lost the
+  ability to keep the file somewhere else.
+
+  **Alternatives rejected.** *(a) Hold a persisted URI* — fragile, for the two
+  reasons above. *(b) Delete the original silently after import* —
+  unrecoverable if anything downstream is wrong, and it passes a move off as a
+  copy.
+
+  **A consequence named, not solved: AD27's decode-path hazard becomes live.**
+  Position is keyed by a content fingerprint, and AD27 measured that fingerprint
+  as sensitive to a UTF-8 BOM and to CRLF vs LF 🧪 — so the same book keys
+  differently if two paths disagree about what its text is. Today every
+  document arrives as a string and is fingerprinted over its re-encoded UTF-8.
+  An imported file arrives as **bytes**, so the implementation has to choose
+  whether to fingerprint those bytes (web's method) or the decoded string
+  (Android's today) — and a pasted copy and an imported copy of the same
+  Markdown may then key differently. AD27 already records web's own suggested
+  route for the bytes case. This entry does not choose.
+
+  **What would overturn it.** None was named.
+
+- **AD49 · Settings are GLOBAL DEFAULTS WITH SPARSE PER-BOOK OVERRIDES. A book
+  stores only the settings the user deliberately changed for it; everything
+  else follows the global default, so a later change to a default reaches every
+  book that never overrode that setting. Two paired actions: "Set as my
+  default" and "Reset this book to defaults".**
+
+  **Why sparse.** The failure a per-book model has to avoid is a book frozen at
+  whatever the defaults were when it arrived: change your default speed months
+  later and your older books never notice. Storing only deliberate changes
+  makes "this book is different" an explicit act, and leaves everything else
+  live. The two actions are the two directions of that — promote this book's
+  choice to every book, or drop this book's choices back to everyone's.
+
+  **Alternatives rejected.** *(a) Full per-book copies* — every book carries
+  every setting, copied from the defaults at import time, which is exactly the
+  freeze above. *(b) Web's behaviour.* As the feature map records it (AF57):
+  **live settings reset on reload; saved user presets and reading position do
+  persist.** Re-checked against the web clone at `15b6ca3` for this entry:
+  `storageSet` has exactly two callers, `readingPosition.ts:83` and
+  `presets.ts:230` 🧪. So the only way web keeps a setting is a manual,
+  whole-bundle, book-independent preset — and presets are deferred (E9).
+
+  **Supersedes AD24 `D-I` in part**, by pointer per AD47; `D-I` is not edited.
+  The storage engine does not change: MMKV, through `src/storage/storage.ts`,
+  the one file that touches the native store (AD6) 📐.
+
+  **What this does NOT settle.** Which settings exist is E3's scope, and where
+  their controls live is the wireframes'. Whether presets, when E9 brings them
+  back, act on the defaults, on a book's overrides, or on both is E9's to
+  decide.
+
+  **What would overturn it.** None was named.
+
+- **AD50 · Position is shown in PAGES where the document has them and in
+  PERCENT where it does not. PDFs show "page N / M", using the PDF's PAGE LABEL
+  where present — what is printed on the page, roman-numeral front matter
+  included — and falling back to the sheet index where labels are absent.
+  Markdown and EPUB show percent. It is an INDICATOR ONLY: no pagination, no
+  layout change.**
+
+  **Why pages for a PDF, and why the label.** A PDF's reader already navigates
+  by page — a citation, a contents page, a note in a margin — so an indicator
+  in the same vocabulary lets them find a place they already know. The label,
+  rather than the sheet index, is what makes it match the paper: a book whose
+  body starts on sheet 15, after fourteen roman-numeral pages, prints "1" on
+  sheet 15, and its label says "1" too.
+
+  **The honest consequence of the fallback.** A PDF with no labels has only its
+  sheet index, which disagrees with the printed number by exactly the length of
+  the front matter. That is accepted and said plainly rather than patched:
+  guessing an offset would be wrong on some books and unverifiable on all of
+  them.
+
+  **Why percent elsewhere.** Markdown and EPUB are reflowable. They have no page
+  until something lays one out, and inventing one would be pagination, which
+  this rules out.
+
+  **"Indicator only" is load-bearing.** The reading surface stays one continuous
+  flow (AD21, AD24 `D-G`); nothing is paginated, and nothing breaks at a page
+  boundary. A page readout that follows the pacer is a per-tick display, so it
+  is bound by CLAUDE.md invariant 2 exactly as AD42's word-index readout is —
+  derived from the shared value on the UI thread, never through React state 📐.
+
+  **Printed page numbers in the extracted text STAY STRIPPED.** `pdfText.ts`
+  already drops bare page numbers — the `Page N` form anywhere, and roman
+  numerals only at a page's first or last line — and running headers and
+  footers that repeat on at least half the pages
+  (`src/core/parsers/pdfText.ts:30-38`, `:66-155`) 📐. The indicator comes from
+  the PDF's metadata, not from text those heuristics removed, and they must stay
+  as they are: otherwise a page number would be paced and highlighted as a word
+  between two paragraphs.
+
+  **Carrying a page on each block changes a forked core parser; the manifest
+  rows come WITH that implementation.** `linesToParagraphs` returns `string[]`:
+  the page each paragraph came from is known inside the function (its
+  `pageStart` cue) and discarded at the return. And `Block` has no page field
+  (`src/core/model/types.ts`, whose docblock asks that the model stay "minimal
+  and format-agnostic") 📐. So the implementation edits at least `pdfText.ts`
+  (CORE-DIVERGENCE.md row 9) and probably `types.ts` (row 4), and the suites
+  that pin them (rows 18 and 20) are likely to follow — an inference from the
+  code, not a design. Those row updates belong to the implementation's pull
+  request, per CORE-DIVERGENCE.md §3; this change edits no source file. The
+  labels themselves come from the decode layer, which is unported: pdf.js's
+  page-label support has never been exercised in this repo ❓, and it sits
+  behind spike `D-O`.
+
+  **What this does NOT settle.** Whether percent replaces AD42's `Word N / M`
+  readout or sits beside it. **AD42 stands**; the wireframes will decide
+  whether the readouts sit together.
+
+  **What would overturn it.** None was named.
+
+- **AD51 · Reading time counts ONLY while the pacer is running AND the app is
+  in the foreground. No wakelocks and no polling: the counter rides the
+  existing position-flush cadence. A paused book in a pocket counts nothing.**
+
+  **Why.** "See what they have read" (AD47, E5) is worth showing only if the
+  number means reading. Time with a book open measures the pocket — the book
+  left paused on screen, the phone put away with the app still on top. The
+  pacer running is the one signal this app has that the user is reading,
+  because the pacer runs only when they start it.
+
+  **Why no wakelock and no polling.** A wakelock keeps the screen on to keep a
+  clock honest, spending the user's battery on a statistic. Polling adds a
+  timer whose only job is the statistic. The app already writes its state at a
+  steady rhythm — the position flush: `SAVE_INTERVAL_MS` of 2000 at
+  `src/app/index.tsx:84`, the interval at `:149`, and extra flushes on pause,
+  on unmount and on a document switch (`:158`, `:188`, `:195`) 📐. Reading time
+  is written at those same moments and costs no new timer. No keep-awake
+  package is installed, and nothing in `src/` asks for a wakelock 🧪.
+
+  **ELAPSED TIME MUST COME FROM TIMESTAMPS, NOT FROM COUNTING FLUSHES.** A flush
+  is not a clock tick. `flushPosition` returns at once unless the position is
+  dirty (`index.tsx:142`), and it is dirty only when the index has moved 📐. At
+  low speed one word can outlast a whole interval: at 50 WPM a word is 1.2 s,
+  and the paragraph-end dwell of 3× (`DWELL_PARAGRAPH`) holds it for 3.6 s — so
+  some 2 s intervals flush nothing while the pacer is plainly running
+  (arithmetic from the code, not a measurement). Adding 2 s per flush would
+  undercount slow reading. The flush decides **when** the total is written;
+  timestamps decide **what** it is.
+
+  **The foreground half has no mechanism yet.** Nothing in `src/` uses
+  `AppState` 🧪. Listening for the app's state changes is an event rather than
+  a poll, so it fits this decision; how it is done is the implementation's.
+
+  **OPEN, with a trigger (AD43): does `requestAnimationFrame` stop when the app
+  is backgrounded on Android?** If it stops, the pacer halts itself in the
+  background and the clock partly enforces the foreground rule on its own; if
+  it does not, only the foreground check stands between a pocketed, playing
+  book and a counting clock. Nothing here has measured it ❓ — AF34 measured
+  rAF's time base on hardware, not its behaviour in the background. **Trigger:
+  the first implementation of the timer** settles it, on hardware, before the
+  timer's numbers are trusted.
+
+  **Alternative rejected.** *Time with the book open* — it measures the
+  pocket.
+
+  **What would overturn it.** None was named.
+
+- **AD52 · The TESTING LADDER, from one feature to `main`. Per feature: the
+  headless suites plus an emulator check, on the work branch. Per batch, once
+  several features have merged: an emulator integration pass on `dev`. Then an
+  annotated tag on `dev`, `sit-YYYY-MM-DD.N`, marking the tested snapshot; a UAT
+  build dispatched from that tag and read on a physical device; and only then
+  promotion to `main` — provided `dev`'s tip is still the tagged commit. There
+  is no SIT branch.**
+
+  **The rungs, and what each is for.**
+  1. **Per feature, on its work branch** — `npm run check`, `npm run lint`,
+     and an emulator check of the feature. The suites cannot execute a worklet,
+     a shared value or a native view (ARCHITECTURE.md §6), so the emulator is
+     the first place a UI change is seen at all.
+  2. **Per batch, on `dev`** — an emulator integration pass once several
+     features have merged. Features that pass alone can fail together; this is
+     where that is caught, before a tag claims otherwise. **No batch size is
+     fixed.**
+  3. **The tag** — an annotated `sit-YYYY-MM-DD.N` on the `dev` commit the
+     batch pass tested. **`N` starts at 1 each day and increments for each
+     further batch tagged that day, and it is always present, the first batch
+     included** — so every tag has one shape and no two can collide.
+  4. **UAT** — a `uat-build` dispatch (AD39) from that tag, installed on a
+     physical device and read. This is the first rung on hardware, and the one
+     where feel and frame timing are judged: AF35 measured the emulator as
+     materially more pessimistic than a device, so the emulator rungs are
+     functional checks and never timing ones.
+  5. **Promotion** — the `dev` → `main` merge-commit pull request (CLAUDE.md
+     §1, AD45).
+
+  **THE PROMOTION RULE: `dev`'s tip must equal the tagged commit.** A promotion
+  pull request promotes `dev`'s tip, not the tag. If anything merged into `dev`
+  after the tag was cut, promotion would ship commits that no batch pass and no
+  UAT build ever saw. So at promotion the tip is compared with the tag's commit
+  — `git rev-parse dev` against `git rev-parse sit-YYYY-MM-DD.N^{commit}`, the
+  `^{commit}` because an annotated tag is an object of its own. If they differ,
+  the batch pass is re-run on the new tip, a new tag is cut (the next `N` that
+  day, or `.1` on a new one), and UAT follows from that tag. Stated as a rule,
+  not left open, at the project owner's direction.
+
+  **Why a tag, and not a dedicated SIT branch.** A SIT branch is a fourth
+  branch level. Either work branches are cut from it, or it has to be kept in
+  step with `dev`, and both contradict CLAUDE.md §1's *work branches are cut
+  from `dev`*. And every branch that has to be retired is another chance to
+  lose ancestry: PR #32 squashed a sync and destroyed main→dev ancestry (AD45),
+  and repairing that took a pull request of its own — **#37**, commit
+  `8869dfc`, *"record main's ancestry in dev (repairs the squashed sync #32; no
+  content change)"* — which no entry in either log had recorded before this
+  one 🧪. A tag names one commit, does not advance as commits land, and needs
+  no retiring. It can still be moved on purpose (`git tag -f` and a force
+  push), so "cannot drift" means it does not move by itself, not that nothing
+  can move it; whether this repository has a tag-protection rule was not
+  checked ❓.
+
+  **Who does what, and it agrees with the guards.** A tag is a git write, so
+  the operator creates and pushes it: `.claude/hooks/guard-git.mjs` denies
+  `git tag <name>` from Claude Code (`:364-377`) 📐. `.githooks/pre-push`
+  refuses only `refs/heads/main` and `refs/heads/dev`, so pushing
+  `refs/tags/sit-*` is not blocked 📐. Branch protection covers branches, not
+  tags.
+
+  **One mechanical unknown.** No `uat-build` dispatch has ever run from a tag —
+  the two that succeeded ran from `main` and from `dev` (AF55) ❓. Nothing in
+  the workflow looks branch-specific: its only ref-dependent value is
+  `$GITHUB_SHA`, passed as `--target` when the release is first created
+  (`.github/workflows/uat-build.yml:363`) 📐. The first climb of the ladder is
+  what proves it.
+
+  **Alternatives rejected.** *(a) A dedicated SIT branch* — above. *(b)
+  Date-only tag names* — two batches tagged on one day would collide; the
+  always-present `.N` removes that.
+
+  **What would overturn it.** None was named.
+
+  **CLAUDE.md §3 carries this in brief and points here.** That is CLAUDE.md's
+  fourth divergence as manifest row 26, so its `Record` becomes
+  `AD32, AD33, AD45, AD52` (CORE-DIVERGENCE.md §3).
+
 ## Change log
 - Created 2026-08-31, alongside [FINDINGS.md](FINDINGS.md), to make CLAUDE.md
   §2 satisfiable for this repo (PROJECT_CONTEXT.md and ARCHITECTURE.md are
@@ -5506,3 +5881,34 @@
   stale; ARCHITECTURE's lint file count is **deleted** rather than verified.
   Zero files under `src/` changed; `CLAUDE.md` is manifest row 26 and its
   `Record` becomes `AD32, AD33, AD45`. Measurements are **AF56**.
+- 2026-09-30 — appended **AD47–AD52** on `docs/alpha-scope-decisions`,
+  opening an alpha-scope milestone. **Documentation only** — no source file,
+  dependency or workflow changed. **AD47** defines the alpha (import your own
+  PDF and Markdown, find it again in a library, read comfortably, keep your
+  place, see what you have read) as seven epics, E1–E7, with E8–E11 deferred,
+  and **retires AD23's cheapest-first ladder as a priority list while carrying
+  every one of its gates into the epic that now owns it** — rungs 4 and 6 to E3
+  by the project owner's ruling, and E11 absorbing none. EPUB is deferred
+  behind PDF on purpose, so the import pipeline is proven once rather than
+  twice. It records, as pointers only, supersession in part of AD20, of AD19 and
+  AD23's single control, and of AD24 `D-H` and `D-I`, and notes that `D-J`'s own
+  trigger fires; `D-G` moves intact into E6. **AD48**: import copies the file;
+  the delete offer is fenced three ways and never appears where the provider's
+  ability to delete cannot be detected; export writes the copy back out; AD27's
+  decode-path hazard is named as live and left unresolved. **AD49**: global
+  defaults with sparse per-book overrides, rejecting full per-book copies and
+  web's behaviour — live settings reset, and only presets and position persist,
+  re-checked against the web clone. **AD50**: page labels for PDF with a
+  sheet-index fallback whose disagreement with the printed number is stated,
+  percent for Markdown and EPUB, indicator only; the cleanup heuristics stay;
+  the core-parser manifest rows come with the implementation, and AD42 stands.
+  **AD51**: reading time counts only while the pacer runs in the foreground,
+  written at the position flush but **measured from timestamps rather than
+  flush counts**, since the flush is dirty-gated — with the background-rAF
+  question left open on the trigger "first implementation of the timer".
+  **AD52**: the testing ladder — per feature, per batch, an annotated
+  `sit-YYYY-MM-DD.N` tag, UAT from the tag on a device, and promotion only if
+  `dev`'s tip still equals the tagged commit — rejecting a SIT branch as a
+  fourth level and one more ancestry risk, and recording the #37 repair for the
+  first time. No entry names an overturning condition except AD47's inferred
+  `D-O` one. The parity exercise is **AF57**.

@@ -8,8 +8,12 @@ the page scrolls itself to follow the highlight, tapping any word jumps there,
 and closing and reopening the app puts you back where you left off.
 
 One screen, one setting (words per minute), Markdown only, one theme. That is
-deliberate and it is not unfinished work — **[PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)**
-has the scope, what was cut, and what gates each cut feature's return.
+the MVP as it ships, and every limit in it was a deliberate cut. **The alpha
+comes next** — importing your own PDF and Markdown documents, finding them again
+in a library, reading them comfortably, keeping your place, and seeing what you
+have read — and **none of it is built yet**.
+**[PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)** has the scope: what ships, the
+alpha's epics, what is deferred beyond it, and what gates each.
 
 ---
 
@@ -280,10 +284,10 @@ alarms — it is documented here as such.
 
 | File | What it is | Mutable? |
 |---|---|---|
-| [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | **Scope.** What the app is, what was deliberately cut and what gates each return, the open spikes, known defects, and the decision index | mutable |
+| [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | **Scope.** What the app is, what ships, the alpha's epics and what is deferred beyond it — each with its gate — the open spikes, known defects, and the decision index | mutable |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Structure.** Directory layout and what enforces each boundary, the end-to-end data flow, the two invariants and their blast radius, the per-tick hot path, the fork, and what has no test coverage | mutable |
-| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD46` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
-| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF56` | **APPEND-ONLY** |
+| [DECISIONS.md](DECISIONS.md) | **Why.** One entry per judgment call — what was decided, why, and the alternative rejected. `AD1`–`AD52` | **APPEND-ONLY** — never rewritten; corrections are appended and marked |
+| [FINDINGS.md](FINDINGS.md) | **What was learned** by building and testing, each entry tagged with how it was verified. `AF1`–`AF57` | **APPEND-ONLY** |
 | [CORE-DIVERGENCE.md](CORE-DIVERGENCE.md) | The fork manifest — 26 baseline-pinned files, enforced by `npm run check` | mutable |
 | [RELEASE-SIGNING.md](RELEASE-SIGNING.md) | The release build procedure: the credentials template, the config plugin that generates signing, and how to verify an APK is not debug-signed | mutable |
 | [CLAUDE.md](CLAUDE.md) | The working agreement — the three-level branching model, docs-are-part-of-done, honest verification, and the two invariants that must never break | mutable |

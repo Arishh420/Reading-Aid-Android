@@ -66,8 +66,8 @@ repo is the project owner's observation, relayed. §6 of
 satisfied by the **seeded sample document plus a paste box**, not by a file
 picker — and **AD24 `D-H` says so itself**, in as many words: pasting text and
 reading it satisfies the spirit, not the letter. If your reading of "open a
-document" requires a picker, this MVP does not meet it, and rung 1 of the ladder
-in §5 is what closes the gap.
+document" requires a picker, this MVP does not meet it, and epic **E1** (Library
+& import) in §5 is what closes the gap — AD48 is its import model.
 
 ## 3. Relationship to the web repo — there is no live dependency
 
@@ -132,37 +132,78 @@ Everything in the app, with the decision that put it there:
   shared value as the highlight and writes its text on the UI thread, so it
   costs no React render on a tick (AD42).
 
-## 5. What is deliberately NOT built
+## 5. The alpha, and what comes after it
 
-**None of the following is unfinished work.** Each was cut by a decision, for a
-reason recorded in that decision, and each names what has to happen before it
-returns. This is **AD23's post-MVP ladder** — cheapest first — and AD23 ends
-with the line worth repeating: *it is a ladder, not a schedule. No dates.*
+**Alpha means: the user can import their own PDF and Markdown documents, find
+them again in a library, read them comfortably, keep their place, and see what
+they have read. Everything else is later.** That definition and the eleven epics
+below are **AD47**; the reasoning is there and is not restated here (AD18).
 
-| # | Not built | What gates it |
-|---|---|---|
-| 1 | **File picker** — open a `.md` file from the device | `expo-document-picker` and `expo-file-system` are **both not installed** 🧪, and adding native packages needs a Gradle build rather than a Metro reload ❓. AD24 `D-H` |
-| 2 | **RSVP mode** — one word flashed in place, ORP-anchored | The on-device `orp` probe must close **AF31** residue items 1–2: `\p{M}` (`src/core/pacer/orp.ts:36`) and `normalize('NFC')` (`:137`) have **never run on a device** 📐. The module is seeded and tested in Node |
-| 3 | **Chunk mode** — advance several words per step | Nothing. The clock already supports it: `usePacer`'s `chunkSize` option scales the threshold 📐. No gate was named |
-| 4 | **The three other themes** (`sepia`, `dark`, `dim`) | Only the styling layer. All four ids are already seeded at `src/core/ui/theme.ts:9-14` 🧪, but the colours live in `src/reader/palette.ts`, which holds `light` alone (AD26) |
-| 5 | **Presets** — saved WPM/intensity bundles | Needs the web repo's `presets.ts` ported, and web issue #105 (a value-duplication defect in it) resolved |
-| 6 | **A bionic intensity control and a natural-pauses toggle** | Nothing structural — both values already exist (`BIONIC_RATIO` defines `low`/`medium`/`high` 🧪; the clock takes `naturalPauses` as an option 📐). It is a settings surface that AD19/AD23 chose not to ship |
-| 7 | **EPUB** | Spike **D-P** (§6). The pure structure half is seeded and tested; the container half is unported |
-| 8 | **PDF** | Spike **D-O** (§6). Same shape: the pure text half is seeded and tested; the decode half is unported |
-| 9 | **Virtualization** — mount only the visible words | The `D-G` revisit (AD24) plus spike **D-Q** (§6). Today **every word in the document is mounted** as a native view; AD24 set the revisit trigger as the first document that visibly stutters on scroll or takes more than a moment to mount, and **AF35** requires that trigger be judged on hardware, never on an emulator |
+**This replaces AD23's post-MVP ladder as a priority list.** The ladder was
+ordered cheapest first, which put PDF at rung 8 of 9; the alpha is ordered by
+what a reader needs. **The ladder's gates are kept** — they are evidence about
+the repo, not priorities — and each is carried below, word for word, into the
+epic that now owns it. §5.3 traces all nine old rungs so a lost gate would be
+visible. **No dates, no sizes, and no order among the alpha epics** were set.
 
-Two consequences of that last row are worth stating plainly, because they are
-the ones a large document will find first: the reading surface has **never been
+**None of this is built.** §4 is what ships today; everything below is scope,
+not code. The row-level triage behind the epics — 137 web rows and 16
+Android-only rows (AF57) — is **not in this repo yet**: before an epic's
+implementation branch is cut, that epic's row list lands as GitHub issues.
+
+### 5.1 The alpha epics
+
+| Epic | Alpha clause it serves | Gate carried forward | Decisions |
+|---|---|---|---|
+| **E1 · Library & import** | import their own documents; find them again in a library | *Old rung 1, file picker:* `expo-document-picker` and `expo-file-system` are **both not installed** 🧪, and adding native packages needs a Gradle build rather than a Metro reload ❓. AD24 `D-H` | AD47, **AD48** (copy, not a held URI) |
+| **E2 · PDF reading** | import their own **PDF** documents | *Old rung 8, PDF:* Spike **D-O** (§6). Same shape [as EPUB, E10]: the pure text half is seeded and tested; the decode half is unported | AD47, **AD50** (page indicator) |
+| **E3 · Reader comfort & settings** | read them comfortably | *Old rung 4, the three other themes* (`sepia`, `dark`, `dim`): Only the styling layer. All four ids are already seeded at `src/core/ui/theme.ts:9-14` 🧪, but the colours live in `src/reader/palette.ts`, which holds `light` alone (AD26). *Old rung 6, a bionic intensity control and a natural-pauses toggle:* Nothing structural — both values already exist (`BIONIC_RATIO` defines `low`/`medium`/`high` 🧪; the clock takes `naturalPauses` as an option 📐). It is a settings surface that AD19/AD23 chose not to ship | AD47, **AD49** (sparse per-book overrides) |
+| **E4 · Place & progress** | keep their place | none — no old rung | AD47, AD50 |
+| **E5 · Reading stats** | see what they have read | none — no old rung | AD47, **AD51** (pacer running, foregrounded) |
+| **E6 · Scale & performance** | cross-cutting | *Old rung 9, virtualization:* The `D-G` revisit (AD24) plus spike **D-Q** (§6). Today **every word in the document is mounted** as a native view; AD24 set the revisit trigger as the first document that visibly stutters on scroll or takes more than a moment to mount, and **AF35** requires that trigger be judged on hardware, never on an emulator | AD47 |
+| **E7 · Quality** — accessibility, error states | cross-cutting | none — no old rung | AD47 |
+
+Two consequences of E6's gate are worth stating plainly, because they are the
+ones a large document will find first: the reading surface has **never been
 measured beyond the seeded 176-word sample** (AF38, AF40, AF42 all record this
 gap), and both the scalable alternatives — a measured-rect highlight overlay and
 a container-level tap hit-test — were deferred into the same revisit, because
 they want the same per-word measurement data (AD21, AD28).
 
+### 5.2 Deferred — later than the alpha
+
+| Epic | Gate carried forward |
+|---|---|
+| **E8 · Modes** — flowing polish, chunk | *Old rung 3, chunk mode:* Nothing. The clock already supports it: `usePacer`'s `chunkSize` option scales the threshold 📐. No gate was named |
+| **E9 · RSVP & presets** | *Old rung 2, RSVP mode:* The on-device `orp` probe must close **AF31** residue items 1–2: `\p{M}` (`src/core/pacer/orp.ts:36`) and `normalize('NFC')` (`:137`) have **never run on a device** 📐. The module is seeded and tested in Node. *Old rung 5, presets:* Needs the web repo's `presets.ts` ported, and web issue #105 (a value-duplication defect in it) resolved |
+| **E10 · EPUB** | *Old rung 7, EPUB:* Spike **D-P** (§6). The pure structure half is seeded and tested; the container half is unported. **Deferred behind PDF on purpose** — the import pipeline is proven once, with PDF, not twice (AD47) |
+| **E11 · Post-alpha odds and ends** | None — it absorbs no old rung. It holds rows triaged Later that belong to no deferred theme: drag-and-drop, the format selector dropdown, the word-number field, minimal-HUD/compact transport, the resume interstitial, session-log growth capping |
+
+### 5.3 Where each old rung went
+
+| Old rung | Feature | Now |
+|---|---|---|
+| 1 | File picker | **E1** · alpha |
+| 2 | RSVP mode | E9 · later |
+| 3 | Chunk mode | E8 · later |
+| 4 | The three other themes | **E3** · alpha |
+| 5 | Presets | E9 · later |
+| 6 | Bionic intensity control and natural-pauses toggle | **E3** · alpha |
+| 7 | EPUB | E10 · later |
+| 8 | PDF | **E2** · alpha |
+| 9 | Virtualization | **E6** · alpha |
+
+Nine rungs, nine rows, and every gate above. AD23 itself is unchanged in
+[DECISIONS.md](DECISIONS.md) and remains the record of the order they were in.
+
 ## 6. The three open spikes — the only genuinely open questions
 
 Everything MVP-blocking is settled. What remains is three **timeboxed
 investigations**, not decisions: each produces a finding rather than an `AD`
-entry, **none has been started**, and **none blocks anything**.
+entry, and **none has been started**. **None blocks the shipped MVP — but since
+AD47, two of them sit on the alpha's path:** `D-O` gates **E2** (PDF reading)
+and `D-Q` gates **E6** (scale & performance). `D-P` stays deferred with
+**E10**.
 
 ### D-O · pdf.js on React Native
 
@@ -170,8 +211,8 @@ Known-hard. The web implementation imports `pdfjs-dist` **and** its worker
 through a Vite-specific `?url` import, which has no Metro equivalent; AD8
 already records that even the web repo's *headless* PDF suite needed an esbuild
 resolve-plugin stub because the non-legacy build wants `DOMMatrix`. Whether any
-of it survives Metro and Hermes is **unknown** ❓. AD20 cuts PDF from the MVP,
-so this is post-MVP.
+of it survives Metro and Hermes is **unknown** ❓. AD20 cut PDF from the MVP;
+AD47 brings it into the alpha as E2, so this spike is now **alpha-blocking**.
 
 ### D-P · JSZip on React Native
 
@@ -179,8 +220,9 @@ The web EPUB parser imports `jszip`. Whether it works under Hermes with Metro's
 resolver, and what it needs for binary data handling, is **unknown** ❓. Note
 the narrow scope: the seeded `src/core/parsers/epubStructure.ts` is the **pure
 half** and already runs clean under the Hermes CLI (**AF23**), so the spike is
-only about the **container** layer — getting bytes out of a zip. AD20 cuts EPUB
-from the MVP.
+only about the **container** layer — getting bytes out of a zip. AD20 cut EPUB
+from the MVP, and AD47 keeps it deferred as E10, so this spike stays
+post-alpha.
 
 ### D-Q · Virtualization plus an imperative highlight, together
 
@@ -189,9 +231,10 @@ re-rendering the document tree on the tick path, and without a viewability
 callback fighting the user's own scroll? CLAUDE.md §4 names that second hazard
 as "the constraint most likely to be violated silently during a port". It is a
 spike rather than an argument because neither `D-E` nor `D-G` could be settled
-by reasoning about the other. **Two independent reasons defer it:** AD19 means
-nothing virtualized ships, so the two never meet; and AD21's per-word style is
-N integer comparisons per tick — fine at MVP length, a problem at book length ❓.
+by reasoning about the other. **Two independent reasons deferred it for the
+MVP:** AD19 means nothing virtualized ships, so the two never meet; and AD21's
+per-word style is N integer comparisons per tick — fine at MVP length, a problem
+at book length ❓. **AD47 puts it on the alpha's path** as part of E6's gate.
 
 ## 7. Known defects
 
@@ -246,17 +289,17 @@ pointer to any letter stays valid.
 
 | Item | Subject | Settled by |
 |---|---|---|
-| **D-A** | Feature scope: modes, bionic, themes, presets, settings | [AD19](DECISIONS.md) + [AD23](DECISIONS.md) |
-| **D-B** | Which document formats ship in v1 | [AD20](DECISIONS.md) |
+| **D-A** | Feature scope: modes, bionic, themes, presets, settings | [AD19](DECISIONS.md) + [AD23](DECISIONS.md); for the alpha, superseded in part by [AD47](DECISIONS.md) |
+| **D-B** | Which document formats ship in v1 | [AD20](DECISIONS.md); for the alpha, superseded in part by [AD47](DECISIONS.md) — PDF returns, EPUB stays deferred |
 | **D-C** | Where decisions get logged | [AD18](DECISIONS.md) |
 | **D-D** | Core drift across the repo boundary | [AD31](DECISIONS.md) |
 | **D-E** | The per-tick highlight mechanism (CLAUDE.md §4's invariant) | [AD21](DECISIONS.md) |
 | **D-F** | The pacer clock | [AD22](DECISIONS.md), corrected by [AD25](DECISIONS.md) |
 | **D-G** | Reading surface and virtualization | [AD24](DECISIONS.md) |
-| **D-H** | Getting a file in | [AD24](DECISIONS.md) |
-| **D-I** | Storage scope — what actually persists | [AD24](DECISIONS.md) |
-| **D-J** | Screens and navigation | [AD24](DECISIONS.md) |
-| **D-K** | Settings and presets | [AD19](DECISIONS.md) + [AD23](DECISIONS.md) |
+| **D-H** | Getting a file in | [AD24](DECISIONS.md); for the alpha, superseded by [AD47](DECISIONS.md) + [AD48](DECISIONS.md) |
+| **D-I** | Storage scope — what actually persists | [AD24](DECISIONS.md); for the alpha, superseded in part by [AD49](DECISIONS.md) + [AD51](DECISIONS.md) |
+| **D-J** | Screens and navigation | [AD24](DECISIONS.md); its own revisit trigger fires with E1 ([AD47](DECISIONS.md)) |
+| **D-K** | Settings and presets | [AD19](DECISIONS.md) + [AD23](DECISIONS.md); for the alpha, settings superseded in part by [AD47](DECISIONS.md) + [AD49](DECISIONS.md), presets deferred (E9) |
 | **D-L** | How the APK reaches a physical phone | [AD24](DECISIONS.md), implemented by [AD30](DECISIONS.md) |
 | **D-M** | App identity — icon, splash, display name | [AD24](DECISIONS.md), implemented by [AD30](DECISIONS.md) |
 | **D-N** | Headless suites on Android | [AD24](DECISIONS.md) |
@@ -269,6 +312,9 @@ Decisions **not** in this table, because they were never register items:
 **AD1–AD17** (seeding `src/core/`, the portability guard, the headless-suite
 port, the `check` script, the Hermes probes, the Android package name),
 **AD26** and **AD29** (the reader's palette and its heading scale), **AD27**
-(the content fingerprint), **AD28** (click-to-jump), and **AD32**
-(`CLAUDE.md` becoming Android-owned). Read `DECISIONS.md` front to back for
-those; it is dated and has a change log at the bottom.
+(the content fingerprint), **AD28** (click-to-jump), **AD32**
+(`CLAUDE.md` becoming Android-owned), **AD33–AD46** (the working agreement,
+lint and CI, the release and UAT pipelines, the word-index readout, deferral
+discipline, the branching guards and the doc-consistency check), **AD50** (the
+position indicator) and **AD52** (the testing ladder). Read `DECISIONS.md` front
+to back for those; it is dated and has a change log at the bottom.
